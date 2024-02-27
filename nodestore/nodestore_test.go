@@ -10,7 +10,7 @@ import (
 
 func TestNodeStore(t *testing.T) {
 	store := storage.NewMemStore()
-	cache := util.NewLRU(1e6)
+	cache := util.NewLRU[Node](1e6)
 	ns := New(store, cache)
 	t.Run("store and retrieve an inner node", func(t *testing.T) {
 		node := &InnerNode{
