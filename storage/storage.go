@@ -4,7 +4,7 @@ import (
 	"errors"
 )
 
-var ErrNotFound = errors.New("not found")
+var ErrObjectNotFound = errors.New("object not found")
 
 type Provider interface {
 	Put(uint64, []byte) error

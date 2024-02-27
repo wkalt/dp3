@@ -89,7 +89,7 @@ func TestTreeInsert(t *testing.T) {
 			for _, time := range c.times {
 				records := make([]nodestore.Record, len(time))
 				for i, t := range time {
-					records[i] = nodestore.Record{t, []byte{}}
+					records[i] = nodestore.NewRecord(t, []byte{})
 				}
 				assert.Nil(t, tr.insert(records))
 			}

@@ -21,6 +21,24 @@ func TestLRU(t *testing.T) {
 		lru.Put(3, "a")
 		assert.Equal(t, "(2/2) [3:a 2:a]", lru.String())
 	})
+	t.Run("get key that does not exist", func(t *testing.T) {
+		lru := NewLRU[string](100)
+		_, ok := lru.Get(1)
+		assert.False(t, ok)
+	})
+	t.Run("reset the cache", func(t *testing.T) {
+		lru := NewLRU[string](100)
+		lru.Put(1, "a")
+		lru.Put(2, "a")
+		lru.Put(3, "a")
+		lru.Reset()
+		assert.Equal(t, "(0/100) []", lru.String())
+	})
+	t.Run("evict from empty cache", func(t *testing.T) {
+		lru := NewLRU[string](100)
+		lru.evict()
+		assert.Equal(t, "(0/100) []", lru.String())
+	})
 	t.Run("get moves items to front", func(t *testing.T) {
 		lru := NewLRU[string](100)
 		lru.Put(1, "a")

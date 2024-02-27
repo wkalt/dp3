@@ -92,7 +92,6 @@ func (t *Tree) insert(records []nodestore.Record) (err error) {
 		newNodes = append(newNodes, newLeafID)
 		currentNode.Children[bucket] = newLeafID
 	}
-
 	for _, id := range newNodes {
 		err := t.ns.Flush(id)
 		if err != nil {
@@ -123,15 +122,10 @@ func NewTree(
 		span = span / uint64(branchingFactor)
 	}
 	return &Tree{
-		root: &nodestore.InnerNode{
-			Start:    start,
-			End:      end,
-			Children: make([]uint64, branchingFactor),
-		},
+		root:            nodestore.NewInnerNode(start, end, 0, branchingFactor),
 		depth:           depth,
 		branchingFactor: branchingFactor,
-
-		ns: ns,
+		ns:              ns,
 	}
 }
 

@@ -27,6 +27,14 @@ type Record struct {
 	Data []byte `json:"data"`
 }
 
+// NewRecord creates a new record with the given time and data.
+func NewRecord(time uint64, data []byte) Record {
+	return Record{
+		Time: time,
+		Data: data,
+	}
+}
+
 // toBytes serializes the node to a byte array.
 func (n *LeafNode) ToBytes() []byte {
 	bytes, _ := json.Marshal(n)

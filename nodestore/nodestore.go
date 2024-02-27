@@ -48,6 +48,9 @@ func (n *Nodestore) Get(id uint64) (Node, error) {
 	}
 	data, err := n.store.Get(id)
 	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotFound) {
+			return nil, ErrNodeNotFound
+		}
 		return nil, err
 	}
 	node, err := bytesToNode(id, data)
@@ -67,7 +70,7 @@ func (n *Nodestore) Put(node Node) (uint64, error) {
 func (n *Nodestore) Flush(id uint64) error {
 	node, ok := n.cache.Get(id)
 	if !ok {
-		return errors.New("not found")
+		return ErrNodeNotFound
 	}
 	return n.store.Put(id, node.ToBytes())
 }

@@ -24,7 +24,7 @@ func (m *MemStore) Get(id uint64) ([]byte, error) {
 	defer m.mtx.RUnlock()
 	data, ok := m.data[id]
 	if !ok {
-		return nil, ErrNotFound
+		return nil, ErrObjectNotFound
 	}
 	return data, nil
 }
