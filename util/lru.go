@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 )
 
 var ErrValueTooLarge = errors.New("value is too large")
@@ -13,6 +14,7 @@ type LRU[V any] struct {
 	head, tail *listNode[V]
 	count      int64
 	cap        int64
+	mtx        *sync.Mutex
 }
 
 type listNode[V any] struct {
@@ -43,10 +45,13 @@ func NewLRU[V any](capacity int64) *LRU[V] {
 		tail:  tail,
 		cap:   capacity,
 		count: 0,
+		mtx:   &sync.Mutex{},
 	}
 }
 
 func (lru *LRU[V]) Reset() {
+	lru.mtx.Lock()
+	defer lru.mtx.Unlock()
 	lru.cache = make(map[uint64]*listNode[V])
 	lru.head.next = lru.tail
 	lru.tail.prev = lru.head
@@ -71,6 +76,8 @@ func (lru *LRU[V]) moveToFront(node *listNode[V]) {
 }
 
 func (lru *LRU[V]) Put(key uint64, value V) {
+	lru.mtx.Lock()
+	defer lru.mtx.Unlock()
 	if node, exists := lru.cache[key]; exists {
 		node.value = value
 		lru.moveToFront(node)
@@ -87,6 +94,8 @@ func (lru *LRU[V]) Put(key uint64, value V) {
 }
 
 func (lru *LRU[V]) Get(key uint64) (V, bool) {
+	lru.mtx.Lock()
+	defer lru.mtx.Unlock()
 	if node, exists := lru.cache[key]; exists {
 		lru.moveToFront(node)
 		return node.value, true
@@ -105,6 +114,8 @@ func (lru *LRU[V]) evict() {
 }
 
 func (lru *LRU[V]) String() string {
+	lru.mtx.Lock()
+	defer lru.mtx.Unlock()
 	sb := &strings.Builder{}
 	sb.WriteString(fmt.Sprintf("(%d/%d) [", lru.count, lru.cap))
 	for node := lru.head.next; node != lru.tail; node = node.next {
