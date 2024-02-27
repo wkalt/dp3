@@ -4,151 +4,153 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/wkalt/dp3/nodestore"
 )
 
 // todo
 // * tree dimensions (branching factor, depth) must be chosen at runtime based
 //    on some initial samples of the data and a target leaf node size.
+// * tree currently assumes no nodes it is working with get evicted from cache
+// over course of an insert. not safe. separate cache for working nodes may be
+// needed.
 
 // Tree is a versioned, time-partitioned, COW Tree.
 type Tree struct {
-	root            *innerNode
+	root            *nodestore.InnerNode
 	depth           int
 	branchingFactor int
+
+	ns *nodestore.Nodestore
 }
 
 func (t *Tree) bucketTime(time uint64) uint64 {
-	bucketWidth := (t.root.end - t.root.start) / pow(uint64(t.branchingFactor), t.depth)
-	bucketIndex := (time - t.root.start) / bucketWidth
+	bucketWidth := (t.root.End - t.root.Start) / pow(uint64(t.branchingFactor), t.depth)
+	bucketIndex := (time - t.root.Start) / bucketWidth
 	return bucketIndex * bucketWidth
 }
 
-func (t *Tree) insert(records []record) {
-	var root = &innerNode{}
+func (t *Tree) insert(records []nodestore.Record) (err error) {
+	var root = &nodestore.InnerNode{}
 	*root = *t.root
-	root.version++
-	txversion := root.version
-	groups := groupBy(records, func(r record) uint64 {
-		return t.bucketTime(r.time)
+	root.Version++
+	txversion := root.Version
+	groups := groupBy(records, func(r nodestore.Record) uint64 {
+		return t.bucketTime(r.Time)
 	})
+
+	var newNodes []uint64
 	for bucketTime, records := range groups {
 		currentNode := root
 		for i := 0; i < t.depth-1; i++ {
 			bucket := t.getBucket(bucketTime, currentNode)
-			var child = &innerNode{}
-			if currentNode.children[bucket] == nil {
-				child = &innerNode{
-					start:    currentNode.start + uint64(bucket)*t.bucketWidthNanos(currentNode),
-					end:      currentNode.start + uint64(bucket+1)*t.bucketWidthNanos(currentNode),
-					children: make([]node, t.branchingFactor),
+			var newChild *nodestore.InnerNode
+			if childID := currentNode.Children[bucket]; childID > 0 {
+				childNode, err := t.ns.Get(childID)
+				if err != nil {
+					return err
 				}
+				newChild = &nodestore.InnerNode{}
+				*newChild = *childNode.(*nodestore.InnerNode)
+				newChild.Version = txversion
 			} else {
-				*child = *currentNode.children[bucket].(*innerNode)
+				newChild = nodestore.NewInnerNode(
+					currentNode.Start+uint64(bucket)*t.bucketWidthNanos(currentNode),
+					currentNode.Start+uint64(bucket+1)*t.bucketWidthNanos(currentNode),
+					txversion,
+					t.branchingFactor,
+				)
 			}
-			child.setVersion(txversion)
-			currentNode.children[bucket] = child
-			currentNode = child
+			newChildID, err := t.ns.Put(newChild)
+			if err != nil {
+				return err
+			}
+			currentNode.Children[bucket] = newChildID
+			currentNode = newChild
+			newNodes = append(newNodes, newChildID)
 		}
-		bucket := t.getBucket(bucketTime, currentNode)
-		if currentNode.children[bucket] == nil {
-			currentNode.children[bucket] = &leafNode{}
-		}
-		leaf := currentNode.children[bucket].(*leafNode)
-		newRecords := append(leaf.records, records...)
-		sort.Slice(newRecords, func(i, j int) bool {
-			return newRecords[i].time < newRecords[j].time
-		})
-		leaf.records = newRecords
-		leaf.setVersion(txversion)
-	}
-	t.root = root
-}
 
-// record represents a timestamped byte array
-type record struct {
-	time uint64
-	data []byte
+		// currentNode is now the final parent
+		newRecords := records
+		bucket := t.getBucket(bucketTime, currentNode)
+		if childID := currentNode.Children[bucket]; childID > 0 {
+			leaf, err := t.ns.Get(childID)
+			if err != nil {
+				return err
+			}
+			old := leaf.(*nodestore.LeafNode)
+			newRecords = append(old.Records, records...)
+		}
+		sort.Slice(newRecords, func(i, j int) bool {
+			return newRecords[i].Time < newRecords[j].Time
+		})
+		new := nodestore.NewLeafNode(txversion, newRecords)
+		newLeafID, err := t.ns.Put(new)
+		if err != nil {
+			return err
+		}
+		newNodes = append(newNodes, newLeafID)
+		currentNode.Children[bucket] = newLeafID
+	}
+
+	for _, id := range newNodes {
+		err := t.ns.Flush(id)
+		if err != nil {
+			return err
+		}
+	}
+	rootID, err := t.ns.Put(root)
+	if err != nil {
+		return err
+	}
+	t.ns.Flush(rootID)
+	t.root = root
+	return nil
 }
 
 // NewTree constructs a new tree for the given start and end. The depth of the
 // tree is computed such that the time span covered by each leaf node is at most
 // leafWidthNanos.
-func NewTree(start uint64, end uint64, leafWidthNanos uint64, branchingFactor int) *Tree {
+func NewTree(
+	start uint64,
+	end uint64,
+	leafWidthNanos uint64,
+	branchingFactor int,
+	ns *nodestore.Nodestore,
+) *Tree {
 	depth := 0
 	for span := end - start; span > leafWidthNanos; depth++ {
 		span = span / uint64(branchingFactor)
 	}
 	return &Tree{
-		root: &innerNode{
-			start:    start,
-			end:      end,
-			children: make([]node, branchingFactor),
+		root: &nodestore.InnerNode{
+			Start:    start,
+			End:      end,
+			Children: make([]uint64, branchingFactor),
 		},
 		depth:           depth,
 		branchingFactor: branchingFactor,
+
+		ns: ns,
 	}
 }
 
-// node is an interface to which leaf and inner nodes adhere.
-type node interface {
-	// isLeaf indicates whether the node is a leaf node
-	isLeaf() bool
-
-	// setVersion sets the version of the node
-	setVersion(version uint64)
-}
-
-// innerNode represents an interior node in the tree, with slots for 64
-// children.
-type innerNode struct {
-	start    uint64
-	end      uint64
-	children []node
-	version  uint64
-}
-
-// setVersion sets the version of the node.
-func (n *innerNode) setVersion(version uint64) {
-	n.version = version
-}
-
-// isLeaf indicates whether the node is a leaf node.
-func (n *innerNode) isLeaf() bool {
-	return false
-}
-
 // bucketWidthNanos returns the width of each bucket in nanoseconds.
-func (t *Tree) bucketWidthNanos(n *innerNode) uint64 {
-	return (n.end - n.start) / uint64(t.branchingFactor)
+func (t *Tree) bucketWidthNanos(n *nodestore.InnerNode) uint64 {
+	return (n.End - n.Start) / uint64(t.branchingFactor)
 }
 
 // getBucket returns the index of the bucket that the given time falls into.
-func (t *Tree) getBucket(ts uint64, n *innerNode) int {
-	return int((ts - n.start) / t.bucketWidthNanos(n))
+func (t *Tree) getBucket(ts uint64, n *nodestore.InnerNode) int {
+	return int((ts - n.Start) / t.bucketWidthNanos(n))
 }
 
-// leafNode represents a leaf node in the tree, containing records.
-type leafNode struct {
-	version uint64
-	records []record
-}
-
-// setVersion sets the version of the node.
-func (n *leafNode) setVersion(version uint64) {
-	n.version = version
-}
-
-// isLeaf indicates whether the node is a leaf node.
-func (n *leafNode) isLeaf() bool {
-	return true
-}
-
-func printLeaf(n *leafNode, start, end uint64) string {
+func printLeaf(n *nodestore.LeafNode, start, end uint64) string {
 	sb := &strings.Builder{}
-	sb.WriteString(fmt.Sprintf("[%d-%d:%d [leaf ", start, end, n.version))
-	for i, record := range n.records {
-		sb.WriteString(fmt.Sprintf("%d", record.time))
-		if i < len(n.records)-1 {
+	sb.WriteString(fmt.Sprintf("[%d-%d:%d [leaf ", start, end, n.Version))
+	for i, record := range n.Records {
+		sb.WriteString(fmt.Sprintf("%d", record.Time))
+		if i < len(n.Records)-1 {
 			sb.WriteString(" ")
 		}
 	}
@@ -156,20 +158,24 @@ func printLeaf(n *leafNode, start, end uint64) string {
 	return sb.String()
 }
 
-func (t *Tree) printTree(n *innerNode) string {
+func (t *Tree) printTree(n *nodestore.InnerNode) string {
 	sb := &strings.Builder{}
-	sb.WriteString(fmt.Sprintf("[%d-%d:%d", n.start, n.end, n.version))
-	for i, child := range n.children {
-		if child == nil {
+	sb.WriteString(fmt.Sprintf("[%d-%d:%d", n.Start, n.End, n.Version))
+	for i, childID := range n.Children {
+		if childID == 0 {
 			continue
 		}
-		if child.isLeaf() {
-			childStart := n.start + uint64(i)*t.bucketWidthNanos(n)
-			childEnd := n.start + uint64(i+1)*t.bucketWidthNanos(n)
-			sb.WriteString(" " + printLeaf(child.(*leafNode), childStart, childEnd))
+		child, err := t.ns.Get(childID)
+		if err != nil {
+			panic(err)
+		}
+		if child, ok := child.(*nodestore.LeafNode); ok {
+			childStart := n.Start + uint64(i)*t.bucketWidthNanos(n)
+			childEnd := n.Start + uint64(i+1)*t.bucketWidthNanos(n)
+			sb.WriteString(" " + printLeaf(child, childStart, childEnd))
 			continue
 		}
-		sb.WriteString(" " + t.printTree(child.(*innerNode)))
+		sb.WriteString(" " + t.printTree(child.(*nodestore.InnerNode)))
 	}
 	sb.WriteString("]")
 	return sb.String()

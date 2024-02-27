@@ -4,6 +4,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/wkalt/dp3/nodestore"
+	"github.com/wkalt/dp3/storage"
+	"github.com/wkalt/dp3/util"
 )
 
 func TestTreeInsert(t *testing.T) {
@@ -79,13 +82,16 @@ func TestTreeInsert(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
-			tr := NewTree(0, pow(uint64(64), c.depth+1), 64, 64)
+			store := storage.NewMemStore()
+			cache := util.NewLRU[nodestore.Node](1e6)
+			ns := nodestore.New(store, cache)
+			tr := NewTree(0, pow(uint64(64), c.depth+1), 64, 64, ns)
 			for _, time := range c.times {
-				records := make([]record, len(time))
+				records := make([]nodestore.Record, len(time))
 				for i, t := range time {
-					records[i] = record{t, []byte{}}
+					records[i] = nodestore.Record{t, []byte{}}
 				}
-				tr.insert(records)
+				assert.Nil(t, tr.insert(records))
 			}
 			assert.Equal(t, c.repr, tr.String())
 		})
