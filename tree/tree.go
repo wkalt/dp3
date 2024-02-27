@@ -62,9 +62,10 @@ func (t *Tree) Insert(records []nodestore.Record) (err error) {
 				*newChild = *childNodeInnerNode
 				newChild.Version = txversion
 			} else {
+				bwidth := t.bwidth(currentNode)
 				newChild = nodestore.NewInnerNode(
-					currentNode.Start+uint64(bucket)*t.bucketWidthNanos(currentNode),
-					currentNode.Start+uint64(bucket+1)*t.bucketWidthNanos(currentNode),
+					currentNode.Start+uint64(bucket)*bwidth,
+					currentNode.Start+uint64(bucket+1)*bwidth,
 					txversion,
 					t.branchingFactor,
 				)
@@ -141,16 +142,17 @@ func NewTree(
 	}
 }
 
-// bucketWidthNanos returns the width of each bucket in nanoseconds.
-func (t *Tree) bucketWidthNanos(n *nodestore.InnerNode) uint64 {
+// bwidth returns the width of each bucket in nanoseconds.
+func (t *Tree) bwidth(n *nodestore.InnerNode) uint64 {
 	return (n.End - n.Start) / uint64(t.branchingFactor)
 }
 
 // getBucket returns the index of the bucket that the given time falls into.
 func (t *Tree) getBucket(ts uint64, n *nodestore.InnerNode) int {
-	return int((ts - n.Start) / t.bucketWidthNanos(n))
+	return int((ts - n.Start) / t.bwidth(n))
 }
 
+// printLeaf prints the given leaf node for test comparison.
 func printLeaf(n *nodestore.LeafNode, start, end uint64) string {
 	sb := &strings.Builder{}
 	sb.WriteString(fmt.Sprintf("[%d-%d:%d [leaf ", start, end, n.Version))
@@ -164,6 +166,7 @@ func printLeaf(n *nodestore.LeafNode, start, end uint64) string {
 	return sb.String()
 }
 
+// printTree prints the tree rooted at the given node for test comparison.
 func (t *Tree) printTree(node *nodestore.InnerNode) (string, error) {
 	sb := &strings.Builder{}
 	sb.WriteString(fmt.Sprintf("[%d-%d:%d", node.Start, node.End, node.Version))
@@ -176,8 +179,9 @@ func (t *Tree) printTree(node *nodestore.InnerNode) (string, error) {
 			return "", fmt.Errorf("failed to get node %d: %w", childID, err)
 		}
 		if child, ok := child.(*nodestore.LeafNode); ok {
-			childStart := node.Start + uint64(i)*t.bucketWidthNanos(node)
-			childEnd := node.Start + uint64(i+1)*t.bucketWidthNanos(node)
+			bwidth := t.bwidth(node)
+			childStart := node.Start + uint64(i)*bwidth
+			childEnd := node.Start + uint64(i+1)*bwidth
 			sb.WriteString(" " + printLeaf(child, childStart, childEnd))
 			continue
 		}
