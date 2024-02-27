@@ -195,6 +195,7 @@ func (t *Tree) printTree(node *nodestore.InnerNode) (string, error) {
 	return sb.String(), nil
 }
 
+// String returns a string representation of the tree.
 func (t *Tree) String() string {
 	s, err := t.printTree(t.root)
 	if err != nil {

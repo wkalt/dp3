@@ -43,6 +43,7 @@ func bytesToNode(id uint64, value []byte) (Node, error) {
 	return node, nil
 }
 
+// Get retrieves a node from the store. If the node is not in the cache, it will be loaded from the store.
 func (n *Nodestore) Get(id uint64) (Node, error) {
 	if value, ok := n.cache.Get(id); ok {
 		return value, nil
@@ -62,12 +63,14 @@ func (n *Nodestore) Get(id uint64) (Node, error) {
 	return node, nil
 }
 
+// Put adds a node to the cache. It does not write the node to the store.
 func (n *Nodestore) Put(node Node) (uint64, error) {
 	id := n.generateNodeID(node)
 	n.cache.Put(id, node)
 	return id, nil
 }
 
+// Flush writes a cached node to the store.
 func (n *Nodestore) Flush(id uint64) error {
 	node, ok := n.cache.Get(id)
 	if !ok {
@@ -84,7 +87,8 @@ func (n *Nodestore) Flush(id uint64) error {
 	return nil
 }
 
-func New(store storage.Provider, cache *util.LRU[Node]) *Nodestore {
+// NewNodestore creates a new nodestore.
+func NewNodestore(store storage.Provider, cache *util.LRU[Node]) *Nodestore {
 	return &Nodestore{
 		store:      store,
 		cache:      cache,

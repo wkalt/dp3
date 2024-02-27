@@ -86,7 +86,7 @@ func TestTreeInsert(t *testing.T) {
 		t.Run(c.assertion, func(t *testing.T) {
 			store := storage.NewMemStore()
 			cache := util.NewLRU[nodestore.Node](1e6)
-			ns := nodestore.New(store, cache)
+			ns := nodestore.NewNodestore(store, cache)
 			tr := tree.NewTree(0, util.Pow(uint64(64), c.depth+1), 64, 64, ns)
 			for _, time := range c.times {
 				records := make([]nodestore.Record, len(time))

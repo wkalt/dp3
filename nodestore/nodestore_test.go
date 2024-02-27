@@ -13,7 +13,7 @@ import (
 func TestNodestoreErrors(t *testing.T) {
 	store := storage.NewMemStore()
 	cache := util.NewLRU[nodestore.Node](1e6)
-	ns := nodestore.New(store, cache)
+	ns := nodestore.NewNodestore(store, cache)
 	t.Run("get non-existent node", func(t *testing.T) {
 		_, err := ns.Get(0)
 		assert.ErrorIs(t, err, nodestore.ErrNodeNotFound)
@@ -46,7 +46,7 @@ func TestNodestoreErrors(t *testing.T) {
 func TestNodeStore(t *testing.T) {
 	store := storage.NewMemStore()
 	cache := util.NewLRU[nodestore.Node](1e6)
-	ns := nodestore.New(store, cache)
+	ns := nodestore.NewNodestore(store, cache)
 	t.Run("store and retrieve an inner node", func(t *testing.T) {
 		node := nodestore.NewInnerNode(10, 20, 1, 64)
 		nodeID, err := ns.Put(node)

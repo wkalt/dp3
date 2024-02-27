@@ -1,9 +1,6 @@
 package storage
 
 import (
-	"fmt"
-	"sort"
-	"strings"
 	"sync"
 )
 
@@ -34,26 +31,6 @@ func (m *MemStore) Delete(id uint64) error {
 	defer m.mtx.Unlock()
 	delete(m.data, id)
 	return nil
-}
-
-func (m *MemStore) String() string {
-	ids := make([]uint64, 0, len(m.data))
-	for id := range m.data {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool {
-		return ids[i] < ids[j]
-	})
-	sb := &strings.Builder{}
-	sb.WriteString("{")
-	for i, id := range ids {
-		if i > 0 {
-			sb.WriteString(", ")
-		}
-		sb.WriteString(fmt.Sprintf("%d: \"%s\"", id, string(m.data[id])))
-	}
-	sb.WriteString("}")
-	return sb.String()
 }
 
 func NewMemStore() *MemStore {
