@@ -9,6 +9,7 @@ import (
 
 var ErrValueTooLarge = errors.New("value is too large")
 
+// LRU is a simple LRU cache.
 type LRU[V any] struct {
 	cache      map[uint64]*listNode[V]
 	head, tail *listNode[V]
@@ -32,6 +33,7 @@ func newListNode[V any]() *listNode[V] {
 	}
 }
 
+// NewLRU returns a new LRU cache with the given capacity.
 func NewLRU[V any](capacity int64) *LRU[V] {
 	head, tail := newListNode[V](), newListNode[V]()
 	head.next = tail
@@ -46,6 +48,7 @@ func NewLRU[V any](capacity int64) *LRU[V] {
 	}
 }
 
+// Reset clears the cache.
 func (lru *LRU[V]) Reset() {
 	lru.mtx.Lock()
 	defer lru.mtx.Unlock()
@@ -72,6 +75,7 @@ func (lru *LRU[V]) moveToFront(node *listNode[V]) {
 	lru.addToFront(node)
 }
 
+// Put adds a new key-value pair to the cache. If the key already exists, the value is updated.
 func (lru *LRU[V]) Put(key uint64, value V) {
 	lru.mtx.Lock()
 	defer lru.mtx.Unlock()
@@ -90,6 +94,7 @@ func (lru *LRU[V]) Put(key uint64, value V) {
 	}
 }
 
+// Get returns the value associated with the given key. The second return value is true if the key exists in the cache.
 func (lru *LRU[V]) Get(key uint64) (V, bool) {
 	lru.mtx.Lock()
 	defer lru.mtx.Unlock()
@@ -110,6 +115,7 @@ func (lru *LRU[V]) evict() {
 	lru.removeNode(lru.tail.prev)
 }
 
+// String returns a string representation of the cache.
 func (lru *LRU[V]) String() string {
 	lru.mtx.Lock()
 	defer lru.mtx.Unlock()
