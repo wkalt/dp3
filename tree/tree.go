@@ -183,7 +183,7 @@ func (t *Tree) printTree(node *nodestore.InnerNode) (string, error) {
 		}
 		ichild, ok := child.(*nodestore.InnerNode)
 		if !ok {
-			return "", fmt.Errorf("expected inner node - database is corrupt")
+			return "", errors.New("expected inner node - database is corrupt")
 		}
 		childstr, err := t.printTree(ichild)
 		if err != nil {
