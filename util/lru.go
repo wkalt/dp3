@@ -33,9 +33,6 @@ func newListNode[V any]() *listNode[V] {
 }
 
 func NewLRU[V any](capacity int64) *LRU[V] {
-	if capacity <= 0 {
-		panic("cap must be positive")
-	}
 	head, tail := newListNode[V](), newListNode[V]()
 	head.next = tail
 	tail.prev = head

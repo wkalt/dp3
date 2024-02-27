@@ -3,6 +3,7 @@ package tree
 import (
 	"errors"
 	"fmt"
+	"log"
 	"sort"
 	"strconv"
 	"strings"
@@ -163,7 +164,7 @@ func printLeaf(n *nodestore.LeafNode, start, end uint64) string {
 	return sb.String()
 }
 
-func (t *Tree) printTree(node *nodestore.InnerNode) string {
+func (t *Tree) printTree(node *nodestore.InnerNode) (string, error) {
 	sb := &strings.Builder{}
 	sb.WriteString(fmt.Sprintf("[%d-%d:%d", node.Start, node.End, node.Version))
 	for i, childID := range node.Children {
@@ -172,7 +173,7 @@ func (t *Tree) printTree(node *nodestore.InnerNode) string {
 		}
 		child, err := t.ns.Get(childID)
 		if err != nil {
-			panic(err)
+			return "", fmt.Errorf("failed to get node %d: %w", childID, err)
 		}
 		if child, ok := child.(*nodestore.LeafNode); ok {
 			childStart := node.Start + uint64(i)*t.bucketWidthNanos(node)
@@ -182,14 +183,22 @@ func (t *Tree) printTree(node *nodestore.InnerNode) string {
 		}
 		ichild, ok := child.(*nodestore.InnerNode)
 		if !ok {
-			panic("expected inner node")
+			return "", fmt.Errorf("expected inner node - database is corrupt")
 		}
-		sb.WriteString(" " + t.printTree(ichild))
+		childstr, err := t.printTree(ichild)
+		if err != nil {
+			return "", err
+		}
+		sb.WriteString(" " + childstr)
 	}
 	sb.WriteString("]")
-	return sb.String()
+	return sb.String(), nil
 }
 
 func (t *Tree) String() string {
-	return t.printTree(t.root)
+	s, err := t.printTree(t.root)
+	if err != nil {
+		log.Println("failed to print tree:", err)
+	}
+	return s
 }
