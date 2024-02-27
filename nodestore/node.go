@@ -10,7 +10,7 @@ const (
 // Node is an interface to which leaf and inner nodes adhere.
 type Node interface {
 	// ToBytes serializes the node to a byte slice
-	ToBytes() []byte
+	ToBytes() ([]byte, error)
 
 	// FromBytes deserializes the node from a byte slice
 	FromBytes(data []byte) error

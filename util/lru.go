@@ -21,18 +21,28 @@ type listNode[V any] struct {
 	prev, next *listNode[V]
 }
 
-func NewLRU[V any](cap int64) *LRU[V] {
-	if cap <= 0 {
+func newListNode[V any]() *listNode[V] {
+	return &listNode[V]{
+		key:   0,
+		value: *new(V),
+		prev:  nil,
+		next:  nil,
+	}
+}
+
+func NewLRU[V any](capacity int64) *LRU[V] {
+	if capacity <= 0 {
 		panic("cap must be positive")
 	}
-	head, tail := &listNode[V]{}, &listNode[V]{}
+	head, tail := newListNode[V](), newListNode[V]()
 	head.next = tail
 	tail.prev = head
 	return &LRU[V]{
 		cache: make(map[uint64]*listNode[V]),
 		head:  head,
 		tail:  tail,
-		cap:   cap,
+		cap:   capacity,
+		count: 0,
 	}
 }
 
@@ -65,10 +75,10 @@ func (lru *LRU[V]) Put(key uint64, value V) {
 		node.value = value
 		lru.moveToFront(node)
 	} else {
-		node := &listNode[V]{key: key, value: value}
+		node := &listNode[V]{key: key, value: value, prev: nil, next: nil}
 		lru.cache[key] = node
 		lru.addToFront(node)
-		lru.count += 1
+		lru.count++
 	}
 
 	for lru.count > lru.cap {
@@ -89,7 +99,7 @@ func (lru *LRU[V]) evict() {
 	if lru.tail.prev == lru.head {
 		return // Cache is empty
 	}
-	lru.count -= 1
+	lru.count--
 	delete(lru.cache, lru.tail.prev.key)
 	lru.removeNode(lru.tail.prev)
 }

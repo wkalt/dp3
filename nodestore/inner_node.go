@@ -1,6 +1,9 @@
 package nodestore
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // todo: compact format
 // * child list may compress well if we number the tree sequentially.
@@ -18,13 +21,20 @@ type InnerNode struct {
 }
 
 // toBytes serializes the node to a byte array.
-func (n *InnerNode) ToBytes() []byte {
-	bytes, _ := json.Marshal(n)
-	return bytes
+func (n *InnerNode) ToBytes() ([]byte, error) {
+	bytes, err := json.Marshal(n)
+	if err != nil {
+		return nil, fmt.Errorf("failed to serialize inner node: %w", err)
+	}
+	return bytes, nil
 }
 
 func (n *InnerNode) FromBytes(data []byte) error {
-	return json.Unmarshal(data, n)
+	err := json.Unmarshal(data, n)
+	if err != nil {
+		return fmt.Errorf("error unmarshalling inner node: %w", err)
+	}
+	return nil
 }
 
 func (n *InnerNode) Type() NodeType {

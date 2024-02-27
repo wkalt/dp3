@@ -1,11 +1,13 @@
-package tree
+package tree_test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/storage"
+	"github.com/wkalt/dp3/tree"
 	"github.com/wkalt/dp3/util"
 )
 
@@ -85,13 +87,13 @@ func TestTreeInsert(t *testing.T) {
 			store := storage.NewMemStore()
 			cache := util.NewLRU[nodestore.Node](1e6)
 			ns := nodestore.New(store, cache)
-			tr := NewTree(0, pow(uint64(64), c.depth+1), 64, 64, ns)
+			tr := tree.NewTree(0, util.Pow(uint64(64), c.depth+1), 64, 64, ns)
 			for _, time := range c.times {
 				records := make([]nodestore.Record, len(time))
 				for i, t := range time {
 					records[i] = nodestore.NewRecord(t, []byte{})
 				}
-				assert.Nil(t, tr.insert(records))
+				require.NoError(t, tr.Insert(records))
 			}
 			assert.Equal(t, c.repr, tr.String())
 		})

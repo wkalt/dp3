@@ -7,7 +7,7 @@ import (
 var ErrObjectNotFound = errors.New("object not found")
 
 type Provider interface {
-	Put(uint64, []byte) error
-	Get(uint64) ([]byte, error)
-	Delete(uint64) error
+	Put(id uint64, data []byte) error
+	Get(id uint64) ([]byte, error)
+	Delete(id uint64) error
 }

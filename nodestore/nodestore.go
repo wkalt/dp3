@@ -2,6 +2,7 @@ package nodestore
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/wkalt/dp3/storage"
 	"github.com/wkalt/dp3/util"
@@ -29,15 +30,15 @@ func isLeafID(id uint64) bool {
 
 func bytesToNode(id uint64, value []byte) (Node, error) {
 	if isLeafID(id) {
-		node := &LeafNode{}
+		node := NewLeafNode(0, nil)
 		if err := node.FromBytes(value); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to parse leaf node: %w", err)
 		}
 		return node, nil
 	}
-	node := &InnerNode{}
+	node := NewInnerNode(0, 0, 0, 0)
 	if err := node.FromBytes(value); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse inner node: %w", err)
 	}
 	return node, nil
 }
@@ -51,11 +52,11 @@ func (n *Nodestore) Get(id uint64) (Node, error) {
 		if errors.Is(err, storage.ErrObjectNotFound) {
 			return nil, ErrNodeNotFound
 		}
-		return nil, err
+		return nil, fmt.Errorf("failed to get node: %w", err)
 	}
 	node, err := bytesToNode(id, data)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to parse node: %w", err)
 	}
 	n.cache.Put(id, node)
 	return node, nil
@@ -72,7 +73,15 @@ func (n *Nodestore) Flush(id uint64) error {
 	if !ok {
 		return ErrNodeNotFound
 	}
-	return n.store.Put(id, node.ToBytes())
+	bytes, err := node.ToBytes()
+	if err != nil {
+		return fmt.Errorf("failed to serialize node: %w", err)
+	}
+	err = n.store.Put(id, bytes)
+	if err != nil {
+		return fmt.Errorf("failed to flush node %d: %w", id, err)
+	}
+	return nil
 }
 
 func New(store storage.Provider, cache *util.LRU[Node]) *Nodestore {

@@ -1,6 +1,9 @@
 package nodestore
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // todo: compact format
 // * leaf data should be a chunk-compressed mcap file
@@ -10,18 +13,18 @@ import "encoding/json"
 //   for extra storage of an offset or additional seek.
 // * version should be excluded from the node, and associated with the edge on
 //   the inner node instead.
-// * readers will leverage the leaf node as another level in the heirarchy,
+// * readers will leverage the leaf node as another level in the hierarchy,
 //   allowing them to pinpoint byte ranges down to ~8MB decompressed, out of the
 //   50-100MB target leaf size. This will give us a reasonable degree of
 //   granularity in reads, without requiring tiny files.
 
-// leafNode represents a leaf node in the tree
+// leafNode represents a leaf node in the tree.
 type LeafNode struct {
 	Version uint64   `json:"version"`
 	Records []Record `json:"records"`
 }
 
-// record represents a timestamped byte array
+// record represents a timestamped byte array.
 type Record struct {
 	Time uint64 `json:"time"`
 	Data []byte `json:"data"`
@@ -36,14 +39,21 @@ func NewRecord(time uint64, data []byte) Record {
 }
 
 // toBytes serializes the node to a byte array.
-func (n *LeafNode) ToBytes() []byte {
-	bytes, _ := json.Marshal(n)
-	return bytes
+func (n *LeafNode) ToBytes() ([]byte, error) {
+	bytes, err := json.Marshal(n)
+	if err != nil {
+		return nil, fmt.Errorf("error marshalling leaf node: %w", err)
+	}
+	return bytes, nil
 }
 
 // fromBytes deserializes the node from a byte slice.
 func (n *LeafNode) FromBytes(data []byte) error {
-	return json.Unmarshal(data, n)
+	err := json.Unmarshal(data, n)
+	if err != nil {
+		return fmt.Errorf("error unmarshalling leaf node: %w", err)
+	}
+	return nil
 }
 
 func (n *LeafNode) Type() NodeType {

@@ -37,7 +37,7 @@ func (m *MemStore) Delete(id uint64) error {
 }
 
 func (m *MemStore) String() string {
-	var ids []uint64
+	ids := make([]uint64, 0, len(m.data))
 	for id := range m.data {
 		ids = append(ids, id)
 	}
