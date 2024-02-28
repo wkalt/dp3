@@ -21,16 +21,6 @@ func TestNodestoreErrors(t *testing.T) {
 	t.Run("flush a nonexistent node", func(t *testing.T) {
 		assert.ErrorIs(t, ns.Flush(0), nodestore.ErrNodeNotFound)
 	})
-	t.Run("read corrupted leaf node from store", func(t *testing.T) {
-		node := nodestore.NewLeafNode(nil)
-		nodeID, err := ns.Put(node)
-		require.NoError(t, err)
-		require.NoError(t, ns.Flush(nodeID))
-		cache.Reset()
-		require.NoError(t, store.Put(nodeID, []byte{0, 0, 0, 0}))
-		_, err = ns.Get(nodeID)
-		assert.Error(t, err)
-	})
 	t.Run("read corrupted inner node from store", func(t *testing.T) {
 		node := nodestore.NewInnerNode(0, 0, 0)
 		nodeID, err := ns.Put(node)

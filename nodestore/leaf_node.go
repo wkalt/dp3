@@ -1,26 +1,15 @@
 package nodestore
 
-import (
-	"encoding/json"
-	"fmt"
-)
-
 type LeafNode struct {
-	Data []byte `json:"data"`
+	Data []byte
 }
 
 func (n *LeafNode) ToBytes() ([]byte, error) {
-	bytes, err := json.Marshal(n)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize data node: %w", err)
-	}
-	return bytes, nil
+	return n.Data, nil
 }
 
 func (n *LeafNode) FromBytes(data []byte) error {
-	if err := json.Unmarshal(data, n); err != nil {
-		return fmt.Errorf("error unmarshalling data node: %w", err)
-	}
+	n.Data = data
 	return nil
 }
 
