@@ -52,7 +52,6 @@ func NewTree(
 	}
 }
 
-//nolint:funlen // need to refactor
 func (t *Tree) Insert(records []nodestore.Record) (err error) {
 	var root = nodestore.NewInnerNode(0, 0, 0)
 	*root = *t.root
@@ -65,31 +64,12 @@ func (t *Tree) Insert(records []nodestore.Record) (err error) {
 	for bucketTime, records := range groups {
 		current := root
 		for i := 0; i < t.depth-1; i++ {
-			bucket := t.bucket(bucketTime, current)
-			var node *nodestore.InnerNode
-			if existing := current.Children[bucket]; existing.ID > 0 {
-				node, err = t.cloneInnerNode(existing.ID)
-				if err != nil {
-					return err
-				}
-			} else {
-				bwidth := t.bwidth(current)
-				node = nodestore.NewInnerNode(
-					current.Start+bucket*bwidth,
-					current.Start+(bucket+1)*bwidth,
-					t.bfactor,
-				)
-			}
-			nodeID, err := t.cacheNode(node)
+			current, err = t.descend(&nodes, current, bucketTime, version)
 			if err != nil {
 				return err
 			}
-			current.PlaceChild(bucket, nodeID, version)
-			current = node
-			nodes = append(nodes, nodeID)
 		}
-
-		// currentNode is now the final parent
+		// current is now the final parent
 		bucket := t.bucket(bucketTime, current)
 		var node *nodestore.LeafNode
 		if existing := current.Children[bucket]; existing.ID > 0 {
@@ -236,4 +216,33 @@ func (t *Tree) cacheNode(node nodestore.Node) (uint64, error) {
 		return 0, fmt.Errorf("failed to cache node %d: %w", id, err)
 	}
 	return id, nil
+}
+
+func (t *Tree) descend(
+	nodeIDs *[]uint64,
+	current *nodestore.InnerNode,
+	timestamp uint64,
+	version uint64,
+) (node *nodestore.InnerNode, err error) {
+	bucket := t.bucket(timestamp, current)
+	if existing := current.Children[bucket]; existing.ID > 0 {
+		node, err = t.cloneInnerNode(existing.ID)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		bwidth := t.bwidth(current)
+		node = nodestore.NewInnerNode(
+			current.Start+bucket*bwidth,
+			current.Start+(bucket+1)*bwidth,
+			t.bfactor,
+		)
+	}
+	nodeID, err := t.cacheNode(node)
+	if err != nil {
+		return nil, err
+	}
+	current.PlaceChild(bucket, nodeID, version)
+	*nodeIDs = append(*nodeIDs, nodeID)
+	return node, nil
 }
