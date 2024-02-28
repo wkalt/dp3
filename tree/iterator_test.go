@@ -1,0 +1,75 @@
+package tree
+
+import (
+	"bytes"
+	"errors"
+	"io"
+	"testing"
+
+	"github.com/foxglove/mcap/go/mcap"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"github.com/wkalt/dp3/nodestore"
+	"github.com/wkalt/dp3/storage"
+	"github.com/wkalt/dp3/util"
+)
+
+func TestTreeIterator(t *testing.T) {
+	store := storage.NewMemStore()
+	cache := util.NewLRU[nodestore.Node](1e6)
+	ns := nodestore.NewNodestore(store, cache)
+	tr, err := NewTree(0, util.Pow(uint64(64), 3), 64, 64, ns)
+	require.NoError(t, err)
+
+	// create two mcap files and stick them into the tree
+	buf1 := &bytes.Buffer{}
+	buf2 := &bytes.Buffer{}
+	offset := 0
+	for _, buf := range []*bytes.Buffer{buf1, buf2} {
+		w, err := mcap.NewWriter(buf, &mcap.WriterOptions{
+			IncludeCRC:  true,
+			Chunked:     true,
+			ChunkSize:   1024,
+			Compression: "zstd",
+		})
+		require.NoError(t, err)
+		require.NoError(t, w.WriteHeader(&mcap.Header{}))
+		require.NoError(t, w.WriteSchema(&mcap.Schema{
+			ID:       1,
+			Name:     "schema1",
+			Encoding: "ros1",
+			Data:     []byte{0x01, 0x02, 0x03},
+		}))
+		require.NoError(t, w.WriteChannel(&mcap.Channel{
+			ID:              0,
+			SchemaID:        1,
+			Topic:           "/topic",
+			MessageEncoding: "ros1msg",
+		}))
+		for i := 0; i < 10; i++ {
+			require.NoError(t, w.WriteMessage(&mcap.Message{
+				LogTime: uint64(i + offset),
+				Data:    []byte("hello"),
+			}))
+		}
+		require.NoError(t, w.Close())
+		offset += 64
+	}
+	require.NoError(t, tr.InsertDataNode(0, buf1.Bytes()))
+	require.NoError(t, tr.InsertDataNode(64, buf2.Bytes()))
+	it, err := newTreeIterator(tr, 0, 0, 128)
+	require.NoError(t, err)
+	count := 0
+	for it.More() {
+		schema, channel, message, err := it.Next()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+		require.Equal(t, []byte("hello"), message.Data)
+		require.Equal(t, "schema1", schema.Name)
+		require.Equal(t, "/topic", channel.Topic)
+		count++
+	}
+	assert.Equal(t, count, 20)
+}

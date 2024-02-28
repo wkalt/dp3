@@ -79,8 +79,7 @@ func (t *Tree) InsertDataNode(start uint64, data []byte) (err error) {
 	nodes := make([]uint64, 0, t.depth)
 	current := root
 	for i := 0; i < t.depth-1; i++ {
-		current, err = t.descend(&nodes, current, start, version)
-		if err != nil {
+		if current, err = t.descend(&nodes, current, start, version); err != nil {
 			return err
 		}
 	}
@@ -88,8 +87,7 @@ func (t *Tree) InsertDataNode(start uint64, data []byte) (err error) {
 	bucket := t.bucket(start, current)
 	var node *nodestore.DataNode
 	if existing := current.Children[bucket]; existing.ID > 0 {
-		node, err = t.cloneDataNode(existing.ID, data)
-		if err != nil {
+		if node, err = t.cloneDataNode(existing.ID, data); err != nil {
 			return err
 		}
 	} else {
@@ -102,7 +100,7 @@ func (t *Tree) InsertDataNode(start uint64, data []byte) (err error) {
 	nodes = append(nodes, nodeID)
 	current.PlaceChild(bucket, nodeID, version)
 	for _, id := range nodes {
-		err := t.ns.Flush(id)
+		err := t.flushNode(id)
 		if err != nil {
 			return fmt.Errorf("failed to flush node %d: %w", id, err)
 		}
@@ -111,9 +109,19 @@ func (t *Tree) InsertDataNode(start uint64, data []byte) (err error) {
 	if err != nil {
 		return err
 	}
-	t.ns.Flush(rootID)
+	if err = t.flushNode(rootID); err != nil {
+		return err
+	}
 	t.rootmap[version] = rootID
 	t.version = version
+	return nil
+}
+
+func (t *Tree) flushNode(id uint64) error {
+	err := t.ns.Flush(id)
+	if err != nil {
+		return fmt.Errorf("failed to flush node %d: %w", id, err)
+	}
 	return nil
 }
 
@@ -337,6 +345,18 @@ func (t *Tree) cacheNode(node nodestore.Node) (uint64, error) {
 		return 0, fmt.Errorf("failed to cache node %d: %w", id, err)
 	}
 	return id, nil
+}
+
+func (t *Tree) getInnerNode(id uint64) (*nodestore.InnerNode, error) {
+	node, err := t.ns.Get(id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node %d: %w", id, err)
+	}
+	inner, ok := node.(*nodestore.InnerNode)
+	if !ok {
+		return nil, errors.New("expected inner node - database is corrupt")
+	}
+	return inner, nil
 }
 
 func (t *Tree) descend(
