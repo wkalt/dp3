@@ -20,7 +20,6 @@ import (
 
 // leafNode represents a leaf node in the tree.
 type LeafNode struct {
-	Version uint64   `json:"version"`
 	Records []Record `json:"records"`
 }
 
@@ -60,9 +59,8 @@ func (n *LeafNode) Type() NodeType {
 	return Leaf
 }
 
-func NewLeafNode(version uint64, records []Record) *LeafNode {
+func NewLeafNode(records []Record) *LeafNode {
 	return &LeafNode{
-		Version: version,
 		Records: records,
 	}
 }

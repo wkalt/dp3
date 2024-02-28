@@ -22,7 +22,7 @@ func TestNodestoreErrors(t *testing.T) {
 		assert.ErrorIs(t, ns.Flush(0), nodestore.ErrNodeNotFound)
 	})
 	t.Run("read corrupted leaf node from store", func(t *testing.T) {
-		node := nodestore.NewLeafNode(1, nil)
+		node := nodestore.NewLeafNode(nil)
 		nodeID, err := ns.Put(node)
 		require.NoError(t, err)
 		require.NoError(t, ns.Flush(nodeID))
@@ -32,7 +32,7 @@ func TestNodestoreErrors(t *testing.T) {
 		assert.Error(t, err)
 	})
 	t.Run("read corrupted inner node from store", func(t *testing.T) {
-		node := nodestore.NewInnerNode(0, 0, 0, 0)
+		node := nodestore.NewInnerNode(0, 0, 0)
 		nodeID, err := ns.Put(node)
 		require.NoError(t, err)
 		require.NoError(t, ns.Flush(nodeID))
@@ -48,7 +48,7 @@ func TestNodeStore(t *testing.T) {
 	cache := util.NewLRU[nodestore.Node](1e6)
 	ns := nodestore.NewNodestore(store, cache)
 	t.Run("store and retrieve an inner node", func(t *testing.T) {
-		node := nodestore.NewInnerNode(10, 20, 1, 64)
+		node := nodestore.NewInnerNode(10, 20, 64)
 		nodeID, err := ns.Put(node)
 		require.NoError(t, err)
 		retrieved, err := ns.Get(nodeID)
@@ -56,7 +56,7 @@ func TestNodeStore(t *testing.T) {
 		assert.Equal(t, node, retrieved)
 	})
 	t.Run("store and retrieve a leaf node", func(t *testing.T) {
-		node := nodestore.NewLeafNode(1, nil)
+		node := nodestore.NewLeafNode(nil)
 		nodeID, err := ns.Put(node)
 		require.NoError(t, err)
 		retrieved, err := ns.Get(nodeID)
@@ -64,7 +64,7 @@ func TestNodeStore(t *testing.T) {
 		assert.Equal(t, node, retrieved)
 	})
 	t.Run("store and retrieve inner node that has been evicted from cache", func(t *testing.T) {
-		node := nodestore.NewInnerNode(90, 100, 1, 64)
+		node := nodestore.NewInnerNode(90, 100, 64)
 		nodeID, err := ns.Put(node)
 		require.NoError(t, err)
 		require.NoError(t, ns.Flush(nodeID))
@@ -74,7 +74,7 @@ func TestNodeStore(t *testing.T) {
 		assert.Equal(t, node, retrieved)
 	})
 	t.Run("store and retrieve leaf node that has been evicted from cache", func(t *testing.T) {
-		node := nodestore.NewLeafNode(2, nil)
+		node := nodestore.NewLeafNode(nil)
 		nodeID, err := ns.Put(node)
 		require.NoError(t, err)
 		require.NoError(t, ns.Flush(nodeID))

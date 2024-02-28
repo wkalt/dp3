@@ -14,10 +14,14 @@ import (
 // innerNode represents an interior node in the tree, with slots for 64
 // children.
 type InnerNode struct {
-	Version  uint64   `json:"version"`
-	Start    uint64   `json:"start"`
-	End      uint64   `json:"end"`
-	Children []uint64 `json:"children"`
+	Start    uint64  `json:"start"`
+	End      uint64  `json:"end"`
+	Children []Child `json:"children"`
+}
+
+type Child struct {
+	ID      uint64 `json:"id"`
+	Version uint64 `json:"version"`
 }
 
 // toBytes serializes the node to a byte array.
@@ -37,15 +41,21 @@ func (n *InnerNode) FromBytes(data []byte) error {
 	return nil
 }
 
+func (n *InnerNode) PlaceChild(index, id, version uint64) {
+	n.Children[index] = Child{
+		ID:      id,
+		Version: version,
+	}
+}
+
 func (n *InnerNode) Type() NodeType {
 	return Inner
 }
 
-func NewInnerNode(start, end uint64, version uint64, branchingFactor int) *InnerNode {
+func NewInnerNode(start, end uint64, branchingFactor int) *InnerNode {
 	return &InnerNode{
 		Start:    start,
 		End:      end,
-		Version:  version,
-		Children: make([]uint64, branchingFactor),
+		Children: make([]Child, branchingFactor),
 	}
 }

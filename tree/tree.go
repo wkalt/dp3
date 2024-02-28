@@ -24,6 +24,7 @@ type Tree struct {
 	root    *nodestore.InnerNode
 	depth   int
 	bfactor int
+	version uint64
 
 	ns *nodestore.Nodestore
 }
@@ -43,19 +44,20 @@ func NewTree(
 		span /= uint64(branchingFactor)
 	}
 	return &Tree{
-		root:    nodestore.NewInnerNode(start, end, 0, branchingFactor),
+		root:    nodestore.NewInnerNode(start, end, branchingFactor),
 		depth:   depth,
 		bfactor: branchingFactor,
 		ns:      nodeStore,
+		version: 0,
 	}
 }
 
 //nolint:funlen // need to refactor
 func (t *Tree) Insert(records []nodestore.Record) (err error) {
-	var root = nodestore.NewInnerNode(0, 0, 0, 0)
+	var root = nodestore.NewInnerNode(0, 0, 0)
 	*root = *t.root
-	root.Version++
-	txversion := root.Version
+	version := t.version
+	version++
 	groups := util.GroupBy(records, func(r nodestore.Record) uint64 {
 		return t.bucketTime(r.Time)
 	})
@@ -64,51 +66,50 @@ func (t *Tree) Insert(records []nodestore.Record) (err error) {
 		current := root
 		for i := 0; i < t.depth-1; i++ {
 			bucket := t.bucket(bucketTime, current)
-			var child *nodestore.InnerNode
-			if existing := current.Children[bucket]; existing > 0 {
-				child, err = t.cloneInnerNode(existing, txversion)
+			var node *nodestore.InnerNode
+			if existing := current.Children[bucket]; existing.ID > 0 {
+				node, err = t.cloneInnerNode(existing.ID)
 				if err != nil {
 					return err
 				}
 			} else {
 				bwidth := t.bwidth(current)
-				child = nodestore.NewInnerNode(
+				node = nodestore.NewInnerNode(
 					current.Start+bucket*bwidth,
 					current.Start+(bucket+1)*bwidth,
-					txversion,
 					t.bfactor,
 				)
 			}
-			childID, err := t.cacheNode(child)
+			nodeID, err := t.cacheNode(node)
 			if err != nil {
 				return err
 			}
-			current.Children[bucket] = childID
-			current = child
-			nodes = append(nodes, childID)
+			current.PlaceChild(bucket, nodeID, version)
+			current = node
+			nodes = append(nodes, nodeID)
 		}
 
 		// currentNode is now the final parent
 		bucket := t.bucket(bucketTime, current)
-		var leaf *nodestore.LeafNode
-		if existing := current.Children[bucket]; existing > 0 {
-			leaf, err = t.cloneLeafNode(existing, txversion)
+		var node *nodestore.LeafNode
+		if existing := current.Children[bucket]; existing.ID > 0 {
+			node, err = t.cloneLeafNode(existing.ID)
 			if err != nil {
 				return err
 			}
-			leaf.Records = append(leaf.Records, records...)
+			node.Records = append(node.Records, records...)
 		} else {
-			leaf = nodestore.NewLeafNode(txversion, records)
+			node = nodestore.NewLeafNode(records)
 		}
-		sort.Slice(leaf.Records, func(i, j int) bool {
-			return leaf.Records[i].Time < leaf.Records[j].Time
+		sort.Slice(node.Records, func(i, j int) bool {
+			return node.Records[i].Time < node.Records[j].Time
 		})
-		newLeafID, err := t.cacheNode(leaf)
+		nodeID, err := t.cacheNode(node)
 		if err != nil {
 			return err
 		}
-		nodes = append(nodes, newLeafID)
-		current.Children[bucket] = newLeafID
+		nodes = append(nodes, nodeID)
+		current.PlaceChild(bucket, nodeID, version)
 	}
 	for _, id := range nodes {
 		err := t.ns.Flush(id)
@@ -122,6 +123,7 @@ func (t *Tree) Insert(records []nodestore.Record) (err error) {
 	}
 	t.ns.Flush(rootID)
 	t.root = root
+	t.version = version
 	return nil
 }
 
@@ -137,9 +139,9 @@ func (t *Tree) bucket(ts uint64, n *nodestore.InnerNode) uint64 {
 }
 
 // printLeaf prints the given leaf node for test comparison.
-func printLeaf(n *nodestore.LeafNode, start, end uint64) string {
+func printLeaf(n *nodestore.LeafNode, version, start, end uint64) string {
 	sb := &strings.Builder{}
-	sb.WriteString(fmt.Sprintf("[%d-%d:%d [leaf ", start, end, n.Version))
+	sb.WriteString(fmt.Sprintf("[%d-%d:%d [leaf ", start, end, version))
 	for i, record := range n.Records {
 		sb.WriteString(strconv.FormatUint(record.Time, 10))
 		if i < len(n.Records)-1 {
@@ -152,60 +154,58 @@ func printLeaf(n *nodestore.LeafNode, start, end uint64) string {
 
 // cloneInnerNode returns a new inner node with the same contents as the node
 // with the given id, but with the given version.
-func (t *Tree) cloneInnerNode(id uint64, version uint64) (*nodestore.InnerNode, error) {
+func (t *Tree) cloneInnerNode(id uint64) (*nodestore.InnerNode, error) {
 	node, err := t.ns.Get(id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to clone inner node %d: %w", id, err)
 	}
-	newNode := nodestore.NewInnerNode(0, 0, 0, 0)
+	newNode := nodestore.NewInnerNode(0, 0, 0)
 	oldNode, ok := node.(*nodestore.InnerNode)
 	if !ok {
 		return nil, errors.New("expected inner node - database is corrupt")
 	}
 	*newNode = *oldNode
-	newNode.Version = version
 	return newNode, nil
 }
 
-func (t *Tree) cloneLeafNode(id uint64, version uint64) (*nodestore.LeafNode, error) {
+func (t *Tree) cloneLeafNode(id uint64) (*nodestore.LeafNode, error) {
 	node, err := t.ns.Get(id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to clone leaf node %d: %w", id, err)
 	}
-	newNode := nodestore.NewLeafNode(0, nil)
+	newNode := nodestore.NewLeafNode(nil)
 	oldNode, ok := node.(*nodestore.LeafNode)
 	if !ok {
 		return nil, errors.New("expected leaf node - database is corrupt")
 	}
 	*newNode = *oldNode
-	newNode.Version = version
 	return newNode, nil
 }
 
 // printTree prints the tree rooted at the given node for test comparison.
-func (t *Tree) printTree(node *nodestore.InnerNode) (string, error) {
+func (t *Tree) printTree(node *nodestore.InnerNode, version uint64) (string, error) {
 	sb := &strings.Builder{}
-	sb.WriteString(fmt.Sprintf("[%d-%d:%d", node.Start, node.End, node.Version))
-	for i, childID := range node.Children {
-		if childID == 0 {
+	sb.WriteString(fmt.Sprintf("[%d-%d:%d", node.Start, node.End, version))
+	for i, slot := range node.Children {
+		if slot.ID == 0 {
 			continue
 		}
-		child, err := t.ns.Get(childID)
+		child, err := t.ns.Get(slot.ID)
 		if err != nil {
-			return "", fmt.Errorf("failed to get node %d: %w", childID, err)
+			return "", fmt.Errorf("failed to get node %d: %w", slot.ID, err)
 		}
 		if child, ok := child.(*nodestore.LeafNode); ok {
 			bwidth := t.bwidth(node)
 			childStart := node.Start + uint64(i)*bwidth
 			childEnd := node.Start + uint64(i+1)*bwidth
-			sb.WriteString(" " + printLeaf(child, childStart, childEnd))
+			sb.WriteString(" " + printLeaf(child, slot.Version, childStart, childEnd))
 			continue
 		}
 		ichild, ok := child.(*nodestore.InnerNode)
 		if !ok {
 			return "", errors.New("expected inner node - database is corrupt")
 		}
-		childstr, err := t.printTree(ichild)
+		childstr, err := t.printTree(ichild, slot.Version)
 		if err != nil {
 			return "", err
 		}
@@ -217,7 +217,7 @@ func (t *Tree) printTree(node *nodestore.InnerNode) (string, error) {
 
 // String returns a string representation of the tree.
 func (t *Tree) String() string {
-	s, err := t.printTree(t.root)
+	s, err := t.printTree(t.root, t.version)
 	if err != nil {
 		log.Println("failed to print tree:", err)
 	}

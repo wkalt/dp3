@@ -30,13 +30,13 @@ func isLeafID(id uint64) bool {
 
 func bytesToNode(id uint64, value []byte) (Node, error) {
 	if isLeafID(id) {
-		node := NewLeafNode(0, nil)
+		node := NewLeafNode(nil)
 		if err := node.FromBytes(value); err != nil {
 			return nil, fmt.Errorf("failed to parse leaf node: %w", err)
 		}
 		return node, nil
 	}
-	node := NewInnerNode(0, 0, 0, 0)
+	node := NewInnerNode(0, 0, 0)
 	if err := node.FromBytes(value); err != nil {
 		return nil, fmt.Errorf("failed to parse inner node: %w", err)
 	}
