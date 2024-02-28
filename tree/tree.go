@@ -21,12 +21,13 @@ import (
 
 // Tree is a versioned, time-partitioned, COW Tree.
 type Tree struct {
-	root    *nodestore.InnerNode
 	depth   int
 	bfactor int
 	version uint64
 
 	ns *nodestore.Nodestore
+
+	rootmap map[uint64]uint64 // todo: extract; version -> node id
 }
 
 // NewTree constructs a new tree for the given start and end. The depth of the
@@ -38,23 +39,41 @@ func NewTree(
 	leafWidthNanos uint64,
 	branchingFactor int,
 	nodeStore *nodestore.Nodestore,
-) *Tree {
+) (*Tree, error) {
 	depth := 0
 	for span := end - start; span > leafWidthNanos; depth++ {
 		span /= uint64(branchingFactor)
 	}
-	return &Tree{
-		root:    nodestore.NewInnerNode(start, end, branchingFactor),
+	root := nodestore.NewInnerNode(start, end, branchingFactor)
+	t := &Tree{
 		depth:   depth,
 		bfactor: branchingFactor,
 		ns:      nodeStore,
 		version: 0,
+		rootmap: make(map[uint64]uint64),
 	}
+	rootID, err := t.cacheNode(root)
+	if err != nil {
+		return nil, fmt.Errorf("failed to cache node: %w", err)
+	}
+	err = t.ns.Flush(rootID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to flush node: %w", err)
+	}
+	t.addRoot(0, rootID) // tree now functional for inserts
+	return t, nil
+}
+
+func (t *Tree) addRoot(version uint64, rootID uint64) {
+	t.rootmap[version] = rootID
 }
 
 func (t *Tree) InsertDataNode(start uint64, data []byte) (err error) {
-	var root = nodestore.NewInnerNode(0, 0, 0)
-	*root = *t.root
+	currentRootID := t.rootmap[t.version]
+	root, err := t.cloneInnerNode(currentRootID)
+	if err != nil {
+		return err
+	}
 	version := t.version
 	version++
 	nodes := make([]uint64, 0, t.depth)
@@ -93,19 +112,29 @@ func (t *Tree) InsertDataNode(start uint64, data []byte) (err error) {
 		return err
 	}
 	t.ns.Flush(rootID)
-	t.root = root
+	t.rootmap[version] = rootID
 	t.version = version
 	return nil
 }
 
 func (t *Tree) Insert(records []nodestore.Record) (err error) {
-	var root = nodestore.NewInnerNode(0, 0, 0)
-	*root = *t.root
+	currentRootID := t.rootmap[t.version]
+	root, err := t.cloneInnerNode(currentRootID)
+	if err != nil {
+		return err
+	}
 	version := t.version
 	version++
 	groups := util.GroupBy(records, func(r nodestore.Record) uint64 {
-		return t.bucketTime(r.Time)
+		time, err2 := t.bucketTime(r.Time)
+		if err != nil {
+			err = err2
+		}
+		return time
 	})
+	if err != nil {
+		return err
+	}
 	nodes := make([]uint64, 0, t.depth*len(groups))
 	for bucketTime, records := range groups {
 		current := root
@@ -148,7 +177,7 @@ func (t *Tree) Insert(records []nodestore.Record) (err error) {
 		return err
 	}
 	t.ns.Flush(rootID)
-	t.root = root
+	t.rootmap[version] = rootID
 	t.version = version
 	return nil
 }
@@ -269,19 +298,37 @@ func (t *Tree) printTree(node *nodestore.InnerNode, version uint64) (string, err
 	return sb.String(), nil
 }
 
+func (t *Tree) root() (*nodestore.InnerNode, error) {
+	root, err := t.ns.Get(t.rootmap[t.version])
+	if err != nil {
+		return nil, fmt.Errorf("failed to get root: %w", err)
+
+	}
+	return root.(*nodestore.InnerNode), nil
+}
+
 // String returns a string representation of the tree.
 func (t *Tree) String() string {
-	s, err := t.printTree(t.root, t.version)
+	root, err := t.root()
+	if err != nil {
+		log.Println("failed to get root:", err)
+
+	}
+	s, err := t.printTree(root, t.version)
 	if err != nil {
 		log.Println("failed to print tree:", err)
 	}
 	return s
 }
 
-func (t *Tree) bucketTime(time uint64) uint64 {
-	bucketWidth := (t.root.End - t.root.Start) / util.Pow(uint64(t.bfactor), t.depth)
-	bucketIndex := (time - t.root.Start) / bucketWidth
-	return bucketIndex * bucketWidth
+func (t *Tree) bucketTime(time uint64) (uint64, error) {
+	root, err := t.root()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get root: %w", err)
+	}
+	bucketWidth := (root.End - root.Start) / util.Pow(uint64(t.bfactor), t.depth)
+	bucketIndex := (time - root.Start) / bucketWidth
+	return bucketIndex * bucketWidth, nil
 }
 
 func (t *Tree) cacheNode(node nodestore.Node) (uint64, error) {

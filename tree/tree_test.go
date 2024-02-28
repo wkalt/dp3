@@ -48,7 +48,8 @@ func TestTreeInsertDataNode(t *testing.T) {
 			store := storage.NewMemStore()
 			cache := util.NewLRU[nodestore.Node](1e6)
 			ns := nodestore.NewNodestore(store, cache)
-			tr := tree.NewTree(0, util.Pow(uint64(64), c.depth+1), 64, 64, ns)
+			tr, err := tree.NewTree(0, util.Pow(uint64(64), c.depth+1), 64, 64, ns)
+			require.NoError(t, err)
 			for _, time := range c.times {
 				require.NoError(t, tr.InsertDataNode(time, []byte{'a'}))
 			}
@@ -133,7 +134,8 @@ func TestTreeInsert(t *testing.T) {
 			store := storage.NewMemStore()
 			cache := util.NewLRU[nodestore.Node](1e6)
 			ns := nodestore.NewNodestore(store, cache)
-			tr := tree.NewTree(0, util.Pow(uint64(64), c.depth+1), 64, 64, ns)
+			tr, err := tree.NewTree(0, util.Pow(uint64(64), c.depth+1), 64, 64, ns)
+			require.NoError(t, err)
 			for _, time := range c.times {
 				records := make([]nodestore.Record, len(time))
 				for i, t := range time {
