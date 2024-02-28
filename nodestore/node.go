@@ -5,6 +5,7 @@ type NodeType int
 const (
 	Inner NodeType = iota + 1
 	Leaf
+	Data
 )
 
 // Node is an interface to which leaf and inner nodes adhere.
