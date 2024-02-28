@@ -4,12 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"sort"
-	"strconv"
 	"strings"
 
 	"github.com/wkalt/dp3/nodestore"
-	"github.com/wkalt/dp3/util"
 )
 
 // todo
@@ -68,7 +65,7 @@ func (t *Tree) addRoot(version uint64, rootID uint64) {
 	t.rootmap[version] = rootID
 }
 
-func (t *Tree) InsertDataNode(start uint64, data []byte) (err error) {
+func (t *Tree) Insert(start uint64, data []byte) (err error) {
 	currentRootID := t.rootmap[t.version]
 	root, err := t.cloneInnerNode(currentRootID)
 	if err != nil {
@@ -85,13 +82,13 @@ func (t *Tree) InsertDataNode(start uint64, data []byte) (err error) {
 	}
 	// current is now the final parent
 	bucket := t.bucket(start, current)
-	var node *nodestore.DataNode
+	var node *nodestore.LeafNode
 	if existing := current.Children[bucket]; existing.ID > 0 {
-		if node, err = t.cloneDataNode(existing.ID, data); err != nil {
+		if node, err = t.cloneLeafNode(existing.ID, data); err != nil {
 			return err
 		}
 	} else {
-		node = nodestore.NewDataNode(data)
+		node = nodestore.NewLeafNode(data)
 	}
 	nodeID, err := t.cacheNode(node)
 	if err != nil {
@@ -125,71 +122,6 @@ func (t *Tree) flushNode(id uint64) error {
 	return nil
 }
 
-func (t *Tree) Insert(records []nodestore.Record) (err error) {
-	currentRootID := t.rootmap[t.version]
-	root, err := t.cloneInnerNode(currentRootID)
-	if err != nil {
-		return err
-	}
-	version := t.version
-	version++
-	groups := util.GroupBy(records, func(r nodestore.Record) uint64 {
-		time, err2 := t.bucketTime(r.Time)
-		if err != nil {
-			err = err2
-		}
-		return time
-	})
-	if err != nil {
-		return err
-	}
-	nodes := make([]uint64, 0, t.depth*len(groups))
-	for bucketTime, records := range groups {
-		current := root
-		for i := 0; i < t.depth-1; i++ {
-			current, err = t.descend(&nodes, current, bucketTime, version)
-			if err != nil {
-				return err
-			}
-		}
-		// current is now the final parent
-		bucket := t.bucket(bucketTime, current)
-		var node *nodestore.LeafNode
-		if existing := current.Children[bucket]; existing.ID > 0 {
-			node, err = t.cloneLeafNode(existing.ID)
-			if err != nil {
-				return err
-			}
-			node.Records = append(node.Records, records...)
-		} else {
-			node = nodestore.NewLeafNode(records)
-		}
-		sort.Slice(node.Records, func(i, j int) bool {
-			return node.Records[i].Time < node.Records[j].Time
-		})
-		nodeID, err := t.cacheNode(node)
-		if err != nil {
-			return err
-		}
-		nodes = append(nodes, nodeID)
-		current.PlaceChild(bucket, nodeID, version)
-	}
-	for _, id := range nodes {
-		err := t.ns.Flush(id)
-		if err != nil {
-			return fmt.Errorf("failed to flush node %d: %w", id, err)
-		}
-	}
-	rootID, err := t.cacheNode(root)
-	if err != nil {
-		return err
-	}
-	t.ns.Flush(rootID)
-	t.rootmap[version] = rootID
-	t.version = version
-	return nil
-}
-
 // bwidth returns the width of each bucket in nanoseconds.
 func (t *Tree) bwidth(n *nodestore.InnerNode) uint64 {
 	return (n.End - n.Start) / uint64(t.bfactor)
@@ -199,20 +131,6 @@ func (t *Tree) bwidth(n *nodestore.InnerNode) uint64 {
 // the given node.
 func (t *Tree) bucket(ts uint64, n *nodestore.InnerNode) uint64 {
 	return (ts - n.Start) / t.bwidth(n)
-}
-
-// printLeaf prints the given leaf node for test comparison.
-func printLeaf(n *nodestore.LeafNode, version, start, end uint64) string {
-	sb := &strings.Builder{}
-	sb.WriteString(fmt.Sprintf("[%d-%d:%d [leaf ", start, end, version))
-	for i, record := range n.Records {
-		sb.WriteString(strconv.FormatUint(record.Time, 10))
-		if i < len(n.Records)-1 {
-			sb.WriteString(" ")
-		}
-	}
-	sb.WriteString("]]")
-	return sb.String()
 }
 
 // cloneInnerNode returns a new inner node with the same contents as the node
@@ -231,27 +149,13 @@ func (t *Tree) cloneInnerNode(id uint64) (*nodestore.InnerNode, error) {
 	return newNode, nil
 }
 
-func (t *Tree) cloneLeafNode(id uint64) (*nodestore.LeafNode, error) {
-	node, err := t.ns.Get(id)
-	if err != nil {
-		return nil, fmt.Errorf("failed to clone leaf node %d: %w", id, err)
-	}
-	newNode := nodestore.NewLeafNode(nil)
-	oldNode, ok := node.(*nodestore.LeafNode)
-	if !ok {
-		return nil, errors.New("expected leaf node - database is corrupt")
-	}
-	*newNode = *oldNode
-	return newNode, nil
-}
-
-func (t *Tree) cloneDataNode(id uint64, data []byte) (*nodestore.DataNode, error) {
+func (t *Tree) cloneLeafNode(id uint64, data []byte) (*nodestore.LeafNode, error) {
 	node, err := t.ns.Get(id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to clone data node %d: %w", id, err)
 	}
-	newNode := nodestore.NewDataNode(data)
-	oldNode, ok := node.(*nodestore.DataNode)
+	newNode := nodestore.NewLeafNode(data)
+	oldNode, ok := node.(*nodestore.LeafNode)
 	if !ok {
 		return nil, errors.New("expected data node - database is corrupt")
 	}
@@ -262,7 +166,7 @@ func (t *Tree) cloneDataNode(id uint64, data []byte) (*nodestore.DataNode, error
 	return merged, nil
 }
 
-func printData(n *nodestore.DataNode, version, start, end uint64) string {
+func printLeaf(n *nodestore.LeafNode, version, start, end uint64) string {
 	return fmt.Sprintf("[%d-%d:%d [data %s]]", start, end, version, strings.Repeat("*", len(n.Data)))
 }
 
@@ -283,13 +187,6 @@ func (t *Tree) printTree(node *nodestore.InnerNode, version uint64) (string, err
 			childStart := node.Start + uint64(i)*bwidth
 			childEnd := node.Start + uint64(i+1)*bwidth
 			sb.WriteString(" " + printLeaf(child, slot.Version, childStart, childEnd))
-			continue
-		}
-		if child, ok := child.(*nodestore.DataNode); ok {
-			bwidth := t.bwidth(node)
-			childStart := node.Start + uint64(i)*bwidth
-			childEnd := node.Start + uint64(i+1)*bwidth
-			sb.WriteString(" " + printData(child, slot.Version, childStart, childEnd))
 			continue
 		}
 		ichild, ok := child.(*nodestore.InnerNode)
@@ -329,34 +226,12 @@ func (t *Tree) String() string {
 	return s
 }
 
-func (t *Tree) bucketTime(time uint64) (uint64, error) {
-	root, err := t.root()
-	if err != nil {
-		return 0, fmt.Errorf("failed to get root: %w", err)
-	}
-	bucketWidth := (root.End - root.Start) / util.Pow(uint64(t.bfactor), t.depth)
-	bucketIndex := (time - root.Start) / bucketWidth
-	return bucketIndex * bucketWidth, nil
-}
-
 func (t *Tree) cacheNode(node nodestore.Node) (uint64, error) {
 	id, err := t.ns.Put(node)
 	if err != nil {
 		return 0, fmt.Errorf("failed to cache node %d: %w", id, err)
 	}
 	return id, nil
-}
-
-func (t *Tree) getInnerNode(id uint64) (*nodestore.InnerNode, error) {
-	node, err := t.ns.Get(id)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get node %d: %w", id, err)
-	}
-	inner, ok := node.(*nodestore.InnerNode)
-	if !ok {
-		return nil, errors.New("expected inner node - database is corrupt")
-	}
-	return inner, nil
 }
 
 func (t *Tree) descend(

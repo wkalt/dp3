@@ -74,7 +74,7 @@ func (ti *treeIterator) openNextLeaf() error {
 	if err != nil {
 		return fmt.Errorf("failed to get node: %w", err)
 	}
-	dataNode := node.(*nodestore.DataNode)
+	dataNode := node.(*nodestore.LeafNode)
 	reader, err := mcap.NewReader(bytes.NewReader(dataNode.Data))
 	if err != nil {
 		return fmt.Errorf("failed to create reader: %w", err)
