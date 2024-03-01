@@ -2,8 +2,11 @@ package nodestore
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 )
+
+const innerNodeVersion = uint8(1)
 
 // todo: compact format
 // * child list may compress well if we number the tree sequentially.
@@ -17,6 +20,8 @@ type InnerNode struct {
 	Start    uint64  `json:"start"`
 	End      uint64  `json:"end"`
 	Children []Child `json:"children"`
+
+	version uint8
 }
 
 type Child struct {
@@ -30,11 +35,19 @@ func (n *InnerNode) ToBytes() ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to serialize inner node: %w", err)
 	}
-	return bytes, nil
+	buf := make([]byte, len(bytes)+1)
+	buf[0] = n.version
+	copy(buf[1:], bytes)
+	return buf, nil
 }
 
 func (n *InnerNode) FromBytes(data []byte) error {
-	err := json.Unmarshal(data, n)
+	version := data[0]
+	if version > 128 {
+		return errors.New("not an inner node")
+	}
+	n.version = version
+	err := json.Unmarshal(data[1:], n)
 	if err != nil {
 		return fmt.Errorf("error unmarshalling inner node: %w", err)
 	}
@@ -57,5 +70,6 @@ func NewInnerNode(start, end uint64, branchingFactor int) *InnerNode {
 		Start:    start,
 		End:      end,
 		Children: make([]Child, branchingFactor),
+		version:  innerNodeVersion,
 	}
 }

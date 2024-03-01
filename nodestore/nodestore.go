@@ -15,21 +15,18 @@ type Nodestore struct {
 	maxNodeID  uint64
 }
 
-func (n *Nodestore) generateNodeID(node Node) uint64 {
+func (n *Nodestore) generateNodeID() uint64 {
 	id := n.nextNodeID
 	n.nextNodeID++
-	if _, ok := node.(*InnerNode); ok {
-		return id & ^(uint64(1) << 63)
-	}
-	return id | 1<<63
+	return id
 }
 
-func IsLeafID(id uint64) bool {
-	return id>>63 == 1
+func isLeaf(data []byte) bool {
+	return data[0] > 128
 }
 
-func bytesToNode(id uint64, value []byte) (Node, error) {
-	if IsLeafID(id) {
+func bytesToNode(value []byte) (Node, error) {
+	if isLeaf(value) {
 		node := NewLeafNode(nil)
 		if err := node.FromBytes(value); err != nil {
 			return nil, fmt.Errorf("failed to parse leaf node: %w", err)
@@ -55,7 +52,7 @@ func (n *Nodestore) Get(id uint64) (Node, error) {
 		}
 		return nil, fmt.Errorf("failed to get node: %w", err)
 	}
-	node, err := bytesToNode(id, data)
+	node, err := bytesToNode(data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse node: %w", err)
 	}
@@ -65,7 +62,7 @@ func (n *Nodestore) Get(id uint64) (Node, error) {
 
 // Put adds a node to the cache. It does not write the node to the store.
 func (n *Nodestore) Put(node Node) (uint64, error) {
-	id := n.generateNodeID(node)
+	id := n.generateNodeID()
 	n.cache.Put(id, node)
 	return id, nil
 }

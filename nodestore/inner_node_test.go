@@ -8,16 +8,22 @@ import (
 	"github.com/wkalt/dp3/nodestore"
 )
 
+func pfix(prefix uint8, s string) []byte {
+	return append([]byte{prefix}, []byte(s)...)
+}
+
 func TestInnerNode(t *testing.T) {
 	node := nodestore.NewInnerNode(10, 20, 3)
 	t.Run("serialization", func(t *testing.T) {
 		bytes, err := node.ToBytes()
 		require.NoError(t, err)
-		expected := `{"start":10,"end":20,"children":[{"id":0,"version":0},{"id":0,"version":0},{"id":0,"version":0}]}`
-		assert.Equal(t, expected, string(bytes))
+		expected := pfix(
+			1, `{"start":10,"end":20,"children":[{"id":0,"version":0},{"id":0,"version":0},{"id":0,"version":0}]}`)
+		assert.Equal(t, expected, bytes)
 	})
 	t.Run("deserialization", func(t *testing.T) {
-		data := []byte(`{"start":10,"end":20,"children":[{"id":0,"version":0},{"id":0,"version":0},{"id":0,"version":0}]}`)
+		data := pfix(
+			1, `{"start":10,"end":20,"children":[{"id":0,"version":0},{"id":0,"version":0},{"id":0,"version":0}]}`)
 		node := nodestore.NewInnerNode(0, 0, 0)
 		err := node.FromBytes(data)
 		require.NoError(t, err)

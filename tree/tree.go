@@ -167,7 +167,7 @@ func (t *Tree) cloneLeafNode(id uint64, data []byte) (*nodestore.LeafNode, error
 }
 
 func printLeaf(n *nodestore.LeafNode, version, start, end uint64) string {
-	return fmt.Sprintf("[%d-%d:%d [data %s]]", start, end, version, strings.Repeat("*", len(n.Data)))
+	return fmt.Sprintf("[%d-%d:%d [data %s]]", start, end, version, strings.Repeat("*", n.Len()))
 }
 
 // printTree prints the tree rooted at the given node for test comparison.

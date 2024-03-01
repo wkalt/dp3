@@ -1,7 +1,6 @@
 package tree
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -22,7 +21,6 @@ type treeIterator struct {
 	start   uint64
 	end     uint64
 
-	initialized bool
 	leafIDs     []uint64
 	nextLeaf    int
 	reader      *mcap.Reader
@@ -44,7 +42,7 @@ func (ti *treeIterator) initialize() error {
 			return fmt.Errorf("failed to get node: %w", err)
 		}
 
-		if nodestore.IsLeafID(nodeID) {
+		if node.Type() == nodestore.Leaf {
 			ti.leafIDs = append(ti.leafIDs, nodeID)
 			continue
 		}
@@ -74,8 +72,8 @@ func (ti *treeIterator) openNextLeaf() error {
 	if err != nil {
 		return fmt.Errorf("failed to get node: %w", err)
 	}
-	dataNode := node.(*nodestore.LeafNode)
-	reader, err := mcap.NewReader(bytes.NewReader(dataNode.Data))
+	leaf := node.(*nodestore.LeafNode)
+	reader, err := mcap.NewReader(leaf.Data())
 	if err != nil {
 		return fmt.Errorf("failed to create reader: %w", err)
 	}
