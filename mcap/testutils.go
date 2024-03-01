@@ -8,6 +8,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func ReadFile(t *testing.T, r io.Reader) []uint64 {
+	reader, err := NewReader(r)
+	require.NoError(t, err)
+
+	msgs, err := reader.Messages()
+	require.NoError(t, err)
+
+	var timestamps []uint64
+	for {
+		_, _, msg, err := msgs.Next(nil)
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		timestamps = append(timestamps, msg.LogTime)
+	}
+	return timestamps
+}
+
 func WriteFile(t *testing.T, w io.Writer, timestamps []uint64) {
 	writer, err := NewWriter(w)
 	require.NoError(t, err)

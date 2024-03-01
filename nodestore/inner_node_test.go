@@ -15,8 +15,7 @@ func pfix(prefix uint8, s string) []byte {
 func TestInnerNode(t *testing.T) {
 	node := nodestore.NewInnerNode(10, 20, 3)
 	t.Run("serialization", func(t *testing.T) {
-		bytes, err := node.ToBytes()
-		require.NoError(t, err)
+		bytes := node.ToBytes()
 		expected := pfix(
 			1, `{"start":10,"end":20,"children":[null,null,null]}`)
 		assert.Equal(t, expected, bytes)
@@ -33,6 +32,18 @@ func TestInnerNode(t *testing.T) {
 			[]*nodestore.Child{nil, nil, nil},
 			node.Children,
 		)
+	})
+	t.Run("deserializing a leaf node as an inner node", func(t *testing.T) {
+		data := pfix(128, `{"start":10,"end":20,"data":"hello"}`)
+		node := nodestore.NewInnerNode(0, 0, 0)
+		err := node.FromBytes(data)
+		assert.Error(t, err)
+	})
+	t.Run("deserializing a corrupted inner node", func(t *testing.T) {
+		data := pfix(1, `{"start":10,"end":20`)
+		node := nodestore.NewInnerNode(0, 0, 0)
+		err := node.FromBytes(data)
+		assert.Error(t, err)
 	})
 	assert.Equal(t, nodestore.Inner, node.Type())
 }

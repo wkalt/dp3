@@ -30,20 +30,17 @@ type Child struct {
 }
 
 // toBytes serializes the node to a byte array.
-func (n *InnerNode) ToBytes() ([]byte, error) {
-	bytes, err := json.Marshal(n)
-	if err != nil {
-		return nil, fmt.Errorf("failed to serialize inner node: %w", err)
-	}
+func (n *InnerNode) ToBytes() []byte {
+	bytes, _ := json.Marshal(n)
 	buf := make([]byte, len(bytes)+1)
 	buf[0] = n.version
 	copy(buf[1:], bytes)
-	return buf, nil
+	return buf
 }
 
 func (n *InnerNode) FromBytes(data []byte) error {
 	version := data[0]
-	if version > 128 {
+	if version >= 128 {
 		return errors.New("not an inner node")
 	}
 	n.version = version

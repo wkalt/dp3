@@ -70,4 +70,37 @@ func TestNodeStore(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, node, retrieved)
 	})
+	t.Run("flush a set of nodes", func(t *testing.T) {
+		root := nodestore.NewInnerNode(0, 0, 1)
+		rootID, err := ns.Stage(root)
+		require.NoError(t, err)
+		inner1 := nodestore.NewInnerNode(1, 1, 1)
+		inner1ID, err := ns.Stage(inner1)
+		require.NoError(t, err)
+		inner2 := nodestore.NewInnerNode(2, 2, 1)
+		inner2ID, err := ns.Stage(inner2)
+		require.NoError(t, err)
+		leaf := nodestore.NewLeafNode([]byte("leaf1"))
+		leafID, err := ns.Stage(leaf)
+		require.NoError(t, err)
+
+		root.PlaceChild(0, inner1ID, 1)
+		inner1.PlaceChild(0, inner2ID, 1)
+		inner2.PlaceChild(0, leafID, 1)
+
+		nodeIDs, err := ns.Flush(rootID, inner1ID, inner2ID, leafID)
+		require.NoError(t, err)
+
+		// nodes are now traversable with new IDs
+		for i, id := range nodeIDs {
+			node, err := ns.Get(id)
+			require.NoError(t, err)
+			switch node := node.(type) {
+			case *nodestore.InnerNode:
+				assert.Equal(t, node.Children[0].ID, nodeIDs[i+1])
+			case *nodestore.LeafNode:
+				break
+			}
+		}
+	})
 }

@@ -14,6 +14,10 @@ import (
 	"github.com/wkalt/dp3/util"
 )
 
+func (n *Nodestore) String() string {
+	return n.cache.String()
+}
+
 type Nodestore struct {
 	store      storage.Provider
 	cache      *util.LRU[NodeID, Node]
@@ -40,10 +44,6 @@ func (n NodeID) Length() int {
 
 func (n NodeID) String() string {
 	return fmt.Sprintf("%s:%d:%d", n.OID(), n.Offset(), n.Length())
-}
-
-func (n NodeID) Empty() bool {
-	return n == NodeID{}
 }
 
 // generateStagingID generates a temporary ID that will not collide with "real"
@@ -161,11 +161,7 @@ func (n *Nodestore) Flush(ids ...NodeID) ([]NodeID, error) {
 				}
 			}
 		}
-		bytes, err := node.ToBytes()
-		if err != nil {
-			return nil, fmt.Errorf("failed to serialize node: %w", err)
-		}
-		n, err := buf.Write(bytes)
+		n, err := buf.Write(node.ToBytes())
 		if err != nil {
 			return nil, fmt.Errorf("failed to write node to buffer: %w", err)
 		}

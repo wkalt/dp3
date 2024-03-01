@@ -44,6 +44,12 @@ func TestTreeInsert(t *testing.T) {
 			[]uint64{10, 20, 128, 256},
 			"[0-4096:4 [0-64:2 [leaf 634]] [128-192:3 [leaf 542]] [256-320:4 [leaf 539]]]",
 		},
+		{
+			"depth 2",
+			2,
+			[]uint64{10, 20, 4097},
+			"[0-262144:3 [0-4096:2 [0-64:2 [leaf 634]]] [4096-8192:3 [4096-4160:3 [leaf 542]]]]",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
