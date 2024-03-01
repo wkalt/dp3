@@ -17,15 +17,15 @@ const innerNodeVersion = uint8(1)
 // innerNode represents an interior node in the tree, with slots for 64
 // children.
 type InnerNode struct {
-	Start    uint64  `json:"start"`
-	End      uint64  `json:"end"`
-	Children []Child `json:"children"`
+	Start    uint64   `json:"start"`
+	End      uint64   `json:"end"`
+	Children []*Child `json:"children"`
 
 	version uint8
 }
 
 type Child struct {
-	ID      uint64 `json:"id"`
+	ID      NodeID `json:"id"`
 	Version uint64 `json:"version"`
 }
 
@@ -54,8 +54,8 @@ func (n *InnerNode) FromBytes(data []byte) error {
 	return nil
 }
 
-func (n *InnerNode) PlaceChild(index, id, version uint64) {
-	n.Children[index] = Child{
+func (n *InnerNode) PlaceChild(index uint64, id NodeID, version uint64) {
+	n.Children[index] = &Child{
 		ID:      id,
 		Version: version,
 	}
@@ -69,7 +69,7 @@ func NewInnerNode(start, end uint64, branchingFactor int) *InnerNode {
 	return &InnerNode{
 		Start:    start,
 		End:      end,
-		Children: make([]Child, branchingFactor),
+		Children: make([]*Child, branchingFactor),
 		version:  innerNodeVersion,
 	}
 }

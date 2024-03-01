@@ -24,7 +24,7 @@ type Tree struct {
 
 	ns *nodestore.Nodestore
 
-	rootmap map[uint64]uint64 // todo: extract; version -> node id
+	rootmap map[uint64]nodestore.NodeID // todo: extract; version -> node id
 }
 
 // NewTree constructs a new tree for the given start and end. The depth of the
@@ -47,21 +47,21 @@ func NewTree(
 		bfactor: branchingFactor,
 		ns:      nodeStore,
 		version: 0,
-		rootmap: make(map[uint64]uint64),
+		rootmap: make(map[uint64]nodestore.NodeID),
 	}
-	rootID, err := t.cacheNode(root)
+	rootID, err := t.stageNode(root)
 	if err != nil {
 		return nil, fmt.Errorf("failed to cache node: %w", err)
 	}
-	err = t.ns.Flush(rootID)
+	nodeIDs, err := t.ns.Flush(rootID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to flush node: %w", err)
 	}
-	t.addRoot(0, rootID) // tree now functional for inserts
+	t.addRoot(0, nodeIDs[0]) // tree now functional for inserts
 	return t, nil
 }
 
-func (t *Tree) addRoot(version uint64, rootID uint64) {
+func (t *Tree) addRoot(version uint64, rootID nodestore.NodeID) {
 	t.rootmap[version] = rootID
 }
 
@@ -73,7 +73,12 @@ func (t *Tree) Insert(start uint64, data []byte) (err error) {
 	}
 	version := t.version
 	version++
-	nodes := make([]uint64, 0, t.depth)
+	rootID, err := t.stageNode(root)
+	if err != nil {
+		return err
+	}
+	nodes := make([]nodestore.NodeID, 0, t.depth)
+	nodes = append(nodes, rootID)
 	current := root
 	for i := 0; i < t.depth-1; i++ {
 		if current, err = t.descend(&nodes, current, start, version); err != nil {
@@ -83,42 +88,25 @@ func (t *Tree) Insert(start uint64, data []byte) (err error) {
 	// current is now the final parent
 	bucket := t.bucket(start, current)
 	var node *nodestore.LeafNode
-	if existing := current.Children[bucket]; existing.ID > 0 {
+	if existing := current.Children[bucket]; existing != nil {
 		if node, err = t.cloneLeafNode(existing.ID, data); err != nil {
 			return err
 		}
 	} else {
 		node = nodestore.NewLeafNode(data)
 	}
-	nodeID, err := t.cacheNode(node)
+	nodeID, err := t.stageNode(node)
 	if err != nil {
 		return err
 	}
 	nodes = append(nodes, nodeID)
 	current.PlaceChild(bucket, nodeID, version)
-	for _, id := range nodes {
-		err := t.flushNode(id)
-		if err != nil {
-			return fmt.Errorf("failed to flush node %d: %w", id, err)
-		}
-	}
-	rootID, err := t.cacheNode(root)
+	nodeIDs, err := t.ns.Flush(nodes...)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to flush nodes: %w", err)
 	}
-	if err = t.flushNode(rootID); err != nil {
-		return err
-	}
-	t.rootmap[version] = rootID
+	t.rootmap[version] = nodeIDs[0]
 	t.version = version
-	return nil
-}
-
-func (t *Tree) flushNode(id uint64) error {
-	err := t.ns.Flush(id)
-	if err != nil {
-		return fmt.Errorf("failed to flush node %d: %w", id, err)
-	}
 	return nil
 }
 
@@ -135,7 +123,7 @@ func (t *Tree) bucket(ts uint64, n *nodestore.InnerNode) uint64 {
 
 // cloneInnerNode returns a new inner node with the same contents as the node
 // with the given id, but with the given version.
-func (t *Tree) cloneInnerNode(id uint64) (*nodestore.InnerNode, error) {
+func (t *Tree) cloneInnerNode(id nodestore.NodeID) (*nodestore.InnerNode, error) {
 	node, err := t.ns.Get(id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to clone inner node %d: %w", id, err)
@@ -149,7 +137,7 @@ func (t *Tree) cloneInnerNode(id uint64) (*nodestore.InnerNode, error) {
 	return newNode, nil
 }
 
-func (t *Tree) cloneLeafNode(id uint64, data []byte) (*nodestore.LeafNode, error) {
+func (t *Tree) cloneLeafNode(id nodestore.NodeID, data []byte) (*nodestore.LeafNode, error) {
 	node, err := t.ns.Get(id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to clone data node %d: %w", id, err)
@@ -175,7 +163,7 @@ func (t *Tree) printTree(node *nodestore.InnerNode, version uint64) (string, err
 	sb := &strings.Builder{}
 	sb.WriteString(fmt.Sprintf("[%d-%d:%d", node.Start, node.End, version))
 	for i, slot := range node.Children {
-		if slot.ID == 0 {
+		if slot == nil {
 			continue
 		}
 		child, err := t.ns.Get(slot.ID)
@@ -226,22 +214,22 @@ func (t *Tree) String() string {
 	return s
 }
 
-func (t *Tree) cacheNode(node nodestore.Node) (uint64, error) {
-	id, err := t.ns.Put(node)
+func (t *Tree) stageNode(node nodestore.Node) (nodestore.NodeID, error) {
+	id, err := t.ns.Stage(node)
 	if err != nil {
-		return 0, fmt.Errorf("failed to cache node %d: %w", id, err)
+		return nodestore.NodeID{}, fmt.Errorf("failed to stage node %d: %w", id, err)
 	}
 	return id, nil
 }
 
 func (t *Tree) descend(
-	nodeIDs *[]uint64,
+	nodeIDs *[]nodestore.NodeID,
 	current *nodestore.InnerNode,
 	timestamp uint64,
 	version uint64,
 ) (node *nodestore.InnerNode, err error) {
 	bucket := t.bucket(timestamp, current)
-	if existing := current.Children[bucket]; existing.ID > 0 {
+	if existing := current.Children[bucket]; existing != nil {
 		node, err = t.cloneInnerNode(existing.ID)
 		if err != nil {
 			return nil, err
@@ -254,7 +242,7 @@ func (t *Tree) descend(
 			t.bfactor,
 		)
 	}
-	nodeID, err := t.cacheNode(node)
+	nodeID, err := t.stageNode(node)
 	if err != nil {
 		return nil, err
 	}

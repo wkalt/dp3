@@ -11,14 +11,14 @@ import (
 func TestMemstore(t *testing.T) {
 	store := storage.NewMemStore()
 	t.Run("put and get", func(t *testing.T) {
-		require.NoError(t, store.Put(1, []byte("a")))
-		value, err := store.Get(1)
+		require.NoError(t, store.Put("a", []byte("a")))
+		value, err := store.GetRange("a", 0, 1)
 		require.NoError(t, err)
 		assert.Equal(t, value, []byte("a"))
 	})
 	t.Run("delete", func(t *testing.T) {
-		require.NoError(t, store.Delete(1))
-		_, err := store.Get(1)
+		require.NoError(t, store.Delete("a"))
+		_, err := store.GetRange("a", 0, 1)
 		assert.ErrorIs(t, err, storage.ErrObjectNotFound)
 	})
 }

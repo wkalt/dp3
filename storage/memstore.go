@@ -6,12 +6,12 @@ import (
 
 // MemStore is an in-memory store.
 type MemStore struct {
-	data map[uint64][]byte
+	data map[string][]byte
 	mtx  *sync.RWMutex
 }
 
 // Put stores an object in the store.
-func (m *MemStore) Put(id uint64, data []byte) error {
+func (m *MemStore) Put(id string, data []byte) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.data[id] = data
@@ -19,18 +19,18 @@ func (m *MemStore) Put(id uint64, data []byte) error {
 }
 
 // Get retrieves an object from the store.
-func (m *MemStore) Get(id uint64) ([]byte, error) {
+func (m *MemStore) GetRange(id string, offset int, length int) ([]byte, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 	data, ok := m.data[id]
 	if !ok {
 		return nil, ErrObjectNotFound
 	}
-	return data, nil
+	return data[offset : offset+length], nil
 }
 
 // Delete removes an object from the store.
-func (m *MemStore) Delete(id uint64) error {
+func (m *MemStore) Delete(id string) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	delete(m.data, id)
@@ -40,7 +40,7 @@ func (m *MemStore) Delete(id uint64) error {
 // NewMemStore returns a new in-memory store.
 func NewMemStore() *MemStore {
 	return &MemStore{
-		data: make(map[uint64][]byte),
+		data: make(map[string][]byte),
 		mtx:  &sync.RWMutex{},
 	}
 }

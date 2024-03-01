@@ -21,7 +21,7 @@ type treeIterator struct {
 	start   uint64
 	end     uint64
 
-	leafIDs     []uint64
+	leafIDs     []nodestore.NodeID
 	nextLeaf    int
 	reader      *mcap.Reader
 	msgIterator mcap.MessageIterator
@@ -32,7 +32,7 @@ func (ti *treeIterator) initialize() error {
 	if !ok {
 		return fmt.Errorf("version %d not found", ti.version)
 	}
-	var stack []uint64
+	var stack []nodestore.NodeID
 	stack = append(stack, rootID)
 	for len(stack) > 0 {
 		nodeID := stack[len(stack)-1]

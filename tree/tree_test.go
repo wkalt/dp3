@@ -46,7 +46,7 @@ func TestTreeInsertDataNode(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
 			store := storage.NewMemStore()
-			cache := util.NewLRU[nodestore.Node](1e6)
+			cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1e6)
 			ns := nodestore.NewNodestore(store, cache)
 			tr, err := tree.NewTree(0, util.Pow(uint64(64), c.depth+1), 64, 64, ns)
 			require.NoError(t, err)

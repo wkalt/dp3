@@ -16,7 +16,7 @@ import (
 
 func TestTreeIterator(t *testing.T) {
 	store := storage.NewMemStore()
-	cache := util.NewLRU[nodestore.Node](1e6)
+	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1e6)
 	ns := nodestore.NewNodestore(store, cache)
 	tr, err := NewTree(0, util.Pow(uint64(64), 3), 64, 64, ns)
 	require.NoError(t, err)

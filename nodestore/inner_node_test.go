@@ -18,18 +18,21 @@ func TestInnerNode(t *testing.T) {
 		bytes, err := node.ToBytes()
 		require.NoError(t, err)
 		expected := pfix(
-			1, `{"start":10,"end":20,"children":[{"id":0,"version":0},{"id":0,"version":0},{"id":0,"version":0}]}`)
+			1, `{"start":10,"end":20,"children":[null,null,null]}`)
 		assert.Equal(t, expected, bytes)
 	})
 	t.Run("deserialization", func(t *testing.T) {
 		data := pfix(
-			1, `{"start":10,"end":20,"children":[{"id":0,"version":0},{"id":0,"version":0},{"id":0,"version":0}]}`)
+			1, `{"start":10,"end":20,"children":[null,null,null]}`)
 		node := nodestore.NewInnerNode(0, 0, 0)
 		err := node.FromBytes(data)
 		require.NoError(t, err)
 		assert.Equal(t, uint64(10), node.Start)
 		assert.Equal(t, uint64(20), node.End)
-		assert.Equal(t, []nodestore.Child{{0, 0}, {0, 0}, {0, 0}}, node.Children)
+		assert.Equal(t,
+			[]*nodestore.Child{nil, nil, nil},
+			node.Children,
+		)
 	})
 	assert.Equal(t, nodestore.Inner, node.Type())
 }
