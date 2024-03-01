@@ -70,7 +70,7 @@ func isLeaf(data []byte) bool {
 	return data[0] > 128
 }
 
-func bytesToNode(value []byte) (Node, error) {
+func (n *Nodestore) bytesToNode(value []byte) (Node, error) {
 	if isLeaf(value) {
 		node := NewLeafNode(nil)
 		if err := node.FromBytes(value); err != nil {
@@ -97,7 +97,7 @@ func (n *Nodestore) Get(id NodeID) (Node, error) {
 		}
 		return nil, fmt.Errorf("failed to get node: %w", err)
 	}
-	node, err := bytesToNode(data)
+	node, err := n.bytesToNode(data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse node: %w", err)
 	}
@@ -183,7 +183,10 @@ func (n *Nodestore) Flush(ids ...NodeID) ([]NodeID, error) {
 }
 
 // NewNodestore creates a new nodestore.
-func NewNodestore(store storage.Provider, cache *util.LRU[NodeID, Node]) *Nodestore {
+func NewNodestore(
+	store storage.Provider,
+	cache *util.LRU[NodeID, Node],
+) *Nodestore {
 	return &Nodestore{
 		store:      store,
 		cache:      cache,

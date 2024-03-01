@@ -140,7 +140,7 @@ func (t *Tree) cloneInnerNode(id nodestore.NodeID) (*nodestore.InnerNode, error)
 func (t *Tree) cloneLeafNode(id nodestore.NodeID, data []byte) (*nodestore.LeafNode, error) {
 	node, err := t.ns.Get(id)
 	if err != nil {
-		return nil, fmt.Errorf("failed to clone data node %d: %w", id, err)
+		return nil, fmt.Errorf("failed to clone leaf node %d: %w", id, err)
 	}
 	newNode := nodestore.NewLeafNode(data)
 	oldNode, ok := node.(*nodestore.LeafNode)
@@ -149,13 +149,13 @@ func (t *Tree) cloneLeafNode(id nodestore.NodeID, data []byte) (*nodestore.LeafN
 	}
 	merged, err := newNode.Merge(oldNode)
 	if err != nil {
-		return nil, fmt.Errorf("failed to merge data node: %w", err)
+		return nil, fmt.Errorf("failed to merge leaf node: %w", err)
 	}
 	return merged, nil
 }
 
 func printLeaf(n *nodestore.LeafNode, version, start, end uint64) string {
-	return fmt.Sprintf("[%d-%d:%d [data %s]]", start, end, version, strings.Repeat("*", n.Len()))
+	return fmt.Sprintf("[%d-%d:%d [leaf %d]]", start, end, version, n.Len())
 }
 
 // printTree prints the tree rooted at the given node for test comparison.

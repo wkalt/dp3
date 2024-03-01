@@ -3,6 +3,8 @@ package nodestore
 import (
 	"bytes"
 	"io"
+
+	"github.com/wkalt/dp3/mcap"
 )
 
 const leafNodeVersion = uint8(1)
@@ -26,7 +28,12 @@ func (n *LeafNode) FromBytes(data []byte) error {
 }
 
 func (n *LeafNode) Merge(other *LeafNode) (*LeafNode, error) {
-	return NewLeafNode(append(n.data, other.data...)), nil
+	buf := &bytes.Buffer{}
+	err := mcap.Merge(buf, bytes.NewReader(n.data), bytes.NewReader(other.data))
+	if err != nil {
+		return nil, err
+	}
+	return NewLeafNode(buf.Bytes()), nil
 }
 
 func (n *LeafNode) Len() int {

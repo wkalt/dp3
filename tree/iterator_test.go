@@ -6,9 +6,10 @@ import (
 	"io"
 	"testing"
 
-	"github.com/foxglove/mcap/go/mcap"
+	fm "github.com/foxglove/mcap/go/mcap"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/storage"
 	"github.com/wkalt/dp3/util"
@@ -26,28 +27,23 @@ func TestTreeIterator(t *testing.T) {
 	buf2 := &bytes.Buffer{}
 	offset := 0
 	for _, buf := range []*bytes.Buffer{buf1, buf2} {
-		w, err := mcap.NewWriter(buf, &mcap.WriterOptions{
-			IncludeCRC:  true,
-			Chunked:     true,
-			ChunkSize:   1024,
-			Compression: "zstd",
-		})
+		w, err := mcap.NewWriter(buf)
 		require.NoError(t, err)
-		require.NoError(t, w.WriteHeader(&mcap.Header{}))
-		require.NoError(t, w.WriteSchema(&mcap.Schema{
+		require.NoError(t, w.WriteHeader(&fm.Header{}))
+		require.NoError(t, w.WriteSchema(&fm.Schema{
 			ID:       1,
 			Name:     "schema1",
 			Encoding: "ros1",
 			Data:     []byte{0x01, 0x02, 0x03},
 		}))
-		require.NoError(t, w.WriteChannel(&mcap.Channel{
+		require.NoError(t, w.WriteChannel(&fm.Channel{
 			ID:              0,
 			SchemaID:        1,
 			Topic:           "/topic",
 			MessageEncoding: "ros1msg",
 		}))
 		for i := 0; i < 10; i++ {
-			require.NoError(t, w.WriteMessage(&mcap.Message{
+			require.NoError(t, w.WriteMessage(&fm.Message{
 				LogTime: uint64(i + offset),
 				Data:    []byte("hello"),
 			}))
