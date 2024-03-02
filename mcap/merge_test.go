@@ -1,28 +1,30 @@
-package mcap
+package mcap_test
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wkalt/dp3/mcap"
 )
 
 func TestMerge(t *testing.T) {
 	buf1 := &bytes.Buffer{}
 	buf2 := &bytes.Buffer{}
 
-	WriteFile(t, buf1, []uint64{0, 1, 20, 30})
-	WriteFile(t, buf2, []uint64{10, 11, 22, 35})
+	mcap.WriteFile(t, buf1, []uint64{0, 1, 20, 30})
+	mcap.WriteFile(t, buf2, []uint64{10, 11, 22, 35})
 
-	os.WriteFile("a.mcap", buf1.Bytes(), 0644)
+	require.NoError(t, os.WriteFile("a.mcap", buf1.Bytes(), 0600))
 
 	buf3 := &bytes.Buffer{}
-	require.NoError(t, Merge(buf3, buf1, buf2))
+	require.NoError(t, mcap.Merge(buf3, buf1, buf2))
 
-	reader, err := NewReader(bytes.NewReader(buf3.Bytes()))
+	reader, err := mcap.NewReader(bytes.NewReader(buf3.Bytes()))
 	require.NoError(t, err)
 
 	info, err := reader.Info()
@@ -36,7 +38,7 @@ func TestMerge(t *testing.T) {
 	n := uint64(0)
 	for {
 		_, _, msg, err := msgs.Next(nil)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		require.NoError(t, err)

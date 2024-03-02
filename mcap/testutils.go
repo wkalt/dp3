@@ -1,6 +1,7 @@
 package mcap
 
 import (
+	"errors"
 	"io"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 )
 
 func ReadFile(t *testing.T, r io.Reader) []uint64 {
+	t.Helper()
 	reader, err := NewReader(r)
 	require.NoError(t, err)
 
@@ -18,7 +20,7 @@ func ReadFile(t *testing.T, r io.Reader) []uint64 {
 	var timestamps []uint64
 	for {
 		_, _, msg, err := msgs.Next(nil)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		require.NoError(t, err)
@@ -28,6 +30,7 @@ func ReadFile(t *testing.T, r io.Reader) []uint64 {
 }
 
 func WriteFile(t *testing.T, w io.Writer, timestamps []uint64) {
+	t.Helper()
 	writer, err := NewWriter(w)
 	require.NoError(t, err)
 	require.NoError(t, writer.WriteHeader(&mcap.Header{}))

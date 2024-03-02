@@ -36,8 +36,7 @@ func TestInnerNode(t *testing.T) {
 	t.Run("deserializing a leaf node as an inner node", func(t *testing.T) {
 		data := pfix(128, `{"start":10,"end":20,"data":"hello"}`)
 		node := nodestore.NewInnerNode(0, 0, 0)
-		err := node.FromBytes(data)
-		assert.Error(t, err)
+		assert.Error(t, node.FromBytes(data))
 	})
 	t.Run("deserializing a corrupted inner node", func(t *testing.T) {
 		data := pfix(1, `{"start":10,"end":20`)

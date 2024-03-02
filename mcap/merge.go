@@ -2,6 +2,7 @@ package mcap
 
 import (
 	"errors"
+	"fmt"
 	"hash/maphash"
 	"io"
 	"sort"
@@ -13,7 +14,7 @@ const megabyte = 1024 * 1024
 
 func hashBytes(b []byte) uint64 {
 	h := maphash.Hash{}
-	h.Write(b)
+	_, _ = h.Write(b)
 	return h.Sum64()
 }
 
@@ -67,7 +68,7 @@ func (c *coordinator) write(schema *mcap.Schema, channel *mcap.Channel, msg *mca
 			c.schemas[schema] = mappedID
 		} else {
 			if err := c.w.WriteSchema(schema); err != nil {
-				return err
+				return fmt.Errorf("failed to write schema: %w", err)
 			}
 			c.schemas[schema] = c.nextSchemaID
 			schemaID = c.nextSchemaID
@@ -91,7 +92,7 @@ func (c *coordinator) write(schema *mcap.Schema, channel *mcap.Channel, msg *mca
 				Metadata:        channel.Metadata,
 			}
 			if err := c.w.WriteChannel(newChannel); err != nil {
-				return err
+				return fmt.Errorf("failed to write channel: %w", err)
 			}
 			c.channels[channel] = c.nextChannelID
 			chanID = c.nextChannelID
@@ -99,65 +100,65 @@ func (c *coordinator) write(schema *mcap.Schema, channel *mcap.Channel, msg *mca
 		}
 	}
 	msg.ChannelID = chanID
-	return c.w.WriteMessage(msg)
+	if err := c.w.WriteMessage(msg); err != nil {
+		return fmt.Errorf("failed to write message: %w", err)
+	}
+	return nil
 }
 
 // Merge two mcap streams into one. Both streams are assumed to be sorted.
 func Merge(writer io.Writer, a, b io.Reader) error {
+	var r1, r2 *mcap.Reader
+	var it1, it2 mcap.MessageIterator
 	w, err := NewWriter(writer)
 	if err != nil {
 		return err
 	}
-	r1, err := NewReader(a)
-	if err != nil {
+	if r1, err = NewReader(a); err != nil {
 		return err
 	}
-	r2, err := NewReader(b)
-	if err != nil {
+	if r2, err = NewReader(b); err != nil {
 		return err
 	}
-	it1, err := r1.Messages(mcap.UsingIndex(false), mcap.InOrder(mcap.FileOrder))
-	if err != nil {
-		return err
+	if it1, err = r1.Messages(mcap.UsingIndex(false), mcap.InOrder(mcap.FileOrder)); err != nil {
+		return fmt.Errorf("failed to construct iterator: %w", err)
 	}
-	it2, err := r2.Messages(mcap.UsingIndex(false), mcap.InOrder(mcap.FileOrder))
-	if err != nil {
-		return err
+	if it2, err = r2.Messages(mcap.UsingIndex(false), mcap.InOrder(mcap.FileOrder)); err != nil {
+		return fmt.Errorf("failed to construct iterator: %w", err)
 	}
 	if err := w.WriteHeader(&mcap.Header{}); err != nil {
-		return err
+		return fmt.Errorf("failed to write header: %w", err)
 	}
 	var err1, err2 error
 	mc := newCoordinator(w)
 	s1, c1, m1, err1 := it1.Next(nil)
 	s2, c2, m2, err2 := it2.Next(nil)
 	for !errors.Is(err1, io.EOF) || !errors.Is(err2, io.EOF) {
-		if err1 == nil && err2 == io.EOF {
+		switch {
+		case err1 == nil && errors.Is(err2, io.EOF):
 			if err := mc.write(s1, c1, m1); err != nil {
 				return err
 			}
 			s1, c1, m1, err1 = it1.Next(nil)
-			continue
-		}
-		if err2 == nil && err1 == io.EOF {
+		case err2 == nil && errors.Is(err1, io.EOF):
 			if err := mc.write(s2, c2, m2); err != nil {
 				return err
 			}
 			s2, c2, m2, err2 = it2.Next(nil)
-			continue
-		}
-		if m1.LogTime < m2.LogTime {
+		case m1.LogTime < m2.LogTime:
 			if err := mc.write(s1, c1, m1); err != nil {
 				return err
 			}
 			s1, c1, m1, err1 = it1.Next(nil)
-			continue
+		default:
+			if err := mc.write(s2, c2, m2); err != nil {
+				return err
+			}
+			s2, c2, m2, err2 = it2.Next(nil)
 		}
-		err := mc.write(s2, c2, m2)
-		if err != nil {
-			return err
-		}
-		s2, c2, m2, err2 = it2.Next(nil)
 	}
-	return w.Close()
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("failed to close writer: %w", err)
+	}
+	return nil
 }

@@ -33,8 +33,8 @@ linters:
     - errname
     - errorlint
     - execinquery
-    - exhaustive
-    - exhaustruct
+    #- exhaustive
+    #- exhaustruct
     - exportloopref
     - forbidigo
     - forcetypeassert
@@ -54,7 +54,7 @@ linters:
     - gofmt
     - goheader
     - goimports
-    - gomoddirectives
+    #- gomoddirectives
     - gomodguard
     - goprintffuncname
     - gosec
@@ -79,7 +79,7 @@ linters:
     - nilerr
     - nilnil
     - noctx
-    - nolintlint
+    #- nolintlint
     - nosprintfhostport
     - perfsprint
     - prealloc

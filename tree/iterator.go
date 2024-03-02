@@ -9,13 +9,8 @@ import (
 	"github.com/wkalt/dp3/nodestore"
 )
 
-type Iterator interface {
-	More() bool
-	Next() []byte
-}
-
-// treeIterator is an iterator over a tree.
-type treeIterator struct {
+// Iterator is an iterator over a tree.
+type Iterator struct {
 	t       *Tree
 	version uint64
 	start   uint64
@@ -27,7 +22,7 @@ type treeIterator struct {
 	msgIterator mcap.MessageIterator
 }
 
-func (ti *treeIterator) initialize() error {
+func (ti *Iterator) initialize() error {
 	rootID, ok := ti.t.rootmap[ti.version]
 	if !ok {
 		return fmt.Errorf("version %d not found", ti.version)
@@ -41,15 +36,13 @@ func (ti *treeIterator) initialize() error {
 		if err != nil {
 			return fmt.Errorf("failed to get node: %w", err)
 		}
-
 		if node.Type() == nodestore.Leaf {
 			ti.leafIDs = append(ti.leafIDs, nodeID)
 			continue
 		}
-
 		inner, ok := node.(*nodestore.InnerNode)
 		if !ok {
-			return fmt.Errorf("expected inner node - tree is corrupt")
+			return errors.New("expected inner node - tree is corrupt")
 		}
 		span := inner.End - inner.Start
 		step := span / uint64(ti.t.bfactor)
@@ -66,13 +59,16 @@ func (ti *treeIterator) initialize() error {
 	return nil
 }
 
-func (ti *treeIterator) openNextLeaf() error {
+func (ti *Iterator) openNextLeaf() error {
 	leafID := ti.leafIDs[ti.nextLeaf]
 	node, err := ti.t.ns.Get(leafID)
 	if err != nil {
 		return fmt.Errorf("failed to get node: %w", err)
 	}
-	leaf := node.(*nodestore.LeafNode)
+	leaf, ok := node.(*nodestore.LeafNode)
+	if !ok {
+		return errors.New("expected leaf node - tree is corrupt")
+	}
 	reader, err := mcap.NewReader(leaf.Data())
 	if err != nil {
 		return fmt.Errorf("failed to create reader: %w", err)
@@ -86,12 +82,12 @@ func (ti *treeIterator) openNextLeaf() error {
 	return nil
 }
 
-func (ti *treeIterator) More() bool {
+func (ti *Iterator) More() bool {
 	return ti.nextLeaf < len(ti.leafIDs)
 }
 
 // Next returns the next element in the iteration.
-func (ti *treeIterator) Next() (*mcap.Schema, *mcap.Channel, *mcap.Message, error) {
+func (ti *Iterator) Next() (*mcap.Schema, *mcap.Channel, *mcap.Message, error) {
 	for ti.nextLeaf < len(ti.leafIDs) {
 		if ti.msgIterator == nil {
 			if err := ti.openNextLeaf(); err != nil {
@@ -114,12 +110,12 @@ func (ti *treeIterator) Next() (*mcap.Schema, *mcap.Channel, *mcap.Message, erro
 	return nil, nil, nil, io.EOF
 }
 
-// newTreeIterator returns a new iterator over the given tree.
-func newTreeIterator(t *Tree, version, start uint64, end uint64) (*treeIterator, error) {
+// NewTreeIterator returns a new iterator over the given tree.
+func NewTreeIterator(t *Tree, version, start uint64, end uint64) (*Iterator, error) {
 	if version == 0 {
 		version = t.version
 	}
-	it := &treeIterator{t: t, version: version, start: start, end: end}
+	it := &Iterator{t: t, version: version, start: start, end: end}
 	if err := it.initialize(); err != nil {
 		return nil, err
 	}

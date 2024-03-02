@@ -50,7 +50,7 @@ func (n NodeID) String() string {
 // node IDs.
 func (n *Nodestore) generateStagingID() NodeID {
 	var id NodeID
-	rand.Read(id[:])
+	_, _ = rand.Read(id[:])
 	return id
 }
 
@@ -170,8 +170,7 @@ func (n *Nodestore) Flush(ids ...NodeID) ([]NodeID, error) {
 		processed[id] = nodeID
 		newIDs[i] = nodeID
 	}
-	err := n.store.Put(oid.String(), buf.Bytes())
-	if err != nil {
+	if err := n.store.Put(oid.String(), buf.Bytes()); err != nil {
 		return nil, fmt.Errorf("failed to put object: %w", err)
 	}
 	slices.Reverse(newIDs)

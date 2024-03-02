@@ -2,6 +2,7 @@ package nodestore
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 
@@ -25,7 +26,7 @@ func (n *LeafNode) ToBytes() []byte {
 func (n *LeafNode) FromBytes(data []byte) error {
 	version := data[0]
 	if version < 128 {
-		return fmt.Errorf("not a leaf node")
+		return errors.New("not a leaf node")
 	}
 	n.version = version - 128
 	n.data = data[1:]
@@ -36,7 +37,7 @@ func (n *LeafNode) Merge(data []byte) (*LeafNode, error) {
 	buf := &bytes.Buffer{}
 	err := mcap.Merge(buf, bytes.NewReader(n.data), bytes.NewReader(data))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to merge leaf node: %w", err)
 	}
 	return NewLeafNode(buf.Bytes()), nil
 }

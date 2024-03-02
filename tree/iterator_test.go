@@ -1,4 +1,4 @@
-package tree
+package tree_test
 
 import (
 	"bytes"
@@ -12,6 +12,7 @@ import (
 	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/storage"
+	"github.com/wkalt/dp3/tree"
 	"github.com/wkalt/dp3/util"
 )
 
@@ -19,7 +20,7 @@ func TestTreeIterator(t *testing.T) {
 	store := storage.NewMemStore()
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1e6)
 	ns := nodestore.NewNodestore(store, cache)
-	tr, err := NewTree(0, util.Pow(uint64(64), 3), 64, 64, ns)
+	tr, err := tree.NewTree(0, util.Pow(uint64(64), 3), 64, 64, ns)
 	require.NoError(t, err)
 
 	// create two mcap files and stick them into the tree
@@ -53,7 +54,7 @@ func TestTreeIterator(t *testing.T) {
 	}
 	require.NoError(t, tr.Insert(0, buf1.Bytes()))
 	require.NoError(t, tr.Insert(64, buf2.Bytes()))
-	it, err := newTreeIterator(tr, 0, 0, 128)
+	it, err := tree.NewTreeIterator(tr, 0, 0, 128)
 	require.NoError(t, err)
 	count := 0
 	for it.More() {
@@ -67,5 +68,5 @@ func TestTreeIterator(t *testing.T) {
 		require.Equal(t, "/topic", channel.Topic)
 		count++
 	}
-	assert.Equal(t, count, 20)
+	assert.Equal(t, 20, count)
 }

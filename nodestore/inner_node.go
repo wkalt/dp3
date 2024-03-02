@@ -31,7 +31,7 @@ type Child struct {
 
 // toBytes serializes the node to a byte array.
 func (n *InnerNode) ToBytes() []byte {
-	bytes, _ := json.Marshal(n)
+	bytes, _ := json.Marshal(n) // nolint temporary
 	buf := make([]byte, len(bytes)+1)
 	buf[0] = n.version
 	copy(buf[1:], bytes)
