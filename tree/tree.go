@@ -167,8 +167,8 @@ func (t *Tree) bwidth(n *nodestore.InnerNode) uint64 {
 
 // bucket returns the index of the child slot that the given time falls into on
 // the given node.
-func (t *Tree) bucket(ts uint64, n *nodestore.InnerNode) uint64 {
-	return (ts - n.Start) / t.bwidth(n)
+func (t *Tree) bucket(nanos uint64, n *nodestore.InnerNode) uint64 {
+	return (nanos/1e9 - n.Start) / t.bwidth(n)
 }
 
 // cloneInnerNode returns a new inner node with the same contents as the node
@@ -200,7 +200,7 @@ func (t *Tree) cloneLeafNode(id nodestore.NodeID, data []byte) (*nodestore.LeafN
 	}
 	merged, err := oldNode.Merge(data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to merge leaf node: %w", err)
+		return nil, fmt.Errorf("failed to clone node: %w", err)
 	}
 	return merged, nil
 }
@@ -255,6 +255,22 @@ func (t *Tree) descend(
 	current.PlaceChild(bucket, nodeID, version)
 	*nodeIDs = append(*nodeIDs, nodeID)
 	return node, nil
+}
+
+// Bounds returns the time bounds of the leaf node that contains the given
+// nanosecond timestamp. The units of the return value are seconds.
+func (t *Tree) Bounds(ts uint64) ([]uint64, error) {
+	root, err := t.root()
+	if err != nil {
+		return nil, err
+	}
+	width := root.End - root.Start
+	for i := 0; i < t.depth; i++ {
+		width /= uint64(t.bfactor)
+	}
+	inset := ts/1e9 - root.Start
+	bucket := inset / width
+	return []uint64{root.Start + width*bucket, root.Start + width*(bucket+1)}, nil
 }
 
 // printTree prints the tree rooted at the given node for test comparison.

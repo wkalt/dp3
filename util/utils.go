@@ -28,3 +28,8 @@ func GroupBy[T any, K comparable](records []T, f func(T) K) map[K][]T {
 func ParseNanos(x uint64) time.Time {
 	return time.Unix(int64(x/1e9), int64(x%1e9))
 }
+
+func DateSeconds(date string) uint64 {
+	t, _ := time.Parse("2006-01-02", date)
+	return uint64(t.Unix())
+}

@@ -59,6 +59,9 @@ func newCoordinator(w *mcap.Writer) *coordinator {
 }
 
 func (c *coordinator) write(schema *mcap.Schema, channel *mcap.Channel, msg *mcap.Message) error {
+	if schema == nil {
+		return errors.New("schema is nil")
+	}
 	schemaID, ok := c.schemas[schema]
 	if !ok {
 		// check if we have a matching schema by hash

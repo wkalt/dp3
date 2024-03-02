@@ -61,7 +61,7 @@ func TestTreeInsert(t *testing.T) {
 			for _, time := range c.times {
 				buf := &bytes.Buffer{}
 				mcap.WriteFile(t, buf, []uint64{time})
-				require.NoError(t, tr.Insert(time, buf.Bytes()))
+				require.NoError(t, tr.Insert(time*1e9, buf.Bytes()))
 			}
 			assert.Equal(t, c.repr, tr.String())
 		})
