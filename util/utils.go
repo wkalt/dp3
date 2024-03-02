@@ -1,5 +1,7 @@
 package util
 
+import "time"
+
 func Pow[V int | int64 | float64 | uint64 | float32](x V, y int) V {
 	if y == 0 {
 		return 1
@@ -21,4 +23,8 @@ func GroupBy[T any, K comparable](records []T, f func(T) K) map[K][]T {
 		groups[key] = append(groups[key], record)
 	}
 	return groups
+}
+
+func ParseNanos(x uint64) time.Time {
+	return time.Unix(int64(x/1e9), int64(x%1e9))
 }

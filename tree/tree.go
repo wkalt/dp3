@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/wkalt/dp3/nodestore"
 )
@@ -27,21 +28,50 @@ type Tree struct {
 	rootmap map[uint64]nodestore.NodeID // todo: extract; version -> node id
 }
 
+type Stats struct {
+	Depth           int
+	BranchingFactor int
+	LeafWidth       time.Duration
+	Start           time.Time
+	End             time.Time
+}
+
+func (t *Tree) Stats() (Stats, error) {
+	root, err := t.root()
+	if err != nil {
+		return Stats{}, err
+	}
+	coverage := root.End - root.Start
+	for i := 0; i < t.depth; i++ {
+		coverage /= uint64(t.bfactor)
+	}
+	return Stats{
+		Depth:           t.depth,
+		BranchingFactor: t.bfactor,
+		LeafWidth:       time.Duration(coverage * 1e9),
+		Start:           time.Unix(int64(root.Start), 0),
+		End:             time.Unix(int64(root.End), 0),
+	}, nil
+}
+
 // NewTree constructs a new tree for the given start and end. The depth of the
 // tree is computed such that the time span covered by each leaf node is at most
 // leafWidthNanos.
 func NewTree(
 	start uint64,
 	end uint64,
-	leafWidthNanos uint64,
+	leafWidthSecs uint64,
 	branchingFactor int,
 	nodeStore *nodestore.Nodestore,
 ) (*Tree, error) {
+	minspan := end - start
 	depth := 0
-	for span := end - start; span > leafWidthNanos; depth++ {
-		span /= uint64(branchingFactor)
+	coverage := leafWidthSecs
+	for coverage < minspan {
+		coverage *= uint64(branchingFactor)
+		depth++
 	}
-	root := nodestore.NewInnerNode(start, end, branchingFactor)
+	root := nodestore.NewInnerNode(start, start+coverage, branchingFactor)
 	t := &Tree{
 		depth:   depth,
 		bfactor: branchingFactor,
@@ -130,7 +160,7 @@ func (t *Tree) addRoot(version uint64, rootID nodestore.NodeID) {
 	t.rootmap[version] = rootID
 }
 
-// bwidth returns the width of each bucket in nanoseconds.
+// bwidth returns the width of each bucket in seconds.
 func (t *Tree) bwidth(n *nodestore.InnerNode) uint64 {
 	return (n.End - n.Start) / uint64(t.bfactor)
 }
