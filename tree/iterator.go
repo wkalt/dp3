@@ -11,28 +11,23 @@ import (
 
 // Iterator is an iterator over a tree.
 type Iterator struct {
-	t       *Tree
-	version uint64
-	start   uint64
-	end     uint64
+	start uint64
+	end   uint64
 
 	leafIDs     []nodestore.NodeID
 	nextLeaf    int
 	reader      *mcap.Reader
 	msgIterator mcap.MessageIterator
+	ns          *nodestore.Nodestore
 }
 
-func (ti *Iterator) initialize() error {
-	rootID, ok := ti.t.rootmap[ti.version]
-	if !ok {
-		return fmt.Errorf("version %d not found", ti.version)
-	}
+func (ti *Iterator) initialize(rootID nodestore.NodeID) error {
 	var stack []nodestore.NodeID
 	stack = append(stack, rootID)
 	for len(stack) > 0 {
 		nodeID := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
-		node, err := ti.t.ns.Get(nodeID)
+		node, err := ti.ns.Get(nodeID)
 		if err != nil {
 			return fmt.Errorf("failed to get node: %w", err)
 		}
@@ -45,7 +40,7 @@ func (ti *Iterator) initialize() error {
 			return errors.New("expected inner node - tree is corrupt")
 		}
 		span := inner.End - inner.Start
-		step := span / uint64(ti.t.bfactor)
+		step := span / uint64(len(inner.Children))
 		left := inner.Start
 		right := inner.Start + step
 		for _, child := range inner.Children {
@@ -61,7 +56,7 @@ func (ti *Iterator) initialize() error {
 
 func (ti *Iterator) openNextLeaf() error {
 	leafID := ti.leafIDs[ti.nextLeaf]
-	node, err := ti.t.ns.Get(leafID)
+	node, err := ti.ns.Get(leafID)
 	if err != nil {
 		return fmt.Errorf("failed to get node: %w", err)
 	}
@@ -111,12 +106,14 @@ func (ti *Iterator) Next() (*mcap.Schema, *mcap.Channel, *mcap.Message, error) {
 }
 
 // NewTreeIterator returns a new iterator over the given tree.
-func NewTreeIterator(t *Tree, version, start uint64, end uint64) (*Iterator, error) {
-	if version == 0 {
-		version = t.version
-	}
-	it := &Iterator{t: t, version: version, start: start, end: end}
-	if err := it.initialize(); err != nil {
+func NewTreeIterator(
+	ns *nodestore.Nodestore,
+	rootID nodestore.NodeID,
+	version, start uint64,
+	end uint64,
+) (*Iterator, error) {
+	it := &Iterator{start: start, end: end, ns: ns}
+	if err := it.initialize(rootID); err != nil {
 		return nil, err
 	}
 	return it, nil

@@ -3,7 +3,6 @@ package tree
 import (
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 	"time"
 
@@ -17,169 +16,117 @@ import (
 // over course of an insert. not safe. separate cache for working nodes may be
 // needed.
 
-// Tree is a versioned, time-partitioned, COW Tree.
-type Tree struct {
-	depth   int
-	bfactor int
-	version uint64
-
-	ns *nodestore.Nodestore
-
-	rootmap map[uint64]nodestore.NodeID // todo: extract; version -> node id
-}
-
-type Stats struct {
-	Depth           int
+type TreeStats struct {
+	Depth           uint8
 	BranchingFactor int
 	LeafWidth       time.Duration
 	Start           time.Time
 	End             time.Time
 }
 
-func (t *Tree) Stats() (Stats, error) {
-	root, err := t.root()
+func Stats(ns *nodestore.Nodestore, rootID nodestore.NodeID) (TreeStats, error) {
+	root, err := ns.Get(rootID)
 	if err != nil {
-		return Stats{}, err
+		return TreeStats{}, err
 	}
-	coverage := root.End - root.Start
-	for i := 0; i < t.depth; i++ {
-		coverage /= uint64(t.bfactor)
+	node := root.(*nodestore.InnerNode)
+	coverage := node.End - node.Start
+	for i := uint8(0); i < node.Depth; i++ {
+		coverage /= uint64(len(node.Children))
 	}
-	return Stats{
-		Depth:           t.depth,
-		BranchingFactor: t.bfactor,
+	return TreeStats{
+		Depth:           node.Depth,
+		BranchingFactor: len(node.Children),
 		LeafWidth:       time.Duration(coverage * 1e9),
-		Start:           time.Unix(int64(root.Start), 0),
-		End:             time.Unix(int64(root.End), 0),
+		Start:           time.Unix(int64(node.Start), 0),
+		End:             time.Unix(int64(node.End), 0),
 	}, nil
 }
 
-// NewTree constructs a new tree for the given start and end. The depth of the
-// tree is computed such that the time span covered by each leaf node is at most
-// leafWidthNanos.
-func NewTree(
-	start uint64,
-	end uint64,
-	leafWidthSecs uint64,
-	branchingFactor int,
-	nodeStore *nodestore.Nodestore,
-) (*Tree, error) {
-	minspan := end - start
-	depth := 0
-	coverage := leafWidthSecs
-	for coverage < minspan {
-		coverage *= uint64(branchingFactor)
-		depth++
-	}
-	root := nodestore.NewInnerNode(start, start+coverage, branchingFactor)
-	t := &Tree{
-		depth:   depth,
-		bfactor: branchingFactor,
-		ns:      nodeStore,
-		version: 0,
-		rootmap: make(map[uint64]nodestore.NodeID),
-	}
-	rootID, err := t.stageNode(root)
+func flushOne(ns *nodestore.Nodestore, n nodestore.Node) (nodeID nodestore.NodeID, err error) {
+	id, err := ns.Stage(n)
 	if err != nil {
-		return nil, fmt.Errorf("failed to cache node: %w", err)
+		return nodeID, fmt.Errorf("failed to stage node: %w", err)
 	}
-	nodeIDs, err := t.ns.Flush(rootID)
+	nodeIDs, err := ns.Flush(id)
 	if err != nil {
-		return nil, fmt.Errorf("failed to flush node: %w", err)
+		return nodeID, fmt.Errorf("failed to flush node: %w", err)
 	}
-	t.addRoot(0, nodeIDs[0]) // tree now functional for inserts
-	return t, nil
-}
-
-// String returns a string representation of the tree.
-func (t *Tree) String() string {
-	root, err := t.root()
-	if err != nil {
-		log.Println("failed to get root:", err)
-		return ""
-	}
-	s, err := t.printTree(root, t.version)
-	if err != nil {
-		log.Println("failed to print tree:", err)
-		return ""
-	}
-	return s
+	nodeID = nodeIDs[0]
+	return nodeID, nil
 }
 
 // Insert the slice of data into the node corresponding to the given start time.
 // The blob of data should be a well-formed MCAP file, and it must fit into
 // exactly one leaf node. The caller is responsible for sectioning off MCAP
 // files based on the configuration of the tree.
-func (t *Tree) Insert(start uint64, data []byte) (nodeID nodestore.NodeID, err error) {
-	currentRootID := t.rootmap[t.version]
-	root, err := t.cloneInnerNode(currentRootID)
+func Insert(
+	ns *nodestore.Nodestore,
+	nodeID nodestore.NodeID,
+	version uint64,
+	start uint64,
+	data []byte,
+) (rootID nodestore.NodeID, path []nodestore.NodeID, err error) {
+	root, err := cloneInnerNode(ns, nodeID)
 	if err != nil {
-		return nodeID, err
+		return rootID, nil, err
 	}
-	version := t.version
-	version++
-	rootID, err := t.stageNode(root)
+	rootID, err = stageNode(ns, root)
 	if err != nil {
-		return nodeID, err
+		return rootID, nil, err
 	}
-	nodes := make([]nodestore.NodeID, 0, t.depth)
+	nodes := make([]nodestore.NodeID, 0)
 	nodes = append(nodes, rootID)
 	current := root
-	for i := 0; i < t.depth-1; i++ {
-		if current, err = t.descend(&nodes, current, start, version); err != nil {
-			return nodeID, err
+	depth := root.Depth
+	for current.Depth > 1 {
+		if current, err = descend(ns, &nodes, current, start, version); err != nil {
+			return rootID, nil, err
 		}
+		depth--
 	}
 	// current is now the final parent
-	bucket := t.bucket(start, current)
+	bucket := bucket(start, current)
 	var node *nodestore.LeafNode
 	if existing := current.Children[bucket]; existing != nil {
-		if node, err = t.cloneLeafNode(existing.ID, data); err != nil {
-			return nodeID, err
+		if node, err = cloneLeafNode(ns, existing.ID, data); err != nil {
+			return rootID, nil, err
 		}
 	} else {
 		node = nodestore.NewLeafNode(data)
 	}
-	stagedID, err := t.stageNode(node)
+	stagedID, err := stageNode(ns, node)
 	if err != nil {
-		return nodeID, err
+		return rootID, nil, err
 	}
 	nodes = append(nodes, stagedID)
 	current.PlaceChild(bucket, stagedID, version)
-	nodeIDs, err := t.ns.Flush(nodes...)
+	nodeIDs, err := ns.Flush(nodes...)
 	if err != nil {
-		return nodeID, fmt.Errorf("failed to flush nodes: %w", err)
+		return rootID, nil, fmt.Errorf("failed to flush nodes: %w", err)
 	}
-	nodeID = nodeIDs[0]
-	t.rootmap[version] = nodeID
-	t.version = version
-	return nodeID, nil
-}
-
-// addRoot adds a root node to the tree for the given version.
-func (t *Tree) addRoot(version uint64, rootID nodestore.NodeID) {
-	t.rootmap[version] = rootID
+	return nodeIDs[0], nodeIDs, nil
 }
 
 // bwidth returns the width of each bucket in seconds.
-func (t *Tree) bwidth(n *nodestore.InnerNode) uint64 {
-	return (n.End - n.Start) / uint64(t.bfactor)
+func bwidth(n *nodestore.InnerNode) uint64 {
+	return (n.End - n.Start) / uint64(len(n.Children))
 }
 
 // bucket returns the index of the child slot that the given time falls into on
 // the given node.
-func (t *Tree) bucket(nanos uint64, n *nodestore.InnerNode) uint64 {
-	return (nanos/1e9 - n.Start) / t.bwidth(n)
+func bucket(nanos uint64, n *nodestore.InnerNode) uint64 {
+	return (nanos/1e9 - n.Start) / bwidth(n)
 }
 
 // cloneInnerNode returns a new inner node with the same contents as the node
 // with the given id, but with the given version.
-func (t *Tree) cloneInnerNode(id nodestore.NodeID) (*nodestore.InnerNode, error) {
-	node, err := t.ns.Get(id)
+func cloneInnerNode(ns *nodestore.Nodestore, id nodestore.NodeID) (*nodestore.InnerNode, error) {
+	node, err := ns.Get(id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to clone inner node %d: %w", id, err)
 	}
-	newNode := nodestore.NewInnerNode(0, 0, 0)
+	newNode := nodestore.NewInnerNode(0, 0, 0, 0)
 	oldNode, ok := node.(*nodestore.InnerNode)
 	if !ok {
 		return nil, errors.New("expected inner node - database is corrupt")
@@ -190,8 +137,8 @@ func (t *Tree) cloneInnerNode(id nodestore.NodeID) (*nodestore.InnerNode, error)
 
 // cloneLeafNode returns a new leaf node with contents equal to the existing
 // leaf node at the provide address, merged with the provided data.
-func (t *Tree) cloneLeafNode(id nodestore.NodeID, data []byte) (*nodestore.LeafNode, error) {
-	node, err := t.ns.Get(id)
+func cloneLeafNode(ns *nodestore.Nodestore, id nodestore.NodeID, data []byte) (*nodestore.LeafNode, error) {
+	node, err := ns.Get(id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to clone leaf node %d: %w", id, err)
 	}
@@ -207,8 +154,8 @@ func (t *Tree) cloneLeafNode(id nodestore.NodeID, data []byte) (*nodestore.LeafN
 }
 
 // root returns the root node of the tree.
-func (t *Tree) root() (*nodestore.InnerNode, error) {
-	root, err := t.ns.Get(t.rootmap[t.version])
+func root(ns *nodestore.Nodestore, rootID nodestore.NodeID) (*nodestore.InnerNode, error) {
+	root, err := ns.Get(rootID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get root: %w", err)
 	}
@@ -220,8 +167,8 @@ func (t *Tree) root() (*nodestore.InnerNode, error) {
 }
 
 // stageNode stages the given node in the nodestore and returns its ID.
-func (t *Tree) stageNode(node nodestore.Node) (nodestore.NodeID, error) {
-	id, err := t.ns.Stage(node)
+func stageNode(ns *nodestore.Nodestore, node nodestore.Node) (nodestore.NodeID, error) {
+	id, err := ns.Stage(node)
 	if err != nil {
 		return nodestore.NodeID{}, fmt.Errorf("failed to stage node %d: %w", id, err)
 	}
@@ -229,27 +176,29 @@ func (t *Tree) stageNode(node nodestore.Node) (nodestore.NodeID, error) {
 }
 
 // descend descends the tree to the node that should contain the given timestamp.
-func (t *Tree) descend(
+func descend(
+	ns *nodestore.Nodestore,
 	nodeIDs *[]nodestore.NodeID,
 	current *nodestore.InnerNode,
 	timestamp uint64,
 	version uint64,
 ) (node *nodestore.InnerNode, err error) {
-	bucket := t.bucket(timestamp, current)
+	bucket := bucket(timestamp, current)
 	if existing := current.Children[bucket]; existing != nil {
-		node, err = t.cloneInnerNode(existing.ID)
+		node, err = cloneInnerNode(ns, existing.ID)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		bwidth := t.bwidth(current)
+		bwidth := bwidth(current)
 		node = nodestore.NewInnerNode(
+			current.Depth-1,
 			current.Start+bucket*bwidth,
 			current.Start+(bucket+1)*bwidth,
-			t.bfactor,
+			len(current.Children),
 		)
 	}
-	nodeID, err := t.stageNode(node)
+	nodeID, err := stageNode(ns, node)
 	if err != nil {
 		return nil, err
 	}
@@ -260,54 +209,53 @@ func (t *Tree) descend(
 
 // Bounds returns the time bounds of the leaf node that contains the given
 // nanosecond timestamp. The units of the return value are seconds.
-func (t *Tree) Bounds(ts uint64) ([]uint64, error) {
-	root, err := t.root()
+func Bounds(ns *nodestore.Nodestore, rootID nodestore.NodeID, ts uint64) ([]uint64, error) {
+	root, err := root(ns, rootID)
 	if err != nil {
 		return nil, err
 	}
 	width := root.End - root.Start
-	for i := 0; i < t.depth; i++ {
-		width /= uint64(t.bfactor)
+	for i := 0; i < int(root.Depth); i++ {
+		width /= uint64(len(root.Children))
 	}
 	inset := ts/1e9 - root.Start
 	bucket := inset / width
 	return []uint64{root.Start + width*bucket, root.Start + width*(bucket+1)}, nil
 }
 
-// printTree prints the tree rooted at the given node for test comparison.
-func (t *Tree) printTree(node *nodestore.InnerNode, version uint64) (string, error) {
+func PrintTree(ns *nodestore.Nodestore, nodeID nodestore.NodeID, version uint64) (string, error) {
 	sb := &strings.Builder{}
-	sb.WriteString(fmt.Sprintf("[%d-%d:%d", node.Start, node.End, version))
-	for i, slot := range node.Children {
-		if slot == nil {
-			continue
-		}
-		child, err := t.ns.Get(slot.ID)
-		if err != nil {
-			return "", fmt.Errorf("failed to get node %d: %w", slot.ID, err)
-		}
-		if child, ok := child.(*nodestore.LeafNode); ok {
-			bwidth := t.bwidth(node)
-			childStart := node.Start + uint64(i)*bwidth
-			childEnd := node.Start + uint64(i+1)*bwidth
-			sb.WriteString(" " + printLeaf(child, slot.Version, childStart, childEnd))
-			continue
-		}
-		ichild, ok := child.(*nodestore.InnerNode)
-		if !ok {
-			return "", errors.New("expected inner node - database is corrupt")
-		}
-		childstr, err := t.printTree(ichild, slot.Version)
-		if err != nil {
-			return "", err
-		}
-		sb.WriteString(" " + childstr)
+	node, err := ns.Get(nodeID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get node %d: %w", nodeID, err)
 	}
-	sb.WriteString("]")
+	switch node := node.(type) {
+	case *nodestore.InnerNode:
+		sb.WriteString(fmt.Sprintf("[%d-%d:%d", node.Start, node.End, version))
+		span := node.End - node.Start
+		for i, child := range node.Children {
+			if child == nil {
+				continue
+			}
+			childstr, err := PrintTree(ns, child.ID, child.Version)
+			if err != nil {
+				return "", err
+			}
+			childNode, err := ns.Get(child.ID)
+			if err != nil {
+				return "", fmt.Errorf("failed to get node %d: %w", child.ID, err)
+			}
+			if cnode, ok := childNode.(*nodestore.LeafNode); ok {
+				start := node.Start + uint64(i)*span/uint64(len(node.Children))
+				end := node.Start + uint64(i+1)*span/uint64(len(node.Children))
+				sb.WriteString(fmt.Sprintf(" [%d-%d:%d %s]", start, end, child.Version, cnode))
+			} else {
+				sb.WriteString(" " + childstr)
+			}
+		}
+		sb.WriteString("]")
+	case *nodestore.LeafNode:
+		sb.WriteString(fmt.Sprintf("%s", node))
+	}
 	return sb.String(), nil
-}
-
-// printLeaf prints the given leaf node for test comparison.
-func printLeaf(n *nodestore.LeafNode, version, start, end uint64) string {
-	return fmt.Sprintf("[%d-%d:%d %s]", start, end, version, n)
 }

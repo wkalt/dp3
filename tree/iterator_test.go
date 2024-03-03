@@ -20,7 +20,7 @@ func TestTreeIterator(t *testing.T) {
 	store := storage.NewMemStore()
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1e6)
 	ns := nodestore.NewNodestore(store, cache)
-	tr, err := tree.NewTree(0, util.Pow(uint64(64), 3), 64, 64, ns)
+	rootID, err := ns.NewRoot(0, util.Pow(uint64(64), 3), 64, 64)
 	require.NoError(t, err)
 
 	// create two mcap files and stick them into the tree
@@ -52,11 +52,14 @@ func TestTreeIterator(t *testing.T) {
 		require.NoError(t, w.Close())
 		offset += 64
 	}
-	_, err = tr.Insert(0, buf1.Bytes())
+	version := uint64(1)
+	rootID, _, err = tree.Insert(ns, rootID, version, 0, buf1.Bytes())
 	require.NoError(t, err)
-	_, err = tr.Insert(64*1e9, buf2.Bytes())
+	version++
+	rootID, _, err = tree.Insert(ns, rootID, version, 64*1e9, buf2.Bytes())
 	require.NoError(t, err)
-	it, err := tree.NewTreeIterator(tr, 0, 0, 128)
+	version++
+	it, err := tree.NewTreeIterator(ns, rootID, 0, 0, 128)
 	require.NoError(t, err)
 	count := 0
 	for it.More() {

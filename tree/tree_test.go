@@ -16,7 +16,7 @@ import (
 func TestTreeInsert(t *testing.T) {
 	cases := []struct {
 		assertion string
-		depth     int
+		depth     uint8
 		times     []uint64
 		repr      string
 	}{
@@ -56,15 +56,19 @@ func TestTreeInsert(t *testing.T) {
 			store := storage.NewMemStore()
 			cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1e6)
 			ns := nodestore.NewNodestore(store, cache)
-			tr, err := tree.NewTree(0, util.Pow(uint64(64), c.depth+1), 64, 64, ns)
+			rootID, err := ns.NewRoot(0, util.Pow(uint64(64), int(c.depth)+1), 64, 64)
 			require.NoError(t, err)
+			version := uint64(1)
 			for _, time := range c.times {
 				buf := &bytes.Buffer{}
 				mcap.WriteFile(t, buf, []uint64{time})
-				_, err := tr.Insert(time*1e9, buf.Bytes())
+				rootID, _, err = tree.Insert(ns, rootID, version, time*1e9, buf.Bytes())
 				require.NoError(t, err)
+				version++
 			}
-			assert.Equal(t, c.repr, tr.String())
+			repr, err := tree.PrintTree(ns, rootID, version-1)
+			require.NoError(t, err)
+			assert.Equal(t, c.repr, repr)
 		})
 	}
 }

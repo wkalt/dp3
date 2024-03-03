@@ -60,7 +60,7 @@ func (n *Nodestore) bytesToNode(value []byte) (Node, error) {
 		}
 		return node, nil
 	}
-	node := NewInnerNode(0, 0, 0)
+	node := NewInnerNode(0, 0, 0, 0)
 	if err := node.FromBytes(value); err != nil {
 		return nil, fmt.Errorf("failed to parse inner node: %w", err)
 	}
@@ -172,4 +172,26 @@ func NewNodestore(
 		mtx:        &sync.RWMutex{},
 		staging:    make(map[NodeID]Node),
 	}
+}
+
+// NewRoot creates a new root node with the given depth and range, and persists
+// it to storage, returning the ID.
+func (ns *Nodestore) NewRoot(start, end uint64, leafWidthSecs int, bfactor int) (nodeID NodeID, err error) {
+	minspan := end - start
+	depth := uint8(0)
+	coverage := uint64(leafWidthSecs)
+	for coverage < minspan {
+		coverage *= uint64(bfactor)
+		depth++
+	}
+	root := NewInnerNode(depth, start, end, bfactor)
+	tmpid, err := ns.Stage(root)
+	if err != nil {
+		return nodeID, fmt.Errorf("failed to stage root: %w", err)
+	}
+	ids, err := ns.Flush(tmpid)
+	if err != nil {
+		return nodeID, fmt.Errorf("failed to flush root: %w", err)
+	}
+	return ids[0], nil
 }

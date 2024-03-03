@@ -13,17 +13,17 @@ func pfix(prefix uint8, s string) []byte {
 }
 
 func TestInnerNode(t *testing.T) {
-	node := nodestore.NewInnerNode(10, 20, 3)
+	node := nodestore.NewInnerNode(0, 10, 20, 3)
 	t.Run("serialization", func(t *testing.T) {
 		bytes := node.ToBytes()
 		expected := pfix(
-			1, `{"start":10,"end":20,"children":[null,null,null]}`)
+			1, `{"start":10,"end":20,"depth":0,"children":[null,null,null]}`)
 		assert.Equal(t, expected, bytes)
 	})
 	t.Run("deserialization", func(t *testing.T) {
 		data := pfix(
-			1, `{"start":10,"end":20,"children":[null,null,null]}`)
-		node := nodestore.NewInnerNode(0, 0, 0)
+			1, `{"start":10,"end":20,"depth":0,"children":[null,null,null]}`)
+		node := nodestore.NewInnerNode(0, 0, 0, 0)
 		err := node.FromBytes(data)
 		require.NoError(t, err)
 		assert.Equal(t, uint64(10), node.Start)
@@ -35,12 +35,12 @@ func TestInnerNode(t *testing.T) {
 	})
 	t.Run("deserializing a leaf node as an inner node", func(t *testing.T) {
 		data := pfix(128, `{"start":10,"end":20,"data":"hello"}`)
-		node := nodestore.NewInnerNode(0, 0, 0)
+		node := nodestore.NewInnerNode(0, 0, 0, 0)
 		assert.Error(t, node.FromBytes(data))
 	})
 	t.Run("deserializing a corrupted inner node", func(t *testing.T) {
 		data := pfix(1, `{"start":10,"end":20`)
-		node := nodestore.NewInnerNode(0, 0, 0)
+		node := nodestore.NewInnerNode(0, 0, 0, 0)
 		err := node.FromBytes(data)
 		assert.Error(t, err)
 	})
