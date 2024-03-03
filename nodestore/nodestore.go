@@ -28,24 +28,6 @@ type Nodestore struct {
 	mtx     *sync.RWMutex
 }
 
-type NodeID [16]byte
-
-func (n NodeID) OID() string {
-	return strconv.FormatUint(binary.LittleEndian.Uint64(n[:8]), 10)
-}
-
-func (n NodeID) Offset() int {
-	return int(binary.LittleEndian.Uint32(n[8:]))
-}
-
-func (n NodeID) Length() int {
-	return int(binary.LittleEndian.Uint32(n[12:]))
-}
-
-func (n NodeID) String() string {
-	return fmt.Sprintf("%s:%d:%d", n.OID(), n.Offset(), n.Length())
-}
-
 // generateStagingID generates a temporary ID that will not collide with "real"
 // node IDs.
 func (n *Nodestore) generateStagingID() NodeID {
