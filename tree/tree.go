@@ -110,24 +110,24 @@ func (t *Tree) String() string {
 // The blob of data should be a well-formed MCAP file, and it must fit into
 // exactly one leaf node. The caller is responsible for sectioning off MCAP
 // files based on the configuration of the tree.
-func (t *Tree) Insert(start uint64, data []byte) (err error) {
+func (t *Tree) Insert(start uint64, data []byte) (nodeID nodestore.NodeID, err error) {
 	currentRootID := t.rootmap[t.version]
 	root, err := t.cloneInnerNode(currentRootID)
 	if err != nil {
-		return err
+		return nodeID, err
 	}
 	version := t.version
 	version++
 	rootID, err := t.stageNode(root)
 	if err != nil {
-		return err
+		return nodeID, err
 	}
 	nodes := make([]nodestore.NodeID, 0, t.depth)
 	nodes = append(nodes, rootID)
 	current := root
 	for i := 0; i < t.depth-1; i++ {
 		if current, err = t.descend(&nodes, current, start, version); err != nil {
-			return err
+			return nodeID, err
 		}
 	}
 	// current is now the final parent
@@ -135,24 +135,25 @@ func (t *Tree) Insert(start uint64, data []byte) (err error) {
 	var node *nodestore.LeafNode
 	if existing := current.Children[bucket]; existing != nil {
 		if node, err = t.cloneLeafNode(existing.ID, data); err != nil {
-			return err
+			return nodeID, err
 		}
 	} else {
 		node = nodestore.NewLeafNode(data)
 	}
-	nodeID, err := t.stageNode(node)
+	stagedID, err := t.stageNode(node)
 	if err != nil {
-		return err
+		return nodeID, err
 	}
-	nodes = append(nodes, nodeID)
-	current.PlaceChild(bucket, nodeID, version)
+	nodes = append(nodes, stagedID)
+	current.PlaceChild(bucket, stagedID, version)
 	nodeIDs, err := t.ns.Flush(nodes...)
 	if err != nil {
-		return fmt.Errorf("failed to flush nodes: %w", err)
+		return nodeID, fmt.Errorf("failed to flush nodes: %w", err)
 	}
-	t.rootmap[version] = nodeIDs[0]
+	nodeID = nodeIDs[0]
+	t.rootmap[version] = nodeID
 	t.version = version
-	return nil
+	return nodeID, nil
 }
 
 // addRoot adds a root node to the tree for the given version.

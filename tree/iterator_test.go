@@ -52,8 +52,10 @@ func TestTreeIterator(t *testing.T) {
 		require.NoError(t, w.Close())
 		offset += 64
 	}
-	require.NoError(t, tr.Insert(0, buf1.Bytes()))
-	require.NoError(t, tr.Insert(64*1e9, buf2.Bytes()))
+	_, err = tr.Insert(0, buf1.Bytes())
+	require.NoError(t, err)
+	_, err = tr.Insert(64*1e9, buf2.Bytes())
+	require.NoError(t, err)
 	it, err := tree.NewTreeIterator(tr, 0, 0, 128)
 	require.NoError(t, err)
 	count := 0

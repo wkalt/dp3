@@ -59,7 +59,7 @@ func (w *Writer) flush() error {
 	if err := w.w.Close(); err != nil {
 		return fmt.Errorf("failed to close mcap writer: %w", err)
 	}
-	if err := w.t.Insert(w.lower*1e9, w.buf.Bytes()); err != nil {
+	if _, err := w.t.Insert(w.lower*1e9, w.buf.Bytes()); err != nil {
 		return fmt.Errorf("failed to insert leaf at time %d: %w", w.lower, err)
 	}
 	w.buf.Reset()
