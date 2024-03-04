@@ -1,12 +1,15 @@
 package nodestore
 
 type WALEntry struct {
-	ID    string
-	Paths []NodeID
+	StreamID string
+	NodeID   NodeID
+	Version  uint64
+	Data     []byte
 }
 
 type WAL interface {
-	Put(string, []NodeID) error
-	Get(string) ([]NodeID, error)
+	Put(WALEntry) error
+	GetStream(streamID string) ([][]NodeID, error)
+	Get(nodeID NodeID) ([]byte, error)
 	List() ([]WALEntry, error)
 }

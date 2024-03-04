@@ -94,9 +94,23 @@ func (n *Nodestore) ListWAL() ([]WALEntry, error) {
 	return n.wal.List()
 }
 
-func (n *Nodestore) WALFlush(walid string, ids []NodeID) error {
-	if err := n.wal.Put(walid, ids); err != nil {
-		return fmt.Errorf("failed to write WAL: %w", err)
+func (n *Nodestore) WALFlush(walid string, version uint64, ids []NodeID) error {
+	for _, id := range ids {
+		node, ok := n.GetStagedNode(id)
+		if !ok {
+			return fmt.Errorf("failed to get staged node")
+		}
+		bytes := node.ToBytes()
+		entry := WALEntry{
+			StreamID: walid,
+			NodeID:   id,
+			Version:  version,
+			Data:     bytes,
+		}
+		if err := n.wal.Put(entry); err != nil {
+			return fmt.Errorf("failed to write WAL: %w", err)
+		} // todo: make transactional
+		delete(n.staging, id)
 	}
 	return nil
 }
