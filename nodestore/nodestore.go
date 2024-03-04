@@ -2,6 +2,7 @@ package nodestore
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
@@ -70,11 +71,11 @@ func (n *Nodestore) bytesToNode(value []byte) (Node, error) {
 }
 
 // Get retrieves a node from the store. If the node is not in the cache, it will be loaded from the store.
-func (n *Nodestore) Get(id NodeID) (Node, error) {
+func (n *Nodestore) Get(ctx context.Context, id NodeID) (Node, error) {
 	if value, ok := n.cache.Get(id); ok {
 		return value, nil
 	}
-	data, err := n.store.GetRange(id.OID(), id.Offset(), id.Length())
+	data, err := n.store.GetRange(ctx, id.OID(), id.Offset(), id.Length())
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotFound) {
 			return nil, ErrNodeNotFound
@@ -128,7 +129,7 @@ func generateNodeID(oid objectID, offset int, length int) NodeID {
 // assumed to be in root -> leaf order, such that the reversed list will capture
 // dependency ordering. All nodes will be removed from staging under any exit
 // condition.
-func (n *Nodestore) Flush(ids ...NodeID) ([]NodeID, error) {
+func (n *Nodestore) Flush(ctx context.Context, ids ...NodeID) ([]NodeID, error) {
 	defer func() {
 		n.mtx.Lock()
 		for _, id := range ids {
@@ -165,7 +166,7 @@ func (n *Nodestore) Flush(ids ...NodeID) ([]NodeID, error) {
 		processed[id] = nodeID
 		newIDs[i] = nodeID
 	}
-	if err := n.store.Put(oid.String(), buf.Bytes()); err != nil {
+	if err := n.store.Put(ctx, oid.String(), buf.Bytes()); err != nil {
 		return nil, fmt.Errorf("failed to put object: %w", err)
 	}
 	slices.Reverse(newIDs)
@@ -189,7 +190,7 @@ func NewNodestore(
 
 // NewRoot creates a new root node with the given depth and range, and persists
 // it to storage, returning the ID.
-func (ns *Nodestore) NewRoot(start, end uint64, leafWidthSecs int, bfactor int) (nodeID NodeID, err error) {
+func (ns *Nodestore) NewRoot(ctx context.Context, start, end uint64, leafWidthSecs int, bfactor int) (nodeID NodeID, err error) {
 	minspan := end - start
 	depth := uint8(0)
 	coverage := uint64(leafWidthSecs)
@@ -202,7 +203,7 @@ func (ns *Nodestore) NewRoot(start, end uint64, leafWidthSecs int, bfactor int) 
 	if err != nil {
 		return nodeID, fmt.Errorf("failed to stage root: %w", err)
 	}
-	ids, err := ns.Flush(tmpid)
+	ids, err := ns.Flush(ctx, tmpid)
 	if err != nil {
 		return nodeID, fmt.Errorf("failed to flush root: %w", err)
 	}

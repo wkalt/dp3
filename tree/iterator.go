@@ -1,6 +1,7 @@
 package tree
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -21,13 +22,13 @@ type Iterator struct {
 	ns          *nodestore.Nodestore
 }
 
-func (ti *Iterator) initialize(rootID nodestore.NodeID) error {
+func (ti *Iterator) initialize(ctx context.Context, rootID nodestore.NodeID) error {
 	var stack []nodestore.NodeID
 	stack = append(stack, rootID)
 	for len(stack) > 0 {
 		nodeID := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
-		node, err := ti.ns.Get(nodeID)
+		node, err := ti.ns.Get(ctx, nodeID)
 		if err != nil {
 			return fmt.Errorf("failed to get node: %w", err)
 		}
@@ -54,9 +55,9 @@ func (ti *Iterator) initialize(rootID nodestore.NodeID) error {
 	return nil
 }
 
-func (ti *Iterator) openNextLeaf() error {
+func (ti *Iterator) openNextLeaf(ctx context.Context) error {
 	leafID := ti.leafIDs[ti.nextLeaf]
-	node, err := ti.ns.Get(leafID)
+	node, err := ti.ns.Get(ctx, leafID)
 	if err != nil {
 		return fmt.Errorf("failed to get node: %w", err)
 	}
@@ -82,10 +83,10 @@ func (ti *Iterator) More() bool {
 }
 
 // Next returns the next element in the iteration.
-func (ti *Iterator) Next() (*mcap.Schema, *mcap.Channel, *mcap.Message, error) {
+func (ti *Iterator) Next(ctx context.Context) (*mcap.Schema, *mcap.Channel, *mcap.Message, error) {
 	for ti.nextLeaf < len(ti.leafIDs) {
 		if ti.msgIterator == nil {
-			if err := ti.openNextLeaf(); err != nil {
+			if err := ti.openNextLeaf(ctx); err != nil {
 				return nil, nil, nil, err
 			}
 		}
@@ -107,13 +108,14 @@ func (ti *Iterator) Next() (*mcap.Schema, *mcap.Channel, *mcap.Message, error) {
 
 // NewTreeIterator returns a new iterator over the given tree.
 func NewTreeIterator(
+	ctx context.Context,
 	ns *nodestore.Nodestore,
 	rootID nodestore.NodeID,
 	version, start uint64,
 	end uint64,
 ) (*Iterator, error) {
 	it := &Iterator{start: start, end: end, ns: ns}
-	if err := it.initialize(rootID); err != nil {
+	if err := it.initialize(ctx, rootID); err != nil {
 		return nil, err
 	}
 	return it, nil

@@ -1,6 +1,7 @@
 package tree
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -24,8 +25,8 @@ type TreeStats struct {
 	End             time.Time
 }
 
-func Stats(ns *nodestore.Nodestore, rootID nodestore.NodeID) (TreeStats, error) {
-	root, err := ns.Get(rootID)
+func Stats(ctx context.Context, ns *nodestore.Nodestore, rootID nodestore.NodeID) (TreeStats, error) {
+	root, err := ns.Get(ctx, rootID)
 	if err != nil {
 		return TreeStats{}, err
 	}
@@ -48,13 +49,14 @@ func Stats(ns *nodestore.Nodestore, rootID nodestore.NodeID) (TreeStats, error) 
 // exactly one leaf node. The caller is responsible for sectioning off MCAP
 // files based on the configuration of the tree.
 func Insert(
+	ctx context.Context,
 	ns *nodestore.Nodestore,
 	nodeID nodestore.NodeID,
 	version uint64,
 	start uint64,
 	data []byte,
 ) (rootID nodestore.NodeID, path []nodestore.NodeID, err error) {
-	root, err := cloneInnerNode(ns, nodeID)
+	root, err := cloneInnerNode(ctx, ns, nodeID)
 	if err != nil {
 		return rootID, nil, err
 	}
@@ -67,7 +69,7 @@ func Insert(
 	current := root
 	depth := root.Depth
 	for current.Depth > 1 {
-		if current, err = descend(ns, &nodes, current, start, version); err != nil {
+		if current, err = descend(ctx, ns, &nodes, current, start, version); err != nil {
 			return rootID, nil, err
 		}
 		depth--
@@ -76,7 +78,7 @@ func Insert(
 	bucket := bucket(start, current)
 	var node *nodestore.LeafNode
 	if existing := current.Children[bucket]; existing != nil {
-		if node, err = cloneLeafNode(ns, existing.ID, data); err != nil {
+		if node, err = cloneLeafNode(ctx, ns, existing.ID, data); err != nil {
 			return rootID, nil, err
 		}
 	} else {
@@ -88,7 +90,7 @@ func Insert(
 	}
 	nodes = append(nodes, stagedID)
 	current.PlaceChild(bucket, stagedID, version)
-	nodeIDs, err := ns.Flush(nodes...)
+	nodeIDs, err := ns.Flush(ctx, nodes...)
 	if err != nil {
 		return rootID, nil, fmt.Errorf("failed to flush nodes: %w", err)
 	}
@@ -108,8 +110,8 @@ func bucket(nanos uint64, n *nodestore.InnerNode) uint64 {
 
 // cloneInnerNode returns a new inner node with the same contents as the node
 // with the given id, but with the given version.
-func cloneInnerNode(ns *nodestore.Nodestore, id nodestore.NodeID) (*nodestore.InnerNode, error) {
-	node, err := ns.Get(id)
+func cloneInnerNode(ctx context.Context, ns *nodestore.Nodestore, id nodestore.NodeID) (*nodestore.InnerNode, error) {
+	node, err := ns.Get(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to clone inner node %d: %w", id, err)
 	}
@@ -124,8 +126,8 @@ func cloneInnerNode(ns *nodestore.Nodestore, id nodestore.NodeID) (*nodestore.In
 
 // cloneLeafNode returns a new leaf node with contents equal to the existing
 // leaf node at the provide address, merged with the provided data.
-func cloneLeafNode(ns *nodestore.Nodestore, id nodestore.NodeID, data []byte) (*nodestore.LeafNode, error) {
-	node, err := ns.Get(id)
+func cloneLeafNode(ctx context.Context, ns *nodestore.Nodestore, id nodestore.NodeID, data []byte) (*nodestore.LeafNode, error) {
+	node, err := ns.Get(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to clone leaf node %d: %w", id, err)
 	}
@@ -141,8 +143,8 @@ func cloneLeafNode(ns *nodestore.Nodestore, id nodestore.NodeID, data []byte) (*
 }
 
 // root returns the root node of the tree.
-func root(ns *nodestore.Nodestore, rootID nodestore.NodeID) (*nodestore.InnerNode, error) {
-	root, err := ns.Get(rootID)
+func root(ctx context.Context, ns *nodestore.Nodestore, rootID nodestore.NodeID) (*nodestore.InnerNode, error) {
+	root, err := ns.Get(ctx, rootID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get root: %w", err)
 	}
@@ -164,6 +166,7 @@ func stageNode(ns *nodestore.Nodestore, node nodestore.Node) (nodestore.NodeID, 
 
 // descend descends the tree to the node that should contain the given timestamp.
 func descend(
+	ctx context.Context,
 	ns *nodestore.Nodestore,
 	nodeIDs *[]nodestore.NodeID,
 	current *nodestore.InnerNode,
@@ -172,7 +175,7 @@ func descend(
 ) (node *nodestore.InnerNode, err error) {
 	bucket := bucket(timestamp, current)
 	if existing := current.Children[bucket]; existing != nil {
-		node, err = cloneInnerNode(ns, existing.ID)
+		node, err = cloneInnerNode(ctx, ns, existing.ID)
 		if err != nil {
 			return nil, err
 		}
@@ -196,8 +199,8 @@ func descend(
 
 // Bounds returns the time bounds of the leaf node that contains the given
 // nanosecond timestamp. The units of the return value are seconds.
-func Bounds(ns *nodestore.Nodestore, rootID nodestore.NodeID, ts uint64) ([]uint64, error) {
-	root, err := root(ns, rootID)
+func Bounds(ctx context.Context, ns *nodestore.Nodestore, rootID nodestore.NodeID, ts uint64) ([]uint64, error) {
+	root, err := root(ctx, ns, rootID)
 	if err != nil {
 		return nil, err
 	}
@@ -210,9 +213,9 @@ func Bounds(ns *nodestore.Nodestore, rootID nodestore.NodeID, ts uint64) ([]uint
 	return []uint64{root.Start + width*bucket, root.Start + width*(bucket+1)}, nil
 }
 
-func PrintTree(ns *nodestore.Nodestore, nodeID nodestore.NodeID, version uint64) (string, error) {
+func PrintTree(ctx context.Context, ns *nodestore.Nodestore, nodeID nodestore.NodeID, version uint64) (string, error) {
 	sb := &strings.Builder{}
-	node, err := ns.Get(nodeID)
+	node, err := ns.Get(ctx, nodeID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get node %d: %w", nodeID, err)
 	}
@@ -224,11 +227,11 @@ func PrintTree(ns *nodestore.Nodestore, nodeID nodestore.NodeID, version uint64)
 			if child == nil {
 				continue
 			}
-			childstr, err := PrintTree(ns, child.ID, child.Version)
+			childstr, err := PrintTree(ctx, ns, child.ID, child.Version)
 			if err != nil {
 				return "", err
 			}
-			childNode, err := ns.Get(child.ID)
+			childNode, err := ns.Get(ctx, child.ID)
 			if err != nil {
 				return "", fmt.Errorf("failed to get node %d: %w", child.ID, err)
 			}

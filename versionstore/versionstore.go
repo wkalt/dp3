@@ -1,5 +1,7 @@
 package versionstore
 
+import "context"
+
 type Versionstore interface {
-	Next() (uint64, error)
+	Next(context.Context) (uint64, error)
 }

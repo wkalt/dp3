@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"sync"
 )
 
@@ -11,7 +12,7 @@ type MemStore struct {
 }
 
 // Put stores an object in the store.
-func (m *MemStore) Put(id string, data []byte) error {
+func (m *MemStore) Put(_ context.Context, id string, data []byte) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.data[id] = data
@@ -19,7 +20,7 @@ func (m *MemStore) Put(id string, data []byte) error {
 }
 
 // Get retrieves an object from the store.
-func (m *MemStore) GetRange(id string, offset int, length int) ([]byte, error) {
+func (m *MemStore) GetRange(_ context.Context, id string, offset int, length int) ([]byte, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 	data, ok := m.data[id]
@@ -30,7 +31,7 @@ func (m *MemStore) GetRange(id string, offset int, length int) ([]byte, error) {
 }
 
 // Delete removes an object from the store.
-func (m *MemStore) Delete(id string) error {
+func (m *MemStore) Delete(_ context.Context, id string) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	delete(m.data, id)

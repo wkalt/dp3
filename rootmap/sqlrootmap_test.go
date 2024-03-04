@@ -1,6 +1,7 @@
 package rootmap_test
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"testing"
@@ -13,6 +14,7 @@ import (
 )
 
 func TestSQLRootmap(t *testing.T) {
+	ctx := context.Background()
 	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
 	defer db.Close()
@@ -23,10 +25,10 @@ func TestSQLRootmap(t *testing.T) {
 	t.Run("put", func(t *testing.T) {
 		streamID := uuid.New().String()
 		expected := randNodeID()
-		err := rm.Put(streamID, 10, expected)
+		err := rm.Put(ctx, streamID, 10, expected)
 		require.NoError(t, err)
 
-		nodeID, err := rm.Get(streamID, 10)
+		nodeID, err := rm.Get(ctx, streamID, 10)
 		require.NoError(t, err)
 		require.Equal(t, expected, nodeID)
 	})
@@ -34,14 +36,14 @@ func TestSQLRootmap(t *testing.T) {
 	t.Run("get latest", func(t *testing.T) {
 		streamID := uuid.New().String()
 		node1 := randNodeID()
-		err := rm.Put(streamID, 10, node1)
+		err := rm.Put(ctx, streamID, 10, node1)
 		require.NoError(t, err)
 
 		node2 := randNodeID()
-		err = rm.Put(streamID, 20, node2)
+		err = rm.Put(ctx, streamID, 20, node2)
 		require.NoError(t, err)
 
-		nodeID, err := rm.GetLatest(streamID)
+		nodeID, err := rm.GetLatest(ctx, streamID)
 		require.NoError(t, err)
 		require.Equal(t, node2, nodeID)
 	})

@@ -2,6 +2,7 @@ package tree_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"testing"
@@ -17,10 +18,11 @@ import (
 )
 
 func TestTreeIterator(t *testing.T) {
+	ctx := context.Background()
 	store := storage.NewMemStore()
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1e6)
 	ns := nodestore.NewNodestore(store, cache)
-	rootID, err := ns.NewRoot(0, util.Pow(uint64(64), 3), 64, 64)
+	rootID, err := ns.NewRoot(ctx, 0, util.Pow(uint64(64), 3), 64, 64)
 	require.NoError(t, err)
 
 	// create two mcap files and stick them into the tree
@@ -53,17 +55,17 @@ func TestTreeIterator(t *testing.T) {
 		offset += 64
 	}
 	version := uint64(1)
-	rootID, _, err = tree.Insert(ns, rootID, version, 0, buf1.Bytes())
+	rootID, _, err = tree.Insert(ctx, ns, rootID, version, 0, buf1.Bytes())
 	require.NoError(t, err)
 	version++
-	rootID, _, err = tree.Insert(ns, rootID, version, 64*1e9, buf2.Bytes())
+	rootID, _, err = tree.Insert(ctx, ns, rootID, version, 64*1e9, buf2.Bytes())
 	require.NoError(t, err)
 	version++
-	it, err := tree.NewTreeIterator(ns, rootID, 0, 0, 128)
+	it, err := tree.NewTreeIterator(ctx, ns, rootID, 0, 0, 128)
 	require.NoError(t, err)
 	count := 0
 	for it.More() {
-		schema, channel, message, err := it.Next()
+		schema, channel, message, err := it.Next(ctx)
 		if errors.Is(err, io.EOF) {
 			break
 		}

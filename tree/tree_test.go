@@ -2,6 +2,7 @@ package tree_test
 
 import (
 	"bytes"
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -14,6 +15,7 @@ import (
 )
 
 func TestTreeInsert(t *testing.T) {
+	ctx := context.Background()
 	cases := []struct {
 		assertion string
 		depth     uint8
@@ -56,17 +58,17 @@ func TestTreeInsert(t *testing.T) {
 			store := storage.NewMemStore()
 			cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1e6)
 			ns := nodestore.NewNodestore(store, cache)
-			rootID, err := ns.NewRoot(0, util.Pow(uint64(64), int(c.depth)+1), 64, 64)
+			rootID, err := ns.NewRoot(ctx, 0, util.Pow(uint64(64), int(c.depth)+1), 64, 64)
 			require.NoError(t, err)
 			version := uint64(1)
 			for _, time := range c.times {
 				buf := &bytes.Buffer{}
 				mcap.WriteFile(t, buf, []uint64{time})
-				rootID, _, err = tree.Insert(ns, rootID, version, time*1e9, buf.Bytes())
+				rootID, _, err = tree.Insert(ctx, ns, rootID, version, time*1e9, buf.Bytes())
 				require.NoError(t, err)
 				version++
 			}
-			repr, err := tree.PrintTree(ns, rootID, version-1)
+			repr, err := tree.PrintTree(ctx, ns, rootID, version-1)
 			require.NoError(t, err)
 			assert.Equal(t, c.repr, repr)
 		})

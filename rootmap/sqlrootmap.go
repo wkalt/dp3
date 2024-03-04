@@ -1,6 +1,7 @@
 package rootmap
 
 import (
+	"context"
 	"database/sql"
 	"encoding/hex"
 	"fmt"
@@ -41,8 +42,8 @@ func (rm *sqlRootmap) initialize() error {
 	return nil
 }
 
-func (rm *sqlRootmap) Put(streamID string, version uint64, nodeID nodestore.NodeID) error {
-	_, err := rm.db.Exec(`
+func (rm *sqlRootmap) Put(ctx context.Context, streamID string, version uint64, nodeID nodestore.NodeID) error {
+	_, err := rm.db.ExecContext(ctx, `
 	insert into rootmap (stream_id, version, node_id) values ($1, $2, $3)`,
 		streamID, version, hex.EncodeToString(nodeID[:]),
 	)
@@ -52,9 +53,9 @@ func (rm *sqlRootmap) Put(streamID string, version uint64, nodeID nodestore.Node
 	return nil
 }
 
-func (rm *sqlRootmap) GetLatest(streamID string) (nodestore.NodeID, error) {
+func (rm *sqlRootmap) GetLatest(ctx context.Context, streamID string) (nodestore.NodeID, error) {
 	var nodeID string
-	err := rm.db.QueryRow(`
+	err := rm.db.QueryRowContext(ctx, `
 	select node_id from rootmap where stream_id = $1 order by version desc limit 1`,
 		streamID,
 	).Scan(&nodeID)
@@ -68,9 +69,9 @@ func (rm *sqlRootmap) GetLatest(streamID string) (nodestore.NodeID, error) {
 	return nodestore.NodeID(decoded), nil
 }
 
-func (rm *sqlRootmap) Get(streamID string, version uint64) (nodestore.NodeID, error) {
+func (rm *sqlRootmap) Get(ctx context.Context, streamID string, version uint64) (nodestore.NodeID, error) {
 	var nodeID string
-	err := rm.db.QueryRow(`
+	err := rm.db.QueryRowContext(ctx, `
 	select node_id from rootmap where stream_id = $1 and version = $2`,
 		streamID, version,
 	).Scan(&nodeID)
