@@ -43,19 +43,6 @@ func Stats(ns *nodestore.Nodestore, rootID nodestore.NodeID) (TreeStats, error) 
 	}, nil
 }
 
-func flushOne(ns *nodestore.Nodestore, n nodestore.Node) (nodeID nodestore.NodeID, err error) {
-	id, err := ns.Stage(n)
-	if err != nil {
-		return nodeID, fmt.Errorf("failed to stage node: %w", err)
-	}
-	nodeIDs, err := ns.Flush(id)
-	if err != nil {
-		return nodeID, fmt.Errorf("failed to flush node: %w", err)
-	}
-	nodeID = nodeIDs[0]
-	return nodeID, nil
-}
-
 // Insert the slice of data into the node corresponding to the given start time.
 // The blob of data should be a well-formed MCAP file, and it must fit into
 // exactly one leaf node. The caller is responsible for sectioning off MCAP

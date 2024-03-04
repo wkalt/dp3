@@ -21,7 +21,7 @@ func TestSQLRootmap(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("put", func(t *testing.T) {
-		streamID := uuid.New()
+		streamID := uuid.New().String()
 		expected := randNodeID()
 		err := rm.Put(streamID, 10, expected)
 		require.NoError(t, err)
@@ -32,7 +32,7 @@ func TestSQLRootmap(t *testing.T) {
 	})
 
 	t.Run("get latest", func(t *testing.T) {
-		streamID := uuid.New()
+		streamID := uuid.New().String()
 		node1 := randNodeID()
 		err := rm.Put(streamID, 10, node1)
 		require.NoError(t, err)

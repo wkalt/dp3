@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/google/uuid"
 	"github.com/wkalt/dp3/nodestore"
 )
 
@@ -42,10 +41,10 @@ func (rm *sqlRootmap) initialize() error {
 	return nil
 }
 
-func (rm *sqlRootmap) Put(streamID uuid.UUID, version uint64, nodeID nodestore.NodeID) error {
+func (rm *sqlRootmap) Put(streamID string, version uint64, nodeID nodestore.NodeID) error {
 	_, err := rm.db.Exec(`
 	insert into rootmap (stream_id, version, node_id) values ($1, $2, $3)`,
-		streamID.String(), version, hex.EncodeToString(nodeID[:]),
+		streamID, version, hex.EncodeToString(nodeID[:]),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to store to rootmap: %w", err)
@@ -53,11 +52,11 @@ func (rm *sqlRootmap) Put(streamID uuid.UUID, version uint64, nodeID nodestore.N
 	return nil
 }
 
-func (rm *sqlRootmap) GetLatest(streamID uuid.UUID) (nodestore.NodeID, error) {
+func (rm *sqlRootmap) GetLatest(streamID string) (nodestore.NodeID, error) {
 	var nodeID string
 	err := rm.db.QueryRow(`
 	select node_id from rootmap where stream_id = $1 order by version desc limit 1`,
-		streamID.String(),
+		streamID,
 	).Scan(&nodeID)
 	if err != nil {
 		return nodestore.NodeID{}, fmt.Errorf("failed to read from rootmap: %w", err)
@@ -69,11 +68,11 @@ func (rm *sqlRootmap) GetLatest(streamID uuid.UUID) (nodestore.NodeID, error) {
 	return nodestore.NodeID(decoded), nil
 }
 
-func (rm *sqlRootmap) Get(streamID uuid.UUID, version uint64) (nodestore.NodeID, error) {
+func (rm *sqlRootmap) Get(streamID string, version uint64) (nodestore.NodeID, error) {
 	var nodeID string
 	err := rm.db.QueryRow(`
 	select node_id from rootmap where stream_id = $1 and version = $2`,
-		streamID.String(), version,
+		streamID, version,
 	).Scan(&nodeID)
 	if err != nil {
 		return nodestore.NodeID{}, fmt.Errorf("failed to read from rootmap: %w", err)

@@ -26,6 +26,8 @@ type Nodestore struct {
 
 	staging map[NodeID]Node
 	mtx     *sync.RWMutex
+
+	wal WAL
 }
 
 // generateStagingID generates a temporary ID that will not collide with "real"
@@ -85,6 +87,17 @@ func (n *Nodestore) Get(id NodeID) (Node, error) {
 	}
 	n.cache.Put(id, node)
 	return node, nil
+}
+
+func (n *Nodestore) ListWAL() ([]WALEntry, error) {
+	return n.wal.List()
+}
+
+func (n *Nodestore) WALFlush(walid string, ids []NodeID) error {
+	if err := n.wal.Put(walid, ids); err != nil {
+		return fmt.Errorf("failed to write WAL: %w", err)
+	}
+	return nil
 }
 
 // Stage a node in the staging map, returning an ID that can be used later.
