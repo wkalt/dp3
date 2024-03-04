@@ -1,12 +1,16 @@
 package tree
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
+	fmcap "github.com/foxglove/mcap/go/mcap"
+	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
 )
 
@@ -213,11 +217,120 @@ func Bounds(ctx context.Context, ns *nodestore.Nodestore, rootID nodestore.NodeI
 	return []uint64{root.Start + width*bucket, root.Start + width*(bucket+1)}, nil
 }
 
+func mergeLeaves(ctx context.Context, ns *nodestore.Nodestore, nodeIDs []nodestore.NodeID) (nodestore.NodeID, error) {
+	if len(nodeIDs) == 1 {
+		return nodeIDs[0], nil
+	}
+	iterators := make([]fmcap.MessageIterator, len(nodeIDs))
+	var ok bool
+	var err error
+	var leaf nodestore.Node
+	for i, id := range nodeIDs {
+		if leaf, ok = ns.GetStagedNode(id); !ok {
+			if leaf, err = ns.Get(ctx, id); err != nil {
+				return nodestore.NodeID{}, fmt.Errorf("failed to get leaf %d", id)
+			}
+		}
+		reader, err := fmcap.NewReader(leaf.(*nodestore.LeafNode).Data())
+		if err != nil {
+			return nodestore.NodeID{}, fmt.Errorf("failed to create reader: %w", err)
+		}
+		defer reader.Close()
+		iterators[i], err = reader.Messages()
+		if err != nil {
+			return nodestore.NodeID{}, fmt.Errorf("failed to create iterator: %w", err)
+		}
+	}
+	buf := &bytes.Buffer{}
+	if err := mcap.Nmerge(buf, iterators...); err != nil {
+		return nodestore.NodeID{}, fmt.Errorf("failed to merge leaves: %w", err)
+	}
+	newLeaf := nodestore.NewLeafNode(buf.Bytes())
+	return stageNode(ns, newLeaf)
+}
+
+// NodeMerge does an N-way tree merge, returning a "path" from the root to leaf
+// of the new tree. All nodes are from the same level of the tree, and can thus
+// be assumed to have the same type and same number of children.
+func NodeMerge(ctx context.Context, ns *nodestore.Nodestore, version uint64, nodeIDs []nodestore.NodeID) ([]nodestore.NodeID, error) {
+	if len(nodeIDs) == 0 {
+		return nil, errors.New("no nodes to merge")
+	}
+	var err error
+	var ok bool
+	nodes := make([]nodestore.Node, len(nodeIDs))
+	for i, id := range nodeIDs {
+		if nodes[i], ok = ns.GetStagedNode(id); !ok {
+			if nodes[i], err = ns.Get(ctx, id); err != nil {
+				return nil, fmt.Errorf("failed to get node %d", id)
+			}
+		}
+	}
+	switch node := (nodes[0]).(type) {
+	case *nodestore.InnerNode:
+		conflicts := []int{}
+		for i, outer := range node.Children {
+			var conflicted bool
+			for _, node := range nodes {
+				inner := (node).(*nodestore.InnerNode).Children[i]
+				if outer == nil && inner != nil ||
+					outer != nil && inner == nil ||
+					outer != nil && inner != nil && outer.ID != inner.ID {
+					conflicted = true
+				}
+				if conflicted {
+					conflicts = append(conflicts, i)
+				}
+			}
+		}
+		newInner := nodestore.NewInnerNode(node.Depth, node.Start, node.End, len(node.Children))
+		newID, err := ns.Stage(newInner)
+		if err != nil {
+			return nil, err
+		}
+		result := []nodestore.NodeID{newID}
+		for _, conflict := range conflicts {
+			children := []nodestore.NodeID{} // set of not-null children mapping to conflicts
+			for _, node := range nodes {
+				if inner := (node).(*nodestore.InnerNode).Children[conflict]; inner != nil {
+					children = append(children, inner.ID)
+				}
+			}
+			merged, err := NodeMerge(ctx, ns, version, children) // merged child for this conflict
+			if err != nil {
+				return nil, err
+			}
+			newInner.Children[conflict] = &nodestore.Child{ID: merged[0], Version: version}
+			result = append(result, merged...)
+		}
+
+		for i := range node.Children {
+			if !slices.Contains(conflicts, i) {
+				newInner.Children[i] = node.Children[i]
+			}
+		}
+		return result, nil
+	case *nodestore.LeafNode:
+		merged, err := mergeLeaves(ctx, ns, nodeIDs)
+		if err != nil {
+			return nil, err
+		}
+		return []nodestore.NodeID{merged}, nil
+	default:
+		return nil, fmt.Errorf("unrecognized node type: %T", node)
+	}
+}
+
 func PrintTree(ctx context.Context, ns *nodestore.Nodestore, nodeID nodestore.NodeID, version uint64) (string, error) {
 	sb := &strings.Builder{}
-	node, err := ns.Get(ctx, nodeID)
-	if err != nil {
-		return "", fmt.Errorf("failed to get node %d: %w", nodeID, err)
+	var node nodestore.Node
+	var ok bool
+	var err error
+	if node, ok = ns.GetStagedNode(nodeID); !ok {
+		node, err = ns.Get(ctx, nodeID)
+		if err != nil {
+			return "", fmt.Errorf("failed to get node %d: %w", nodeID, err)
+		}
 	}
 	switch node := node.(type) {
 	case *nodestore.InnerNode:
@@ -231,9 +344,13 @@ func PrintTree(ctx context.Context, ns *nodestore.Nodestore, nodeID nodestore.No
 			if err != nil {
 				return "", err
 			}
-			childNode, err := ns.Get(ctx, child.ID)
-			if err != nil {
-				return "", fmt.Errorf("failed to get node %d: %w", child.ID, err)
+			var childNode nodestore.Node
+			var ok bool
+			if childNode, ok = ns.GetStagedNode(child.ID); !ok {
+				childNode, err = ns.Get(ctx, child.ID)
+				if err != nil {
+					return "", fmt.Errorf("failed to get node %d: %w", child.ID, err)
+				}
 			}
 			if cnode, ok := childNode.(*nodestore.LeafNode); ok {
 				start := node.Start + uint64(i)*span/uint64(len(node.Children))
@@ -245,7 +362,7 @@ func PrintTree(ctx context.Context, ns *nodestore.Nodestore, nodeID nodestore.No
 		}
 		sb.WriteString("]")
 	case *nodestore.LeafNode:
-		sb.WriteString(fmt.Sprintf("%s", node))
+		sb.WriteString(node.String())
 	}
 	return sb.String(), nil
 }

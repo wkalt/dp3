@@ -14,6 +14,88 @@ import (
 	"github.com/wkalt/dp3/util"
 )
 
+func TestNodeMerge(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		assertion string
+		depth     uint8
+		left      []uint64
+		right     []uint64
+		repr      string
+	}{
+		{
+			"empty trees",
+			1,
+			[]uint64{},
+			[]uint64{},
+			"[0-4096:0]",
+		},
+		{
+			"same leaf bucket populated",
+			1,
+			[]uint64{10},
+			[]uint64{12},
+			"[0-4096:2 [0-64:3 [leaf 634]]]",
+		},
+		{
+			"new write conflicts one bucket and inserts one new one",
+			1,
+			[]uint64{10},
+			[]uint64{12, 70},
+			"[0-4096:3 [0-64:4 [leaf 634]] [64-128:4 [leaf 542]]]",
+		},
+		{
+			"no conflicts",
+			1,
+			[]uint64{10},
+			[]uint64{70},
+			"[0-4096:2 [0-64:3 [leaf 542]] [64-128:3 [leaf 542]]]",
+		},
+		{
+			"depth 2",
+			2,
+			[]uint64{10},
+			[]uint64{12, 70},
+			"[0-262144:3 [0-4096:4 [0-64:4 [leaf 634]] [64-128:4 [leaf 542]]]]",
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			store := storage.NewMemStore()
+			cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1e6)
+			ns := nodestore.NewNodestore(store, cache)
+			leftID, err := ns.NewRoot(ctx, 0, util.Pow(uint64(64), int(c.depth)+1), 64, 64)
+			require.NoError(t, err)
+			rightID, err := ns.NewRoot(ctx, 0, util.Pow(uint64(64), int(c.depth)+1), 64, 64)
+			require.NoError(t, err)
+			version := uint64(1)
+			for _, time := range c.left {
+				buf := &bytes.Buffer{}
+				mcap.WriteFile(t, buf, []uint64{time})
+				leftID, _, err = tree.Insert(ctx, ns, leftID, version, time*1e9, buf.Bytes())
+				require.NoError(t, err)
+				version++
+			}
+			for _, time := range c.right {
+				buf := &bytes.Buffer{}
+				mcap.WriteFile(t, buf, []uint64{time})
+				rightID, _, err = tree.Insert(ctx, ns, rightID, version, time*1e9, buf.Bytes())
+				require.NoError(t, err)
+				version++
+			}
+
+			merged, err := tree.NodeMerge(ctx, ns, version, []nodestore.NodeID{leftID, rightID})
+			require.NoError(t, err)
+			require.Positive(t, len(merged))
+
+			repr, err := tree.PrintTree(ctx, ns, merged[0], version-1)
+			require.NoError(t, err)
+			assert.Equal(t, c.repr, repr)
+		})
+	}
+}
+
 func TestTreeInsert(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {

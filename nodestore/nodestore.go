@@ -110,7 +110,7 @@ func (n *Nodestore) Stage(node Node) (NodeID, error) {
 	return id, nil
 }
 
-func (n *Nodestore) getStagedNode(id NodeID) (Node, bool) {
+func (n *Nodestore) GetStagedNode(id NodeID) (Node, bool) {
 	n.mtx.RLock()
 	defer n.mtx.RUnlock()
 	node, ok := n.staging[id]
@@ -144,7 +144,7 @@ func (n *Nodestore) Flush(ctx context.Context, ids ...NodeID) ([]NodeID, error) 
 	processed := make(map[NodeID]NodeID)
 	oid := n.generateObjectID()
 	for i, id := range ids {
-		node, ok := n.getStagedNode(id)
+		node, ok := n.GetStagedNode(id)
 		if !ok {
 			return nil, ErrNodeNotStaged
 		}

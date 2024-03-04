@@ -1,6 +1,7 @@
 package mcap
 
 import (
+	"container/heap"
 	"errors"
 	"fmt"
 	"hash/maphash"
@@ -8,6 +9,7 @@ import (
 	"sort"
 
 	"github.com/foxglove/mcap/go/mcap"
+	"github.com/wkalt/dp3/util"
 )
 
 const megabyte = 1024 * 1024
@@ -107,6 +109,59 @@ func (c *coordinator) write(schema *mcap.Schema, channel *mcap.Channel, msg *mca
 		return fmt.Errorf("failed to write message: %w", err)
 	}
 	return nil
+}
+
+type record struct {
+	schema  *mcap.Schema
+	channel *mcap.Channel
+	message *mcap.Message
+	idx     int
+}
+
+func Nmerge(writer io.Writer, iterators ...mcap.MessageIterator) error {
+	w, err := NewWriter(writer)
+	if err != nil {
+		return err
+	}
+	if err := w.WriteHeader(&mcap.Header{}); err != nil {
+		return fmt.Errorf("failed to write header: %w", err)
+	}
+	pq := util.NewPriorityQueue[record, uint64]()
+	heap.Init(pq)
+	mc := newCoordinator(w)
+
+	// push one element from each iterator onto queue
+	for i, it := range iterators {
+		schema, channel, message, err := it.Next(nil)
+		if err != nil {
+			return fmt.Errorf("failed to get next message from iterator %d: %w", i, err)
+		}
+		var item = util.Item[record, uint64]{
+			Value:    record{schema, channel, message, i},
+			Priority: message.LogTime,
+		}
+		heap.Push(pq, &item)
+	}
+
+	for pq.Len() > 0 {
+		rec := heap.Pop(pq).(record)
+		if err := mc.write(rec.schema, rec.channel, rec.message); err != nil {
+			return err
+		}
+		schema, channel, message, err := iterators[rec.idx].Next(nil)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				continue
+			}
+			return err
+		}
+		var item = util.Item[record, uint64]{
+			Value:    record{schema, channel, message, rec.idx},
+			Priority: message.LogTime,
+		}
+		heap.Push(pq, &item)
+	}
+	return w.Close()
 }
 
 // Merge two mcap streams into one. Both streams are assumed to be sorted.
