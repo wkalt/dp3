@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
+	"time"
 
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/rootmap"
@@ -82,6 +84,20 @@ func (tm *treeManager) Insert(ctx context.Context, streamID string, time uint64,
 		return fmt.Errorf("failed to flush to WAL: %w", err)
 	}
 	return nil
+}
+
+func (tm *treeManager) StartWALSyncLoop(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Second)
+	for {
+		select {
+		case <-ticker.C:
+			if err := tm.SyncWAL(ctx); err != nil {
+				log.Println("failed to sync WAL:", err)
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func (tm *treeManager) SyncWAL(ctx context.Context) error {
