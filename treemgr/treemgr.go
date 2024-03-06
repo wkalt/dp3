@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/wkalt/dp3/nodestore"
@@ -26,6 +26,7 @@ type TreeManager interface {
 	GetStatisticsLatest(context.Context, uint64, uint64, string) (StatisticalSummary, error)
 
 	SyncWAL(context.Context) error
+	StartWALSyncLoop(context.Context)
 }
 
 func (tm *treeManager) GetMessages(ctx context.Context, start, end uint64, streamIDs []string, limit uint64) (io.Reader, error) {
@@ -92,7 +93,7 @@ func (tm *treeManager) StartWALSyncLoop(ctx context.Context) {
 		select {
 		case <-ticker.C:
 			if err := tm.SyncWAL(ctx); err != nil {
-				log.Println("failed to sync WAL:", err)
+				slog.ErrorContext(ctx, "failed to sync WAL: "+err.Error())
 			}
 		case <-ctx.Done():
 			return

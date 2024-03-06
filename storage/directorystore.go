@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -14,7 +15,7 @@ func NewDirectoryStore(root string) *DirectoryStore {
 	return &DirectoryStore{root: root}
 }
 
-func (d *DirectoryStore) Put(id string, data []byte) error {
+func (d *DirectoryStore) Put(ctx context.Context, id string, data []byte) error {
 	err := os.WriteFile(d.root+"/"+id, data, 0600)
 	if err != nil {
 		return fmt.Errorf("write failure: %w", err)
@@ -22,7 +23,7 @@ func (d *DirectoryStore) Put(id string, data []byte) error {
 	return nil
 }
 
-func (d *DirectoryStore) GetRange(id string, offset int, length int) ([]byte, error) {
+func (d *DirectoryStore) GetRange(ctx context.Context, id string, offset int, length int) ([]byte, error) {
 	f, err := os.Open(d.root + "/" + id)
 	if err != nil {
 		return nil, ErrObjectNotFound
@@ -40,7 +41,7 @@ func (d *DirectoryStore) GetRange(id string, offset int, length int) ([]byte, er
 	return buf, nil
 }
 
-func (d *DirectoryStore) Delete(id string) error {
+func (d *DirectoryStore) Delete(ctx context.Context, id string) error {
 	err := os.Remove(d.root + "/" + id)
 	if err != nil {
 		return fmt.Errorf("deletion failure: %w", err)
