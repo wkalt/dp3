@@ -7,6 +7,7 @@ type WALEntry struct {
 	NodeID   NodeID
 	Version  uint64
 	Data     []byte
+	Deleted  bool
 }
 
 type WALListing struct {
@@ -19,4 +20,5 @@ type WAL interface {
 	GetStream(context.Context, string) ([][]NodeID, error)
 	Get(context.Context, NodeID) ([]byte, error)
 	List(context.Context) ([]WALListing, error)
+	Delete(context.Context, NodeID) error
 }

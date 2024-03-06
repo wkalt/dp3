@@ -2,15 +2,22 @@ package treemgr
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"time"
 
+	fmcap "github.com/foxglove/mcap/go/mcap"
+	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/rootmap"
 	"github.com/wkalt/dp3/tree"
+	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/versionstore"
+	"golang.org/x/exp/maps"
 )
 
 type StatisticalSummary struct {
@@ -27,6 +34,8 @@ type TreeManager interface {
 
 	SyncWAL(context.Context) error
 	StartWALSyncLoop(context.Context)
+
+	IngestStream(ctx context.Context, hashid string, data io.Reader) error
 }
 
 func (tm *treeManager) GetMessages(ctx context.Context, start, end uint64, streamIDs []string, limit uint64) (io.Reader, error) {
@@ -43,6 +52,44 @@ func (tm *treeManager) GetMessagesLatest(ctx context.Context, start, end uint64,
 
 func (tm *treeManager) GetStatisticsLatest(ctx context.Context, start, end uint64, streamID string) (StatisticalSummary, error) {
 	return StatisticalSummary{}, nil
+}
+
+type treeDimensions struct {
+	depth   uint8
+	bfactor int
+	start   uint64
+	end     uint64
+}
+
+func (td treeDimensions) bounds(ts uint64) (uint64, uint64) {
+	width := td.end - td.start
+	for i := 0; i < int(td.depth); i++ {
+		width /= uint64(td.bfactor)
+	}
+	inset := ts/1e9 - td.start
+	bucket := inset / width
+	return td.start + width*bucket, td.start + width*(bucket+1)
+}
+
+func (tm *treeManager) dimensions(
+	ctx context.Context,
+	streamID string,
+) (*treeDimensions, error) {
+	root, err := tm.rootmap.GetLatest(ctx, streamID)
+	if err != nil {
+		return nil, err
+	}
+	node, err := tm.ns.Get(ctx, root)
+	if err != nil {
+		return nil, err
+	}
+	inner := node.(*nodestore.InnerNode)
+	return &treeDimensions{
+		depth:   inner.Depth,
+		bfactor: len(inner.Children),
+		start:   inner.Start,
+		end:     inner.End,
+	}, nil
 }
 
 func NewTreeManager(
@@ -67,6 +114,71 @@ type treeManager struct {
 	batchsize int
 }
 
+func computeStreamID(hashid string, topic string) string {
+	sum := md5.Sum([]byte(hashid + topic))
+	return hex.EncodeToString(sum[:])
+}
+
+func (tm *treeManager) IngestStream(ctx context.Context, hashid string, data io.Reader) error {
+	writers := map[string]*writer{}
+	reader, err := mcap.NewReader(data)
+	if err != nil {
+		return fmt.Errorf("failed to create mcap reader: %w", err)
+	}
+	defer reader.Close()
+	it, err := reader.Messages(fmcap.UsingIndex(false), fmcap.InOrder(fmcap.FileOrder))
+	if err != nil {
+		return fmt.Errorf("failed to create message iterator: %w", err)
+	}
+	for {
+		schema, channel, msg, err := it.Next(nil)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return err
+		}
+		var writer *writer
+		var ok bool
+		if writer, ok = writers[channel.Topic]; !ok {
+			streamID := computeStreamID(hashid, channel.Topic)
+			if _, err := tm.rootmap.GetLatest(ctx, streamID); errors.Is(err, nodestore.ErrNodeNotFound) {
+				rootID, err := tm.ns.NewRoot(ctx, util.DateSeconds("1970-01-01"), util.DateSeconds("2038-01-19"), 60, 64)
+				if err != nil {
+					return fmt.Errorf("failed to create new root: %w", err)
+				}
+				version, err := tm.vs.Next(ctx)
+				if err != nil {
+					return err
+				}
+				if err := tm.rootmap.Put(ctx, streamID, version, rootID); err != nil {
+					return err
+				}
+			}
+			writer, err = newWriter(ctx, tm, streamID)
+			if err != nil {
+				return fmt.Errorf("failed to create writer: %w", err)
+			}
+			writers[channel.Topic] = writer
+		}
+		if err := writer.WriteSchema(schema); err != nil {
+			return fmt.Errorf("failed to write schema: %w", err)
+		}
+		if err := writer.WriteChannel(channel); err != nil {
+			return fmt.Errorf("failed to write channel: %w", err)
+		}
+		if err := writer.WriteMessage(ctx, msg); err != nil {
+			return fmt.Errorf("failed to write message: %w", err)
+		}
+	}
+	for _, writer := range writers {
+		if err := writer.Close(ctx); err != nil {
+			return fmt.Errorf("failed to close writer: %w", err)
+		}
+	}
+	return nil
+}
+
 // Insert data into the tree and flush it to the WAL.
 func (tm *treeManager) Insert(ctx context.Context, streamID string, time uint64, data []byte) error {
 	rootID, err := tm.rootmap.GetLatest(ctx, streamID)
@@ -88,10 +200,11 @@ func (tm *treeManager) Insert(ctx context.Context, streamID string, time uint64,
 }
 
 func (tm *treeManager) StartWALSyncLoop(ctx context.Context) {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(120 * time.Second)
 	for {
 		select {
 		case <-ticker.C:
+			slog.InfoContext(ctx, "syncing WAL")
 			if err := tm.SyncWAL(ctx); err != nil {
 				slog.ErrorContext(ctx, "failed to sync WAL: "+err.Error())
 			}
@@ -107,24 +220,38 @@ func (tm *treeManager) SyncWAL(ctx context.Context) error {
 		return fmt.Errorf("failed to list WAL: %w", err)
 	}
 	for _, listing := range listings {
-		if len(listing.Versions) < tm.batchsize {
-			continue
-		}
+		//if len(listing.Versions) < tm.batchsize {
+		//	continue
+		//}
 		roots := []nodestore.NodeID{}
-		for _, nodeIDs := range listing.Versions {
-			roots = append(roots, nodeIDs[0])
-		}
 		version, err := tm.vs.Next(ctx)
 		if err != nil {
 			return err
 		}
-		mergedPath, err := tm.ns.NodeMerge(ctx, version, roots)
-		if err != nil {
-			return err
+		var rootID nodestore.NodeID
+		if len(listing.Versions) == 1 {
+			slog.InfoContext(ctx, "flushing WAL entries", "streamID", listing.StreamID, "count", len(listing.Versions))
+			value := maps.Values(listing.Versions)[0]
+			rootID, err = tm.ns.FlushWALPath(ctx, value)
+			if err != nil {
+				return err
+			}
+		} else {
+			slog.InfoContext(ctx, "merging WAL entries", "streamID", listing.StreamID, "count", len(listing.Versions))
+			for _, nodeIDs := range listing.Versions {
+				roots = append(roots, nodeIDs[0])
+			}
+			rootID, err = tm.ns.WALMerge(ctx, version, roots)
+			if err != nil {
+				return err
+			}
 		}
-		rootID, err := tm.ns.Flush(ctx, mergedPath...)
-		if err != nil {
-			return err
+		for _, nodeIDs := range listing.Versions {
+			for _, nodeID := range nodeIDs {
+				if err = tm.ns.WALDelete(ctx, nodeID); err != nil { // todo transaction
+					return fmt.Errorf("failed to delete node %s from WAL: %w", nodeID, err)
+				}
+			}
 		}
 		if err := tm.rootmap.Put(ctx, listing.StreamID, version, rootID); err != nil {
 			return err

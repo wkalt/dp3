@@ -18,43 +18,37 @@ func TestNodeMerge(t *testing.T) {
 	cases := []struct {
 		assertion string
 		depth     uint8
-		left      []uint64
-		right     []uint64
+		nodes     [][]uint64
 		repr      string
 	}{
 		{
 			"empty trees",
 			1,
-			[]uint64{},
-			[]uint64{},
+			[][]uint64{{}, {}},
 			"[0-4096:0]",
 		},
 		{
 			"same leaf bucket populated",
 			1,
-			[]uint64{10},
-			[]uint64{12},
+			[][]uint64{{10}, {12}},
 			"[0-4096:2 [0-64:3 [leaf 697]]]",
 		},
 		{
 			"new write conflicts one bucket and inserts one new one",
 			1,
-			[]uint64{10},
-			[]uint64{12, 70},
+			[][]uint64{{10}, {12, 70}},
 			"[0-4096:3 [0-64:4 [leaf 697]] [64-128:4 [leaf 566]]]",
 		},
 		{
 			"no conflicts",
 			1,
-			[]uint64{10},
-			[]uint64{70},
+			[][]uint64{{10}, {70}},
 			"[0-4096:2 [0-64:3 [leaf 566]] [64-128:3 [leaf 566]]]",
 		},
 		{
 			"depth 2",
 			2,
-			[]uint64{10},
-			[]uint64{12, 70},
+			[][]uint64{{10}, {12, 70}},
 			"[0-262144:3 [0-4096:4 [0-64:4 [leaf 697]] [64-128:4 [leaf 566]]]]",
 		},
 	}
@@ -62,27 +56,21 @@ func TestNodeMerge(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
 			ns := nodestore.MockNodestore(ctx, t)
-			leftID, err := ns.NewRoot(ctx, 0, util.Pow(uint64(64), int(c.depth)+1), 64, 64)
-			require.NoError(t, err)
-			rightID, err := ns.NewRoot(ctx, 0, util.Pow(uint64(64), int(c.depth)+1), 64, 64)
-			require.NoError(t, err)
 			version := uint64(1)
-			for _, time := range c.left {
-				buf := &bytes.Buffer{}
-				mcap.WriteFile(t, buf, []uint64{time})
-				leftID, _, err = tree.Insert(ctx, ns, leftID, version, time*1e9, buf.Bytes())
+			nodeIDs := make([]nodestore.NodeID, len(c.nodes))
+			for i, node := range c.nodes {
+				rootID, err := ns.NewRoot(ctx, 0, util.Pow(uint64(64), int(c.depth)+1), 64, 64)
 				require.NoError(t, err)
-				version++
+				for _, time := range node {
+					buf := &bytes.Buffer{}
+					mcap.WriteFile(t, buf, []uint64{time})
+					rootID, _, err = tree.Insert(ctx, ns, rootID, version, time*1e9, buf.Bytes())
+					require.NoError(t, err)
+					version++
+				}
+				nodeIDs[i] = rootID
 			}
-			for _, time := range c.right {
-				buf := &bytes.Buffer{}
-				mcap.WriteFile(t, buf, []uint64{time})
-				rightID, _, err = tree.Insert(ctx, ns, rightID, version, time*1e9, buf.Bytes())
-				require.NoError(t, err)
-				version++
-			}
-
-			merged, err := tree.NodeMerge(ctx, ns, version, []nodestore.NodeID{leftID, rightID})
+			merged, err := tree.NodeMerge(ctx, ns, version, nodeIDs)
 			require.NoError(t, err)
 			require.Positive(t, len(merged))
 

@@ -27,6 +27,7 @@ func (w *sqlWAL) initialize(ctx context.Context) error {
 		stream_id text,
 		node_id text,
 		version bigint,
+		deleted text,
 		data blob
 	);
 	create index if not exists wal_stream_id_idx on wal(stream_id);
@@ -52,7 +53,7 @@ func (w *sqlWAL) Put(ctx context.Context, entry WALEntry) error {
 }
 
 func (w *sqlWAL) GetStream(ctx context.Context, streamID string) ([][]NodeID, error) {
-	stmt := `select node_id, version from wal where stream_id = $1 order by id`
+	stmt := `select node_id, version from wal where stream_id = $1 and deleted is null order by id`
 	rows, err := w.db.QueryContext(ctx, stmt, streamID)
 	if err != nil {
 		return nil, err
@@ -84,7 +85,7 @@ func (w *sqlWAL) GetStream(ctx context.Context, streamID string) ([][]NodeID, er
 }
 
 func (w *sqlWAL) Get(ctx context.Context, nodeID NodeID) (data []byte, err error) {
-	stmt := `select data from wal where node_id = $1`
+	stmt := `select data from wal where node_id = $1 and deleted is null`
 	err = w.db.QueryRowContext(ctx, stmt, nodeID).Scan(&data)
 	if err != nil {
 		return nil, err
@@ -92,8 +93,17 @@ func (w *sqlWAL) Get(ctx context.Context, nodeID NodeID) (data []byte, err error
 	return data, nil
 }
 
+func (w *sqlWAL) Delete(ctx context.Context, nodeID NodeID) error {
+	stmt := `update wal set deleted = current_timestamp where node_id = $1`
+	_, err := w.db.ExecContext(ctx, stmt, nodeID)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func (w *sqlWAL) List(ctx context.Context) (paths []WALListing, err error) {
-	stmt := `select stream_id, version, node_id from wal order by id`
+	stmt := `select stream_id, version, node_id from wal where deleted is null order by id`
 	rows, err := w.db.QueryContext(ctx, stmt)
 	if err != nil {
 		return nil, err

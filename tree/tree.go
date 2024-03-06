@@ -80,6 +80,9 @@ func Insert(
 	}
 	// current is now the final parent
 	bucket := bucket(start, current)
+	if bucket > uint64(len(current.Children)-1) {
+		return rootID, nil, fmt.Errorf("bucket %d is out of range", bucket)
+	}
 	var node *nodestore.LeafNode
 	if existing := current.Children[bucket]; existing != nil {
 		if node, err = cloneLeafNode(ctx, ns, existing.ID, data); err != nil {
@@ -103,13 +106,19 @@ func Insert(
 
 // bwidth returns the width of each bucket in seconds.
 func bwidth(n *nodestore.InnerNode) uint64 {
-	return (n.End - n.Start) / uint64(len(n.Children))
+	bwidth := (n.End - n.Start) / uint64(len(n.Children))
+	return bwidth
 }
 
 // bucket returns the index of the child slot that the given time falls into on
 // the given node.
 func bucket(nanos uint64, n *nodestore.InnerNode) uint64 {
-	return (nanos/1e9 - n.Start) / bwidth(n)
+	bwidth := bwidth(n)
+	bucket := (nanos - n.Start*1e9) / (1e9 * bwidth)
+	if bucket > uint64(len(n.Children)-1) {
+		fmt.Println("wud")
+	}
+	return bucket
 }
 
 // cloneInnerNode returns a new inner node with the same contents as the node

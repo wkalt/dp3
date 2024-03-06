@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 
 	"github.com/wkalt/dp3/nodestore"
@@ -60,6 +61,9 @@ func (rm *sqlRootmap) GetLatest(ctx context.Context, streamID string) (nodestore
 		streamID,
 	).Scan(&nodeID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nodestore.NodeID{}, nodestore.ErrNodeNotFound
+		}
 		return nodestore.NodeID{}, fmt.Errorf("failed to read from rootmap: %w", err)
 	}
 	decoded, err := hex.DecodeString(nodeID)
@@ -76,6 +80,9 @@ func (rm *sqlRootmap) Get(ctx context.Context, streamID string, version uint64) 
 		streamID, version,
 	).Scan(&nodeID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nodestore.NodeID{}, nodestore.ErrNodeNotFound
+		}
 		return nodestore.NodeID{}, fmt.Errorf("failed to read from rootmap: %w", err)
 	}
 	decoded, err := hex.DecodeString(nodeID)

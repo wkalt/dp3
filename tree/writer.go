@@ -1,8 +1,20 @@
 package tree
 
-// // Writer writes messages to a tree.
+//
+//import (
+//	"bytes"
+//	"fmt"
+//	"slices"
+//	"time"
+//
+//	fmcap "github.com/foxglove/mcap/go/mcap"
+//	"github.com/wkalt/dp3/mcap"
+//	"github.com/wkalt/dp3/nodestore"
+//)
+//
+//// Writer writes messages to a tree.
 //type Writer struct {
-//	ns  *nodestore.Nodestore
+//	t   *Tree
 //	buf *bytes.Buffer
 //	w   *fmcap.Writer
 //
@@ -16,16 +28,23 @@ package tree
 //
 //// NewWriter returns a new writer for the given tree.
 //func NewWriter(
-//	ns *nodestore.Nodestore,
-//	rootID nodestore.NodeID,
 //	start uint64,
 //	end uint64,
 //	leafWidth time.Duration,
 //	branchingFactor int,
+//	ns *nodestore.Nodestore,
 //) (*Writer, error) {
+//	rootID, err := BuildTree(start, end, leafWidth, branchingFactor, ns)
+//	if err != nil {
+//		return nil, err
+//	}
+//	t, err := OpenTree(rootID, ns)
+//	if err != nil {
+//		return nil, err
+//	}
 //	buf := &bytes.Buffer{}
 //	return &Writer{
-//		ns:          ns,
+//		t:           t,
 //		buf:         buf,
 //		schemas:     []*fmcap.Schema{},
 //		channels:    []*fmcap.Channel{},
@@ -41,11 +60,11 @@ package tree
 //	return nil
 //}
 //
-//func (w *Writer) flush(rootID nodestore.NodeID, version uint64) error {
+//func (w *Writer) flush() error {
 //	if err := w.w.Close(); err != nil {
 //		return fmt.Errorf("failed to close mcap writer: %w", err)
 //	}
-//	if rootID, _, err := Insert(w.ns, rootID, version, w.lower*1e9, w.buf.Bytes()); err != nil {
+//	if _, err := w.t.Insert(w.lower*1e9, w.buf.Bytes()); err != nil {
 //		return fmt.Errorf("failed to insert leaf at time %d: %w", w.lower, err)
 //	}
 //	w.buf.Reset()
@@ -142,4 +161,3 @@ package tree
 //	}
 //	return nil
 //}
-//

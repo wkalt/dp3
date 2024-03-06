@@ -4,10 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
+	"log/slog"
+	"net/http"
 
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/rootmap"
+	"github.com/wkalt/dp3/routes"
 	"github.com/wkalt/dp3/storage"
 	"github.com/wkalt/dp3/treemgr"
 	"github.com/wkalt/dp3/util"
@@ -35,9 +37,16 @@ func (dp3 *DP3) Start(ctx context.Context) error {
 	}
 	vs := versionstore.NewMemVersionStore()
 	tmgr := treemgr.NewTreeManager(ns, vs, rm, 2)
-	go tmgr.StartWALSyncLoop(ctx)
-	log.Println("Starting dp3 service...")
-	<-ctx.Done()
+	//go tmgr.StartWALSyncLoop(ctx)
+	r := routes.MakeRoutes(tmgr)
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%d", 8089),
+		Handler: r,
+	}
+	slog.InfoContext(ctx, "Starting server", "port", 8089)
+	if err := srv.ListenAndServe(); err != nil {
+		return fmt.Errorf("failed to start server: %w", err)
+	}
 	return nil
 }
 

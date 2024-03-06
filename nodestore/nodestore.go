@@ -25,6 +25,7 @@ type nodestore interface {
 	Flush(ctx context.Context, ids ...NodeID) ([]NodeID, error)
 	WALFlush(walid string, version uint64, ids []NodeID) error
 	ListWAL() ([]WALListing, error)
+	WALDelete(ctx context.Context, id NodeID) error
 }
 
 func (n *Nodestore) String() string {
@@ -41,6 +42,10 @@ type Nodestore struct {
 	mtx     *sync.RWMutex
 
 	wal WAL
+}
+
+func (n *Nodestore) WALDelete(ctx context.Context, id NodeID) error {
+	return n.wal.Delete(ctx, id)
 }
 
 // generateStagingID generates a temporary ID that will not collide with "real"
@@ -229,23 +234,65 @@ func NewNodestore(
 // NewRoot creates a new root node with the given depth and range, and persists
 // it to storage, returning the ID.
 func (ns *Nodestore) NewRoot(ctx context.Context, start, end uint64, leafWidthSecs int, bfactor int) (nodeID NodeID, err error) {
-	minspan := end - start
-	depth := uint8(0)
-	coverage := uint64(leafWidthSecs)
-	for coverage < minspan {
-		coverage *= uint64(bfactor)
+	var depth int
+	span := end - start
+	coverage := leafWidthSecs
+	for uint64(coverage) < span {
+		coverage *= bfactor
 		depth++
 	}
-	root := NewInnerNode(depth, start, end, bfactor)
+	root := NewInnerNode(uint8(depth), start, start+uint64(coverage), bfactor)
 	tmpid, err := ns.Stage(root)
 	if err != nil {
 		return nodeID, fmt.Errorf("failed to stage root: %w", err)
 	}
 	id, err := ns.Flush(ctx, tmpid)
 	if err != nil {
-		return nodeID, fmt.Errorf("failed to flush root: %w", err)
+		return nodeID, fmt.Errorf("failed to flush root %s: %w", tmpid, err)
 	}
 	return id, nil
+}
+
+func (ns *Nodestore) FlushWALPath(ctx context.Context, path []NodeID) (nodeID NodeID, err error) {
+	result := []NodeID{}
+	for _, node := range path {
+		data, err := ns.wal.Get(ctx, node)
+		if err != nil {
+			return nodeID, fmt.Errorf("failed to get node: %w", err)
+		}
+		node, err := ns.bytesToNode(data)
+		if err != nil {
+			return nodeID, fmt.Errorf("failed to parse node: %w", err)
+		}
+		nodeID, err := ns.Stage(node)
+		if err != nil {
+			return nodeID, fmt.Errorf("failed to stage node: %w", err)
+		}
+		result = append(result, nodeID)
+	}
+	flushedRoot, err := ns.Flush(ctx, result...)
+	if err != nil {
+		return nodeID, fmt.Errorf("failed to flush root: %w", err)
+	}
+	for _, node := range path { // todo transaction
+		if err := ns.wal.Delete(ctx, node); err != nil {
+			return nodeID, fmt.Errorf("failed to delete node: %w", err)
+		}
+	}
+	return flushedRoot, nil
+}
+
+func (ns *Nodestore) WALMerge(ctx context.Context, version uint64, nodeIDs []NodeID) (nodeID NodeID, err error) {
+	mergedPath, err := ns.NodeMerge(ctx, version, nodeIDs)
+	if err != nil {
+		return nodeID, fmt.Errorf("failed to merge nodes: %w", err)
+	}
+	flushedRoot, err := ns.Flush(ctx, mergedPath...)
+	if err != nil {
+		return nodeID, fmt.Errorf("failed to flush root: %w", err)
+	}
+
+	return flushedRoot, nil
 }
 
 // NodeMerge does an N-way tree merge, returning a "path" from the root to leaf
@@ -279,7 +326,7 @@ func (ns *Nodestore) NodeMerge(ctx context.Context, version uint64, nodeIDs []No
 					outer != nil && inner != nil && outer.ID != inner.ID {
 					conflicted = true
 				}
-				if conflicted {
+				if conflicted && !slices.Contains(conflicts, i) {
 					conflicts = append(conflicts, i)
 				}
 			}
@@ -293,7 +340,7 @@ func (ns *Nodestore) NodeMerge(ctx context.Context, version uint64, nodeIDs []No
 		for _, conflict := range conflicts {
 			children := []NodeID{} // set of not-null children mapping to conflicts
 			for _, node := range nodes {
-				if inner := (node).(*InnerNode).Children[conflict]; inner != nil {
+				if inner := (node).(*InnerNode).Children[conflict]; inner != nil && !slices.Contains(children, inner.ID) {
 					children = append(children, inner.ID)
 				}
 			}
@@ -324,7 +371,20 @@ func (ns *Nodestore) NodeMerge(ctx context.Context, version uint64, nodeIDs []No
 
 func (ns *Nodestore) mergeLeaves(ctx context.Context, nodeIDs []NodeID) (NodeID, error) {
 	if len(nodeIDs) == 1 {
-		return nodeIDs[0], nil
+		id := nodeIDs[0]
+		data, err := ns.wal.Get(ctx, id)
+		if err != nil {
+			return NodeID{}, fmt.Errorf("failed to get leaf %d from wal: %w", id, err)
+		}
+		node, err := ns.bytesToNode(data)
+		if err != nil {
+			return NodeID{}, fmt.Errorf("failed to parse node: %w", err)
+		}
+		nodeID, err := ns.Stage(node)
+		if err != nil {
+			return NodeID{}, fmt.Errorf("failed to stage node: %w", err)
+		}
+		return nodeID, nil
 	}
 	iterators := make([]fmcap.MessageIterator, len(nodeIDs))
 	for i, id := range nodeIDs {

@@ -1,14 +1,18 @@
 package nodestore_test
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/storage"
+	"github.com/wkalt/dp3/tree"
 	"github.com/wkalt/dp3/util"
 )
 
@@ -29,6 +33,84 @@ func TestNodestoreErrors(t *testing.T) {
 		_, err := ns.Flush(ctx, nodestore.NodeID{})
 		assert.ErrorIs(t, err, nodestore.ErrNodeNotStaged)
 	})
+}
+
+func testNodeStore(t *testing.T) *nodestore.Nodestore {
+	ctx := context.Background()
+	store := storage.NewMemStore()
+	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1e6)
+	db, err := sql.Open("sqlite3", ":memory:")
+	require.NoError(t, err)
+	wal, err := nodestore.NewSQLWAL(ctx, db)
+	require.NoError(t, err)
+	return nodestore.NewNodestore(store, cache, wal)
+}
+
+func TestWALMerge(t *testing.T) {
+	ctx := context.Background()
+	ns := testNodeStore(t)
+	root, err := ns.NewRoot(
+		ctx,
+		util.DateSeconds("1970-01-01"),
+		util.DateSeconds("2030-01-01"),
+		60,
+		64,
+	)
+	require.NoError(t, err)
+
+	// inserts go into the staging area
+	buf1 := &bytes.Buffer{}
+	mcap.WriteFile(t, buf1, []uint64{50 * 1e9})
+	root1, path, err := tree.Insert(ctx, ns, root, 1, 50*1e9, buf1.Bytes())
+	require.NoError(t, err)
+	require.NoError(t, ns.WALFlush(ctx, "my-stream", 2, path))
+
+	buf2 := &bytes.Buffer{}
+	mcap.WriteFile(t, buf2, []uint64{70 * 1e9})
+	root2, path2, err := tree.Insert(ctx, ns, root1, 1, 70*1e9, buf2.Bytes())
+	require.NoError(t, err)
+	require.NoError(t, ns.WALFlush(ctx, "my-stream", 3, path2))
+
+	buf3 := &bytes.Buffer{}
+	mcap.WriteFile(t, buf3, []uint64{70 * 1e9})
+	root3, path3, err := tree.Insert(ctx, ns, root2, 1, 70*1e9, buf3.Bytes())
+	require.NoError(t, err)
+	require.NoError(t, ns.WALFlush(ctx, "my-stream", 3, path3))
+
+	rootID, err := ns.WALMerge(ctx, 4, []nodestore.NodeID{root1, root2, root3})
+	require.NoError(t, err)
+
+	s, err := tree.PrintTree(ctx, ns, rootID, 4)
+	require.NoError(t, err)
+	fmt.Println(s)
+	t.Error()
+
+	// flush WAL to storage
+
+	// multiple inserts for a single stream
+}
+
+func TestNewRoot(t *testing.T) {
+	ctx := context.Background()
+	store := storage.NewMemStore()
+	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1e6)
+	db, err := sql.Open("sqlite3", ":memory:")
+	require.NoError(t, err)
+	wal, err := nodestore.NewSQLWAL(ctx, db)
+	ns := nodestore.NewNodestore(store, cache, wal)
+	root, err := ns.NewRoot(
+		ctx,
+		util.DateSeconds("1970-01-01"),
+		util.DateSeconds("2030-01-01"),
+		60,
+		64,
+	)
+	require.NoError(t, err)
+	rootNode, err := ns.Get(ctx, root)
+	require.NoError(t, err)
+	node := rootNode.(*nodestore.InnerNode)
+	fmt.Println("Node: ", node)
+	t.Error()
 }
 
 func TestNodeStore(t *testing.T) {
