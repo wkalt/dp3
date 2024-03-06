@@ -1,24 +1,27 @@
 package nodestore
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
+
+	"golang.org/x/exp/maps"
 )
 
 type sqlWAL struct {
 	db *sql.DB
 }
 
-func NewSQLWAL(db *sql.DB) (WAL, error) {
+func NewSQLWAL(ctx context.Context, db *sql.DB) (WAL, error) {
 	wal := &sqlWAL{db: db}
-	if err := wal.initialize(); err != nil {
+	if err := wal.initialize(ctx); err != nil {
 		return nil, err
 	}
 	return wal, nil
 }
 
-func (w *sqlWAL) initialize() error {
-	_, err := w.db.Exec(`
+func (w *sqlWAL) initialize(ctx context.Context) error {
+	_, err := w.db.ExecContext(ctx, `
 	create table if not exists wal (
 		id serial primary key,
 		stream_id text,
@@ -36,21 +39,21 @@ func (w *sqlWAL) initialize() error {
 	return nil
 }
 
-func (w *sqlWAL) Put(entry WALEntry) error {
+func (w *sqlWAL) Put(ctx context.Context, entry WALEntry) error {
 	stmt := `insert into wal (stream_id, node_id, version, data)
 	values
 	($1, $2, $3, $4)`
 	params := []interface{}{entry.StreamID, entry.NodeID, entry.Version, entry.Data}
-	_, err := w.db.Exec(stmt, params...)
+	_, err := w.db.ExecContext(ctx, stmt, params...)
 	if err != nil {
 		return err
 	}
 	return nil
 }
 
-func (w *sqlWAL) GetStream(streamID string) ([][]NodeID, error) {
+func (w *sqlWAL) GetStream(ctx context.Context, streamID string) ([][]NodeID, error) {
 	stmt := `select node_id, version from wal where stream_id = $1 order by id`
-	rows, err := w.db.Query(stmt, streamID)
+	rows, err := w.db.QueryContext(ctx, stmt, streamID)
 	if err != nil {
 		return nil, err
 	}
@@ -80,28 +83,35 @@ func (w *sqlWAL) GetStream(streamID string) ([][]NodeID, error) {
 	return result, nil
 }
 
-func (w *sqlWAL) Get(nodeID NodeID) (data []byte, err error) {
+func (w *sqlWAL) Get(ctx context.Context, nodeID NodeID) (data []byte, err error) {
 	stmt := `select data from wal where node_id = $1`
-	err = w.db.QueryRow(stmt, nodeID).Scan(&data)
+	err = w.db.QueryRowContext(ctx, stmt, nodeID).Scan(&data)
 	if err != nil {
 		return nil, err
 	}
 	return data, nil
 }
 
-func (w *sqlWAL) List() (entries []WALEntry, err error) {
-	stmt := `select stream_id, node_id, version, data from wal order by id`
-	rows, err := w.db.Query(stmt)
+func (w *sqlWAL) List(ctx context.Context) (paths []WALListing, err error) {
+	stmt := `select stream_id, version, node_id from wal order by id`
+	rows, err := w.db.QueryContext(ctx, stmt)
 	if err != nil {
 		return nil, err
 	}
+	streams := make(map[string]WALListing)
 	defer rows.Close()
 	for rows.Next() {
 		var entry WALEntry
-		if err := rows.Scan(&entry.StreamID, &entry.NodeID, &entry.Version, &entry.Data); err != nil {
+		if err := rows.Scan(&entry.StreamID, &entry.Version, &entry.NodeID); err != nil {
 			return nil, fmt.Errorf("failed to scan row: %w", err)
 		}
-		entries = append(entries, entry)
+		if _, ok := streams[entry.StreamID]; !ok {
+			streams[entry.StreamID] = WALListing{StreamID: entry.StreamID, Versions: make(map[uint64][]NodeID)}
+		}
+		if _, ok := streams[entry.StreamID].Versions[entry.Version]; !ok {
+			streams[entry.StreamID].Versions[entry.Version] = []NodeID{entry.NodeID}
+		}
+		streams[entry.StreamID].Versions[entry.Version] = append(streams[entry.StreamID].Versions[entry.Version], entry.NodeID)
 	}
-	return entries, nil
+	return maps.Values(streams), nil
 }

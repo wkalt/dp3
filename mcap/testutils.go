@@ -36,8 +36,9 @@ func WriteFile(t *testing.T, w io.Writer, timestamps []uint64) {
 	require.NoError(t, writer.WriteHeader(&mcap.Header{}))
 
 	require.NoError(t, writer.WriteSchema(&mcap.Schema{
-		ID:   1,
-		Data: []byte{},
+		ID:       1,
+		Name:     "test",
+		Encoding: "ros1msg",
 	}))
 	require.NoError(t, writer.WriteChannel(&mcap.Channel{
 		ID:       0,

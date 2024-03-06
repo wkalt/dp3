@@ -2,6 +2,7 @@ package nodestore_test
 
 import (
 	"context"
+	"database/sql"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -15,7 +16,11 @@ func TestNodestoreErrors(t *testing.T) {
 	ctx := context.Background()
 	store := storage.NewMemStore()
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1e6)
-	ns := nodestore.NewNodestore(store, cache)
+	db, err := sql.Open("sqlite3", ":memory:")
+	require.NoError(t, err)
+	wal, err := nodestore.NewSQLWAL(ctx, db)
+	require.NoError(t, err)
+	ns := nodestore.NewNodestore(store, cache, wal)
 	t.Run("get non-existent node", func(t *testing.T) {
 		_, err := ns.Get(ctx, nodestore.NodeID{})
 		assert.ErrorIs(t, err, nodestore.ErrNodeNotFound)
@@ -30,14 +35,17 @@ func TestNodeStore(t *testing.T) {
 	ctx := context.Background()
 	store := storage.NewMemStore()
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1e6)
-	ns := nodestore.NewNodestore(store, cache)
+	db, err := sql.Open("sqlite3", ":memory:")
+	require.NoError(t, err)
+	wal, err := nodestore.NewSQLWAL(ctx, db)
+	ns := nodestore.NewNodestore(store, cache, wal)
 	t.Run("store and retrieve an inner node", func(t *testing.T) {
 		node := nodestore.NewInnerNode(0, 10, 20, 64)
 		nodeID, err := ns.Stage(node)
 		require.NoError(t, err)
-		nodeIDs, err := ns.Flush(ctx, nodeID)
+		rootID, err := ns.Flush(ctx, nodeID)
 		require.NoError(t, err)
-		retrieved, err := ns.Get(ctx, nodeIDs[0])
+		retrieved, err := ns.Get(ctx, rootID)
 		require.NoError(t, err)
 		assert.Equal(t, node, retrieved)
 	})
@@ -45,9 +53,9 @@ func TestNodeStore(t *testing.T) {
 		node := nodestore.NewLeafNode(nil)
 		nodeID, err := ns.Stage(node)
 		require.NoError(t, err)
-		nodeIDs, err := ns.Flush(ctx, nodeID)
+		rootID, err := ns.Flush(ctx, nodeID)
 		require.NoError(t, err)
-		retrieved, err := ns.Get(ctx, nodeIDs[0])
+		retrieved, err := ns.Get(ctx, rootID)
 		require.NoError(t, err)
 		assert.Equal(t, node, retrieved)
 	})
@@ -55,10 +63,10 @@ func TestNodeStore(t *testing.T) {
 		node := nodestore.NewInnerNode(0, 90, 100, 64)
 		tmpid, err := ns.Stage(node)
 		require.NoError(t, err)
-		ids, err := ns.Flush(ctx, tmpid)
+		rootID, err := ns.Flush(ctx, tmpid)
 		require.NoError(t, err)
 		cache.Reset()
-		retrieved, err := ns.Get(ctx, ids[0])
+		retrieved, err := ns.Get(ctx, rootID)
 		require.NoError(t, err)
 		assert.Equal(t, node, retrieved)
 	})
@@ -66,10 +74,10 @@ func TestNodeStore(t *testing.T) {
 		node := nodestore.NewLeafNode(nil)
 		nodeID, err := ns.Stage(node)
 		require.NoError(t, err)
-		nodeIDs, err := ns.Flush(ctx, nodeID)
+		rootID, err := ns.Flush(ctx, nodeID)
 		require.NoError(t, err)
 		cache.Reset()
-		retrieved, err := ns.Get(ctx, nodeIDs[0])
+		retrieved, err := ns.Get(ctx, rootID)
 		require.NoError(t, err)
 		assert.Equal(t, node, retrieved)
 	})
@@ -91,19 +99,8 @@ func TestNodeStore(t *testing.T) {
 		inner1.PlaceChild(0, inner2ID, 1)
 		inner2.PlaceChild(0, leafID, 1)
 
-		nodeIDs, err := ns.Flush(ctx, rootID, inner1ID, inner2ID, leafID)
+		_, err = ns.Flush(ctx, rootID, inner1ID, inner2ID, leafID)
 		require.NoError(t, err)
 
-		// nodes are now traversable with new IDs
-		for i, id := range nodeIDs {
-			node, err := ns.Get(ctx, id)
-			require.NoError(t, err)
-			switch node := node.(type) {
-			case *nodestore.InnerNode:
-				assert.Equal(t, node.Children[0].ID, nodeIDs[i+1])
-			case *nodestore.LeafNode:
-				break
-			}
-		}
 	})
 }

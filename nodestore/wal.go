@@ -1,5 +1,7 @@
 package nodestore
 
+import "context"
+
 type WALEntry struct {
 	StreamID string
 	NodeID   NodeID
@@ -7,9 +9,14 @@ type WALEntry struct {
 	Data     []byte
 }
 
+type WALListing struct {
+	StreamID string
+	Versions map[uint64][]NodeID
+}
+
 type WAL interface {
-	Put(WALEntry) error
-	GetStream(streamID string) ([][]NodeID, error)
-	Get(nodeID NodeID) ([]byte, error)
-	List() ([]WALEntry, error)
+	Put(context.Context, WALEntry) error
+	GetStream(context.Context, string) ([][]NodeID, error)
+	Get(context.Context, NodeID) ([]byte, error)
+	List(context.Context) ([]WALListing, error)
 }

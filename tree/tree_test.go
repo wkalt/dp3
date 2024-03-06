@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
-	"github.com/wkalt/dp3/storage"
 	"github.com/wkalt/dp3/tree"
 	"github.com/wkalt/dp3/util"
 )
@@ -35,36 +34,34 @@ func TestNodeMerge(t *testing.T) {
 			1,
 			[]uint64{10},
 			[]uint64{12},
-			"[0-4096:2 [0-64:3 [leaf 634]]]",
+			"[0-4096:2 [0-64:3 [leaf 697]]]",
 		},
 		{
 			"new write conflicts one bucket and inserts one new one",
 			1,
 			[]uint64{10},
 			[]uint64{12, 70},
-			"[0-4096:3 [0-64:4 [leaf 634]] [64-128:4 [leaf 542]]]",
+			"[0-4096:3 [0-64:4 [leaf 697]] [64-128:4 [leaf 566]]]",
 		},
 		{
 			"no conflicts",
 			1,
 			[]uint64{10},
 			[]uint64{70},
-			"[0-4096:2 [0-64:3 [leaf 542]] [64-128:3 [leaf 542]]]",
+			"[0-4096:2 [0-64:3 [leaf 566]] [64-128:3 [leaf 566]]]",
 		},
 		{
 			"depth 2",
 			2,
 			[]uint64{10},
 			[]uint64{12, 70},
-			"[0-262144:3 [0-4096:4 [0-64:4 [leaf 634]] [64-128:4 [leaf 542]]]]",
+			"[0-262144:3 [0-4096:4 [0-64:4 [leaf 697]] [64-128:4 [leaf 566]]]]",
 		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
-			store := storage.NewMemStore()
-			cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1e6)
-			ns := nodestore.NewNodestore(store, cache)
+			ns := nodestore.MockNodestore(ctx, t)
 			leftID, err := ns.NewRoot(ctx, 0, util.Pow(uint64(64), int(c.depth)+1), 64, 64)
 			require.NoError(t, err)
 			rightID, err := ns.NewRoot(ctx, 0, util.Pow(uint64(64), int(c.depth)+1), 64, 64)
@@ -114,39 +111,40 @@ func TestTreeInsert(t *testing.T) {
 			"single insert",
 			1,
 			[]uint64{10},
-			"[0-4096:1 [0-64:1 [leaf 542]]]",
+			"[0-4096:1 [0-64:1 [leaf 566]]]",
 		},
 		{
 			"two inserts same bucket get merged",
 			1,
 			[]uint64{10, 20},
-			"[0-4096:2 [0-64:2 [leaf 634]]]",
+			"[0-4096:2 [0-64:2 [leaf 697]]]",
 		},
 		{
 			"inserts in different bucket, simulate single inserts",
 			1,
 			[]uint64{10, 20, 128, 256},
-			"[0-4096:4 [0-64:2 [leaf 634]] [128-192:3 [leaf 542]] [256-320:4 [leaf 539]]]",
+			"[0-4096:4 [0-64:2 [leaf 697]] [128-192:3 [leaf 568]] [256-320:4 [leaf 568]]]",
 		},
 		{
 			"depth 2",
 			2,
 			[]uint64{10, 20, 4097},
-			"[0-262144:3 [0-4096:2 [0-64:2 [leaf 634]]] [4096-8192:3 [4096-4160:3 [leaf 542]]]]",
+			"[0-262144:3 [0-4096:2 [0-64:2 [leaf 697]]] [4096-8192:3 [4096-4160:3 [leaf 568]]]]",
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
-			store := storage.NewMemStore()
-			cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1e6)
-			ns := nodestore.NewNodestore(store, cache)
+			ns := nodestore.MockNodestore(ctx, t)
 			rootID, err := ns.NewRoot(ctx, 0, util.Pow(uint64(64), int(c.depth)+1), 64, 64)
 			require.NoError(t, err)
 			version := uint64(1)
+			var path []nodestore.NodeID
 			for _, time := range c.times {
 				buf := &bytes.Buffer{}
 				mcap.WriteFile(t, buf, []uint64{time})
-				rootID, _, err = tree.Insert(ctx, ns, rootID, version, time*1e9, buf.Bytes())
+				_, path, err = tree.Insert(ctx, ns, rootID, version, time*1e9, buf.Bytes())
+				require.NoError(t, err)
+				rootID, err = ns.Flush(ctx, path...)
 				require.NoError(t, err)
 				version++
 			}

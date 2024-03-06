@@ -57,6 +57,8 @@ func newCoordinator(w *mcap.Writer) *coordinator {
 		channelHashes: make(map[uint64]uint16),
 		schemas:       make(map[*mcap.Schema]uint16),
 		channels:      make(map[*mcap.Channel]uint16),
+
+		nextSchemaID: 1,
 	}
 }
 
@@ -64,22 +66,30 @@ func (c *coordinator) write(schema *mcap.Schema, channel *mcap.Channel, msg *mca
 	if schema == nil {
 		return errors.New("schema is nil")
 	}
+
 	schemaID, ok := c.schemas[schema]
 	if !ok {
 		// check if we have a matching schema by hash
 		schemaHash := hashSchema(schema)
 		if mappedID, ok := c.schemaHashes[schemaHash]; ok {
-			// associate this schema with the mapped ID
+			// associate this schemau with the mapped ID
 			c.schemas[schema] = mappedID
 		} else {
-			if err := c.w.WriteSchema(schema); err != nil {
+			schemaID = c.nextSchemaID
+			newSchema := &mcap.Schema{
+				ID:       schemaID,
+				Name:     schema.Name,
+				Encoding: schema.Encoding,
+				Data:     schema.Data,
+			}
+			if err := c.w.WriteSchema(newSchema); err != nil {
 				return fmt.Errorf("failed to write schema: %w", err)
 			}
-			c.schemas[schema] = c.nextSchemaID
-			schemaID = c.nextSchemaID
+			c.schemas[schema] = schemaID
 			c.nextSchemaID++
 		}
 	}
+
 	chanID, ok := c.channels[channel]
 	if !ok {
 		// check if we have a matching channel by hash
@@ -148,7 +158,7 @@ func Nmerge(writer io.Writer, iterators ...mcap.MessageIterator) error {
 		if err := mc.write(rec.schema, rec.channel, rec.message); err != nil {
 			return err
 		}
-		schema, channel, message, err := iterators[rec.idx].Next(nil)
+		s, c, m, err := iterators[rec.idx].Next(nil)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				continue
@@ -156,8 +166,8 @@ func Nmerge(writer io.Writer, iterators ...mcap.MessageIterator) error {
 			return err
 		}
 		var item = util.Item[record, uint64]{
-			Value:    record{schema, channel, message, rec.idx},
-			Priority: message.LogTime,
+			Value:    record{s, c, m, rec.idx},
+			Priority: m.LogTime,
 		}
 		heap.Push(pq, &item)
 	}

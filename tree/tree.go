@@ -94,11 +94,11 @@ func Insert(
 	}
 	nodes = append(nodes, stagedID)
 	current.PlaceChild(bucket, stagedID, version)
-	nodeIDs, err := ns.Flush(ctx, nodes...)
-	if err != nil {
-		return rootID, nil, fmt.Errorf("failed to flush nodes: %w", err)
-	}
-	return nodeIDs[0], nodeIDs, nil
+	//nodeIDs, err := ns.Flush(ctx, nodes...)
+	//if err != nil {
+	//	return rootID, nil, fmt.Errorf("failed to flush nodes: %w", err)
+	//}
+	return nodes[0], nodes, nil
 }
 
 // bwidth returns the width of each bucket in seconds.

@@ -12,16 +12,13 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
-	"github.com/wkalt/dp3/storage"
 	"github.com/wkalt/dp3/tree"
 	"github.com/wkalt/dp3/util"
 )
 
 func TestTreeIterator(t *testing.T) {
 	ctx := context.Background()
-	store := storage.NewMemStore()
-	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1e6)
-	ns := nodestore.NewNodestore(store, cache)
+	ns := nodestore.MockNodestore(ctx, t)
 	rootID, err := ns.NewRoot(ctx, 0, util.Pow(uint64(64), 3), 64, 64)
 	require.NoError(t, err)
 
