@@ -17,9 +17,6 @@ import (
 // todo
 // * tree dimensions (branching factor, depth) must be chosen at runtime based
 //    on some initial samples of the data and a target leaf node size.
-// * tree currently assumes no nodes it is working with get evicted from cache
-// over course of an insert. not safe. separate cache for working nodes may be
-// needed.
 
 type TreeStats struct {
 	Depth           uint8
