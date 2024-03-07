@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/wkalt/dp3/nodestore"
 )
@@ -60,33 +59,6 @@ func Insert(
 	nodes = append(nodes, stagedID)
 	current.PlaceChild(bucket, stagedID, version)
 	return nodes[0], nodes, nil
-}
-
-type TreeStats struct {
-	Depth           uint8
-	BranchingFactor int
-	LeafWidth       time.Duration
-	Start           time.Time
-	End             time.Time
-}
-
-func Stats(ctx context.Context, ns *nodestore.Nodestore, rootID nodestore.NodeID) (TreeStats, error) {
-	root, err := ns.Get(ctx, rootID)
-	if err != nil {
-		return TreeStats{}, err
-	}
-	node := root.(*nodestore.InnerNode)
-	coverage := node.End - node.Start
-	for i := uint8(0); i < node.Depth; i++ {
-		coverage /= uint64(len(node.Children))
-	}
-	return TreeStats{
-		Depth:           node.Depth,
-		BranchingFactor: len(node.Children),
-		LeafWidth:       time.Duration(coverage * 1e9),
-		Start:           time.Unix(int64(node.Start), 0),
-		End:             time.Unix(int64(node.End), 0),
-	}, nil
 }
 
 func Print(ctx context.Context, ns *nodestore.Nodestore, nodeID nodestore.NodeID, version uint64) (string, error) {
