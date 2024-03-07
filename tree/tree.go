@@ -21,10 +21,7 @@ func Insert(
 	if err != nil {
 		return rootID, nil, err
 	}
-	rootID, err = stageNode(ns, root)
-	if err != nil {
-		return rootID, nil, err
-	}
+	rootID = ns.Stage(root)
 	nodes := []nodestore.NodeID{rootID}
 	current := root
 	for current.Depth > 1 {
@@ -46,10 +43,7 @@ func Insert(
 	} else {
 		node = nodestore.NewLeafNode(data)
 	}
-	stagedID, err := stageNode(ns, node)
-	if err != nil {
-		return rootID, nil, err
-	}
+	stagedID := ns.Stage(node)
 	nodes = append(nodes, stagedID)
 	current.PlaceChild(bucket, stagedID, version)
 	return nodes[0], nodes, nil
@@ -156,15 +150,6 @@ func cloneLeafNode(
 	return merged, nil
 }
 
-// stageNode stages the given node in the nodestore and returns its ID.
-func stageNode(ns *nodestore.Nodestore, node nodestore.Node) (nodestore.NodeID, error) {
-	id, err := ns.Stage(node)
-	if err != nil {
-		return nodestore.NodeID{}, fmt.Errorf("failed to stage node %d: %w", id, err)
-	}
-	return id, nil
-}
-
 // descend the tree to the node that contains the given timestamp, copying nodes
 // at each step and recording the path taken.
 func descend(
@@ -190,10 +175,7 @@ func descend(
 			len(current.Children),
 		)
 	}
-	nodeID, err := stageNode(ns, node)
-	if err != nil {
-		return nil, err
-	}
+	nodeID := ns.Stage(node)
 	current.PlaceChild(bucket, nodeID, version)
 	*nodeIDs = append(*nodeIDs, nodeID)
 	return node, nil

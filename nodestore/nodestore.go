@@ -140,12 +140,12 @@ func (n *Nodestore) WALFlush(ctx context.Context, walid string, version uint64, 
 }
 
 // Stage a node in the staging map, returning an ID that can be used later.
-func (n *Nodestore) Stage(node Node) (NodeID, error) {
+func (n *Nodestore) Stage(node Node) NodeID {
 	id := n.generateStagingID()
 	n.mtx.Lock()
 	defer n.mtx.Unlock()
 	n.staging[id] = node
-	return id, nil
+	return id
 }
 
 func (n *Nodestore) StageWithID(id NodeID, node Node) error {
@@ -252,10 +252,7 @@ func (n *Nodestore) NewRoot(
 		depth++
 	}
 	root := NewInnerNode(uint8(depth), start, start+uint64(coverage), bfactor)
-	tmpid, err := n.Stage(root)
-	if err != nil {
-		return nodeID, fmt.Errorf("failed to stage root: %w", err)
-	}
+	tmpid := n.Stage(root)
 	id, err := n.Flush(ctx, tmpid)
 	if err != nil {
 		return nodeID, fmt.Errorf("failed to flush root %s: %w", tmpid, err)
@@ -361,10 +358,7 @@ func (n *Nodestore) mergeInnerNodes(ctx context.Context, version uint64, nodes [
 		}
 	}
 	newInner := NewInnerNode(node.Depth, node.Start, node.End, len(node.Children))
-	newID, err := n.Stage(newInner)
-	if err != nil {
-		return nil, err
-	}
+	newID := n.Stage(newInner)
 	result := []NodeID{newID}
 	for _, conflict := range conflicts {
 		children := []NodeID{} // set of not-null children mapping to conflicts
@@ -399,10 +393,7 @@ func (n *Nodestore) mergeLeaves(ctx context.Context, nodeIDs []NodeID) (NodeID, 
 		if err != nil {
 			return NodeID{}, fmt.Errorf("failed to parse node: %w", err)
 		}
-		nodeID, err := n.Stage(node)
-		if err != nil {
-			return NodeID{}, fmt.Errorf("failed to stage node: %w", err)
-		}
+		nodeID := n.Stage(node)
 		return nodeID, nil
 	}
 	iterators := make([]fmcap.MessageIterator, len(nodeIDs))
@@ -430,5 +421,5 @@ func (n *Nodestore) mergeLeaves(ctx context.Context, nodeIDs []NodeID) (NodeID, 
 		return NodeID{}, fmt.Errorf("failed to merge leaves: %w", err)
 	}
 	newLeaf := NewLeafNode(buf.Bytes())
-	return n.Stage(newLeaf)
+	return n.Stage(newLeaf), nil
 }
