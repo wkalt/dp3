@@ -1,0 +1,48 @@
+package versionstore
+
+import (
+	"context"
+	"database/sql"
+	"testing"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestVersionStore(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		assertion string
+		f         func(*testing.T) Versionstore
+	}{
+		{
+			"mem",
+			func(t *testing.T) Versionstore {
+				return NewMemVersionStore()
+			},
+		},
+		{
+			"sql",
+			func(t *testing.T) Versionstore {
+				db, err := sql.Open("sqlite3", ":memory:")
+				require.NoError(t, err)
+				return NewSQLVersionstore(db, 1000)
+			},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			vs := c.f(t)
+			t.Run("next", func(t *testing.T) {
+				last := uint64(0)
+				for i := 0; i < 1e6; i++ {
+					version, err := vs.Next(ctx)
+					if err != nil {
+						t.Errorf("unexpected error: %v", err)
+					}
+					require.Greater(t, version, last)
+					last = version
+				}
+			})
+		})
+	}
+}
