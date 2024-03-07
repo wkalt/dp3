@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -77,17 +76,8 @@ func TestWALMerge(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, ns.WALFlush(ctx, "my-stream", 3, path3))
 
-	rootID, err := ns.WALMerge(ctx, 4, []nodestore.NodeID{root1, root2, root3})
+	_, err = ns.WALMerge(ctx, 4, []nodestore.NodeID{root1, root2, root3})
 	require.NoError(t, err)
-
-	s, err := tree.PrintTree(ctx, ns, rootID, 4)
-	require.NoError(t, err)
-	fmt.Println(s)
-	t.Error()
-
-	// flush WAL to storage
-
-	// multiple inserts for a single stream
 }
 
 func TestNewRoot(t *testing.T) {
@@ -106,11 +96,8 @@ func TestNewRoot(t *testing.T) {
 		64,
 	)
 	require.NoError(t, err)
-	rootNode, err := ns.Get(ctx, root)
+	_, err = ns.Get(ctx, root)
 	require.NoError(t, err)
-	node := rootNode.(*nodestore.InnerNode)
-	fmt.Println("Node: ", node)
-	t.Error()
 }
 
 func TestNodeStore(t *testing.T) {

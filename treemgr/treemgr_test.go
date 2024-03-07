@@ -60,13 +60,12 @@ func TestIngestion(t *testing.T) {
 	rm := rootmap.NewMemRootmap()
 	tmgr := treemgr.NewTreeManager(ns, vs, rm, 2)
 
-	f, err := os.Open("/home/wyatt/data/bags/cal_loop.mcap")
+	f, err := os.Open("/home/wyatt/data/bags/demo.mcap")
 	require.NoError(t, err)
 	defer f.Close()
 
 	require.NoError(t, tmgr.IngestStream(ctx, "my-device", f))
 	require.NoError(t, tmgr.SyncWAL(ctx))
-	fmt.Println("yodawk")
 }
 
 func TestTreeMgr(t *testing.T) {

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"testing"
 
@@ -52,26 +51,13 @@ func TestTreeIterator(t *testing.T) {
 		require.NoError(t, w.Close())
 		offset += 64
 	}
-	node, err := ns.Get(ctx, rootID)
-	require.NoError(t, err)
-	fmt.Printf("NODE0 IS %T\n", node)
-	fmt.Println(tree.PrintTree(ctx, ns, rootID, 0))
 	version := uint64(1)
 	rootID, _, err = tree.Insert(ctx, ns, rootID, version, 0, buf1.Bytes())
 	require.NoError(t, err)
-	node, err = ns.Get(ctx, rootID)
-	require.NoError(t, err)
-	fmt.Printf("NODE1 IS %T\n", node)
-	fmt.Println(tree.PrintTree(ctx, ns, rootID, 0))
 	version++
 	rootID, _, err = tree.Insert(ctx, ns, rootID, version, 64*1e9, buf2.Bytes())
 	require.NoError(t, err)
 	version++
-	fmt.Println(tree.PrintTree(ctx, ns, rootID, 0))
-
-	node, err = ns.Get(ctx, rootID)
-	require.NoError(t, err)
-	fmt.Printf("NODE2 IS %T\n", node)
 
 	it, err := tree.NewTreeIterator(ctx, ns, rootID, 0, 128)
 	require.NoError(t, err)
@@ -88,5 +74,4 @@ func TestTreeIterator(t *testing.T) {
 		count++
 	}
 	assert.Equal(t, 20, count)
-	t.Fail()
 }

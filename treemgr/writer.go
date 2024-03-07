@@ -115,7 +115,7 @@ func (w *writer) flush(ctx context.Context) error {
 	}
 	w.buf.Reset()
 	w.initialized = false
-	slog.InfoContext(ctx, "flushed writer", "stream", w.streamID, "lower", w.lower, "upper", w.upper)
+	slog.DebugContext(ctx, "flushed writer", "stream", w.streamID, "lower", w.lower, "upper", w.upper)
 	return nil
 }
 
