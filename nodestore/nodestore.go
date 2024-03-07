@@ -124,9 +124,9 @@ func (n *Nodestore) ListWAL(ctx context.Context) ([]WALListing, error) {
 
 func (n *Nodestore) WALFlush(ctx context.Context, walid string, version uint64, ids []NodeID) error {
 	for _, id := range ids {
-		node, ok := n.GetStagedNode(id)
-		if !ok {
-			return fmt.Errorf("failed to get staged node %s", id)
+		node, err := n.Get(ctx, id)
+		if err != nil {
+			return fmt.Errorf("failed to get node %s: %w", id, err)
 		}
 		bytes := node.ToBytes()
 		entry := WALEntry{
@@ -159,7 +159,7 @@ func (n *Nodestore) StageWithID(id NodeID, node Node) error {
 	return nil
 }
 
-func (n *Nodestore) GetStagedNode(id NodeID) (Node, bool) {
+func (n *Nodestore) getStagedNode(id NodeID) (Node, bool) {
 	n.mtx.RLock()
 	defer n.mtx.RUnlock()
 	node, ok := n.staging[id]
@@ -193,7 +193,7 @@ func (n *Nodestore) Flush(ctx context.Context, ids ...NodeID) (rootID NodeID, er
 	processed := make(map[NodeID]NodeID)
 	oid := n.generateObjectID()
 	for i, id := range ids {
-		node, ok := n.GetStagedNode(id)
+		node, ok := n.getStagedNode(id)
 		if !ok {
 			return rootID, ErrNodeNotStaged
 		}

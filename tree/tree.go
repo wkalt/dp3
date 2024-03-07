@@ -64,13 +64,10 @@ func Insert(
 func Print(ctx context.Context, ns *nodestore.Nodestore, nodeID nodestore.NodeID, version uint64) (string, error) {
 	sb := &strings.Builder{}
 	var node nodestore.Node
-	var ok bool
 	var err error
-	if node, ok = ns.GetStagedNode(nodeID); !ok {
-		node, err = ns.Get(ctx, nodeID)
-		if err != nil {
-			return "", fmt.Errorf("failed to get node %d: %w", nodeID, err)
-		}
+	node, err = ns.Get(ctx, nodeID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get node %d: %w", nodeID, err)
 	}
 	switch node := node.(type) {
 	case *nodestore.InnerNode:
@@ -85,12 +82,9 @@ func Print(ctx context.Context, ns *nodestore.Nodestore, nodeID nodestore.NodeID
 				return "", err
 			}
 			var childNode nodestore.Node
-			var ok bool
-			if childNode, ok = ns.GetStagedNode(child.ID); !ok {
-				childNode, err = ns.Get(ctx, child.ID)
-				if err != nil {
-					return "", fmt.Errorf("failed to get node %d: %w", child.ID, err)
-				}
+			childNode, err = ns.Get(ctx, child.ID)
+			if err != nil {
+				return "", fmt.Errorf("failed to get node %d: %w", child.ID, err)
 			}
 			if cnode, ok := childNode.(*nodestore.LeafNode); ok {
 				start := node.Start + uint64(i)*span/uint64(len(node.Children))
