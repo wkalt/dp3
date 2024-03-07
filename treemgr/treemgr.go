@@ -1,9 +1,8 @@
 package treemgr
 
 import (
+	"container/heap"
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -29,7 +28,7 @@ type TreeManager interface {
 	GetStatistics(context.Context, uint64, uint64, string, uint64) (StatisticalSummary, error)
 	Insert(context.Context, string, uint64, []byte) error
 
-	GetMessagesLatest(context.Context, uint64, uint64, []string) (io.Reader, error)
+	GetMessagesLatest(context.Context, io.Writer, uint64, uint64, []string) error
 	GetStatisticsLatest(context.Context, uint64, uint64, string) (StatisticalSummary, error)
 
 	SyncWAL(context.Context) error
@@ -46,8 +45,74 @@ func (tm *treeManager) GetStatistics(ctx context.Context, start, end uint64, str
 	return StatisticalSummary{}, nil
 }
 
-func (tm *treeManager) GetMessagesLatest(ctx context.Context, start, end uint64, streamIDs []string) (io.Reader, error) {
-	return nil, nil
+type record struct {
+	schema  *fmcap.Schema
+	channel *fmcap.Channel
+	message *fmcap.Message
+	idx     int
+}
+
+func (tm *treeManager) GetMessagesLatest(ctx context.Context, w io.Writer, start, end uint64, streamIDs []string) error {
+	pq := util.NewPriorityQueue[record, uint64]()
+	heap.Init(pq)
+	iterators := make([]*tree.Iterator, 0, len(streamIDs))
+	for _, streamID := range streamIDs {
+		root, err := tm.rootmap.GetLatest(ctx, streamID)
+		if err != nil {
+			return fmt.Errorf("failed to get latest root for %s: %w", streamID, err)
+		}
+		it, err := tree.NewTreeIterator(ctx, tm.ns, root, start, end)
+		if err != nil {
+			return fmt.Errorf("failed to create iterator for %s: %w", streamID, err)
+		}
+		iterators = append(iterators, it)
+	}
+
+	// pop one message from each iterator and push it onto the priority queue
+	for i, it := range iterators {
+		if it.More() {
+			schema, channel, message, err := it.Next(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to get next message: %w", err)
+			}
+			item := util.Item[record, uint64]{
+				Value:    record{schema, channel, message, i},
+				Priority: message.LogTime,
+			}
+			heap.Push(pq, &item)
+		}
+	}
+
+	writer, err := mcap.NewWriter(w)
+	if err != nil {
+		return fmt.Errorf("failed to create mcap writer: %w", err)
+	}
+	defer writer.Close()
+
+	if err := writer.WriteHeader(&fmcap.Header{}); err != nil {
+		return fmt.Errorf("failed to write header: %w", err)
+	}
+
+	mc := mcap.NewMergeCoordinator(writer)
+	for pq.Len() > 0 {
+		rec := heap.Pop(pq).(record)
+		if err := mc.Write(rec.schema, rec.channel, rec.message); err != nil {
+			return fmt.Errorf("failed to write message: %w", err)
+		}
+		s, c, m, err := iterators[rec.idx].Next(ctx)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				continue
+			}
+			return fmt.Errorf("failed to get next message: %w", err)
+		}
+		var item = util.Item[record, uint64]{
+			Value:    record{s, c, m, rec.idx},
+			Priority: m.LogTime,
+		}
+		heap.Push(pq, &item)
+	}
+	return nil
 }
 
 func (tm *treeManager) GetStatisticsLatest(ctx context.Context, start, end uint64, streamID string) (StatisticalSummary, error) {
@@ -114,11 +179,6 @@ type treeManager struct {
 	batchsize int
 }
 
-func computeStreamID(hashid string, topic string) string {
-	sum := md5.Sum([]byte(hashid + topic))
-	return hex.EncodeToString(sum[:])
-}
-
 func (tm *treeManager) IngestStream(ctx context.Context, hashid string, data io.Reader) error {
 	writers := map[string]*writer{}
 	reader, err := mcap.NewReader(data)
@@ -141,7 +201,7 @@ func (tm *treeManager) IngestStream(ctx context.Context, hashid string, data io.
 		var writer *writer
 		var ok bool
 		if writer, ok = writers[channel.Topic]; !ok {
-			streamID := computeStreamID(hashid, channel.Topic)
+			streamID := util.ComputeStreamID(hashid, channel.Topic)
 			if _, err := tm.rootmap.GetLatest(ctx, streamID); errors.Is(err, nodestore.ErrNodeNotFound) {
 				rootID, err := tm.ns.NewRoot(ctx, util.DateSeconds("1970-01-01"), util.DateSeconds("2038-01-19"), 60, 64)
 				if err != nil {

@@ -152,6 +152,13 @@ func (n *Nodestore) Stage(node Node) (NodeID, error) {
 	return id, nil
 }
 
+func (n *Nodestore) StageWithID(id NodeID, node Node) error {
+	n.mtx.Lock()
+	defer n.mtx.Unlock()
+	n.staging[id] = node
+	return nil
+}
+
 func (n *Nodestore) GetStagedNode(id NodeID) (Node, bool) {
 	n.mtx.RLock()
 	defer n.mtx.RUnlock()
@@ -198,6 +205,7 @@ func (n *Nodestore) Flush(ctx context.Context, ids ...NodeID) (rootID NodeID, er
 					}
 				}
 			}
+			node = inner
 		}
 		n, err := buf.Write(node.ToBytes())
 		if err != nil {
@@ -255,17 +263,16 @@ func (ns *Nodestore) NewRoot(ctx context.Context, start, end uint64, leafWidthSe
 
 func (ns *Nodestore) FlushWALPath(ctx context.Context, path []NodeID) (nodeID NodeID, err error) {
 	result := []NodeID{}
-	for _, node := range path {
-		data, err := ns.wal.Get(ctx, node)
+	for _, nodeID := range path {
+		data, err := ns.wal.Get(ctx, nodeID)
 		if err != nil {
-			return nodeID, fmt.Errorf("failed to get node: %w", err)
+			return nodeID, fmt.Errorf("failed to get node %s from wal: %w", nodeID, err)
 		}
 		node, err := ns.bytesToNode(data)
 		if err != nil {
 			return nodeID, fmt.Errorf("failed to parse node: %w", err)
 		}
-		nodeID, err := ns.Stage(node)
-		if err != nil {
+		if err := ns.StageWithID(nodeID, node); err != nil {
 			return nodeID, fmt.Errorf("failed to stage node: %w", err)
 		}
 		result = append(result, nodeID)
@@ -306,7 +313,7 @@ func (ns *Nodestore) NodeMerge(ctx context.Context, version uint64, nodeIDs []No
 	for i, id := range nodeIDs {
 		data, err := ns.wal.Get(ctx, id)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get node %d from wal: %w", id, err)
+			return nil, fmt.Errorf("failed to get node %s from wal: %w", id, err)
 		}
 		node, err := ns.bytesToNode(data)
 		if err != nil {

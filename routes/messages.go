@@ -1,0 +1,43 @@
+package routes
+
+import (
+	"encoding/json"
+	"fmt"
+	"net/http"
+
+	"github.com/wkalt/dp3/treemgr"
+	"github.com/wkalt/dp3/util"
+	"golang.org/x/exp/slog"
+)
+
+type MessagesRequest struct {
+	HashID string   `json:"hashid"`
+	Topics []string `json:"topics"`
+	Start  uint64   `json:"start"`
+	End    uint64   `json:"end"`
+}
+
+func newMessagesHandler(tmgr treemgr.TreeManager) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		req := MessagesRequest{}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			fmt.Println("error decoding request", err)
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		slog.InfoContext(ctx, "messages request", "hashid", req.HashID, "topics", req.Topics, "start", req.Start, "end", req.End)
+
+		streamIDs := make([]string, len(req.Topics))
+		for i, topic := range req.Topics {
+			streamID := util.ComputeStreamID(req.HashID, topic)
+			streamIDs[i] = streamID
+		}
+
+		err := tmgr.GetMessagesLatest(ctx, w, req.Start*1e9, req.End*1e9, streamIDs)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+}

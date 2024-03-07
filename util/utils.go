@@ -1,6 +1,10 @@
 package util
 
-import "time"
+import (
+	"crypto/md5"
+	"encoding/hex"
+	"time"
+)
 
 func Pow[V int | int64 | float64 | uint64 | float32](x V, y int) V {
 	if y == 0 {
@@ -32,4 +36,9 @@ func ParseNanos(x uint64) time.Time {
 func DateSeconds(date string) uint64 {
 	t, _ := time.Parse("2006-01-02", date)
 	return uint64(t.Unix())
+}
+
+func ComputeStreamID(hashid string, topic string) string {
+	sum := md5.Sum([]byte(hashid + topic))
+	return hex.EncodeToString(sum[:])
 }

@@ -34,10 +34,6 @@ func newWriter(ctx context.Context, tmgr *treeManager, streamID string) (*writer
 		return nil, fmt.Errorf("unable to find tree dimensions: %w", err)
 	}
 	buf := &bytes.Buffer{}
-	w, err := mcap.NewWriter(buf)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create mcap writer: %w", err)
-	}
 	return &writer{
 		tmgr:        tmgr,
 		lower:       0,
@@ -47,7 +43,7 @@ func newWriter(ctx context.Context, tmgr *treeManager, streamID string) (*writer
 		channels:    []*fmcap.Channel{},
 		initialized: false,
 		buf:         buf,
-		w:           w,
+		w:           nil,
 		dims:        dims,
 	}, nil
 }

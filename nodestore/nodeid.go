@@ -3,9 +3,9 @@ package nodestore
 import (
 	"database/sql/driver"
 	"encoding/binary"
-	"encoding/hex"
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 type NodeID [16]byte
@@ -31,15 +31,15 @@ func (n *NodeID) Scan(value interface{}) error {
 	if !ok {
 		return fmt.Errorf("expected string, got %T", value)
 	}
-	bytes, err := hex.DecodeString(s)
-	if err != nil {
-		return fmt.Errorf("failed to decode hex: %w", err)
-	}
-
-	copy(n[:], bytes)
+	parts := strings.Split(s, ":")
+	oid, _ := strconv.ParseUint(parts[0], 10, 64)
+	offset, _ := strconv.ParseUint(parts[1], 10, 32)
+	length, _ := strconv.ParseUint(parts[2], 10, 32)
+	nodeID := generateNodeID(objectID(oid), int(offset), int(length))
+	*n = nodeID
 	return nil
 }
 
 func (n NodeID) Value() (driver.Value, error) {
-	return driver.Value(hex.EncodeToString(n[:])), nil
+	return driver.Value(n.String()), nil
 }

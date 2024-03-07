@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"math"
 	"os"
 	"testing"
 
@@ -17,6 +18,33 @@ import (
 	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/versionstore"
 )
+
+func TestStreamingAndIngestion(t *testing.T) {
+	ctx := context.Background()
+	store := storage.NewMemStore()
+	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1000)
+	db, err := sql.Open("sqlite3", ":memory:")
+	require.NoError(t, err)
+	wal, err := nodestore.NewSQLWAL(ctx, db)
+	require.NoError(t, err)
+	ns := nodestore.NewNodestore(store, cache, wal)
+	vs := versionstore.NewMemVersionStore()
+	rm := rootmap.NewMemRootmap()
+	tmgr := NewTreeManager(ns, vs, rm, 2)
+
+	f, err := os.Open("/home/wyatt/data/bags/demo.mcap")
+	require.NoError(t, err)
+	defer f.Close()
+
+	require.NoError(t, tmgr.IngestStream(ctx, "my-device", f))
+	require.NoError(t, tmgr.SyncWAL(ctx))
+
+	// can I read
+	buf := &bytes.Buffer{}
+	streamID := util.ComputeStreamID("my-device", "/diagnostics")
+	require.NoError(t, tmgr.GetMessagesLatest(ctx, buf, 0, math.MaxUint64, []string{streamID}))
+	fmt.Println(buf.Bytes())
+}
 
 func TestIngestion(t *testing.T) {
 	ctx := context.Background()

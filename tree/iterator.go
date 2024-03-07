@@ -30,7 +30,7 @@ func (ti *Iterator) initialize(ctx context.Context, rootID nodestore.NodeID) err
 		stack = stack[:len(stack)-1]
 		node, err := ti.ns.Get(ctx, nodeID)
 		if err != nil {
-			return fmt.Errorf("failed to get node: %w", err)
+			return fmt.Errorf("failed to get node %s: %w", nodeID, err)
 		}
 		if node.Type() == nodestore.Leaf {
 			ti.leafIDs = append(ti.leafIDs, nodeID)
@@ -45,6 +45,9 @@ func (ti *Iterator) initialize(ctx context.Context, rootID nodestore.NodeID) err
 		left := inner.Start
 		right := inner.Start + step
 		for _, child := range inner.Children {
+			if child == nil {
+				continue
+			}
 			if left < ti.end && right >= ti.start {
 				stack = append(stack, child.ID)
 			}
@@ -111,7 +114,7 @@ func NewTreeIterator(
 	ctx context.Context,
 	ns *nodestore.Nodestore,
 	rootID nodestore.NodeID,
-	version, start uint64,
+	start uint64,
 	end uint64,
 ) (*Iterator, error) {
 	it := &Iterator{start: start, end: end, ns: ns}

@@ -40,7 +40,7 @@ func hashChannel(c *mcap.Channel) uint64 {
 	return hashBytes([]byte(content))
 }
 
-type coordinator struct {
+type MergeCoordinator struct {
 	w             *mcap.Writer
 	schemaHashes  map[uint64]uint16
 	channelHashes map[uint64]uint16
@@ -50,8 +50,8 @@ type coordinator struct {
 	nextChannelID uint16
 }
 
-func newCoordinator(w *mcap.Writer) *coordinator {
-	return &coordinator{
+func NewMergeCoordinator(w *mcap.Writer) *MergeCoordinator {
+	return &MergeCoordinator{
 		w:             w,
 		schemaHashes:  make(map[uint64]uint16),
 		channelHashes: make(map[uint64]uint16),
@@ -62,7 +62,7 @@ func newCoordinator(w *mcap.Writer) *coordinator {
 	}
 }
 
-func (c *coordinator) write(schema *mcap.Schema, channel *mcap.Channel, msg *mcap.Message) error {
+func (c *MergeCoordinator) Write(schema *mcap.Schema, channel *mcap.Channel, msg *mcap.Message) error {
 	if schema == nil {
 		return errors.New("schema is nil")
 	}
@@ -138,7 +138,7 @@ func Nmerge(writer io.Writer, iterators ...mcap.MessageIterator) error {
 	}
 	pq := util.NewPriorityQueue[record, uint64]()
 	heap.Init(pq)
-	mc := newCoordinator(w)
+	mc := NewMergeCoordinator(w)
 
 	// push one element from each iterator onto queue
 	for i, it := range iterators {
@@ -155,7 +155,7 @@ func Nmerge(writer io.Writer, iterators ...mcap.MessageIterator) error {
 
 	for pq.Len() > 0 {
 		rec := heap.Pop(pq).(record)
-		if err := mc.write(rec.schema, rec.channel, rec.message); err != nil {
+		if err := mc.Write(rec.schema, rec.channel, rec.message); err != nil {
 			return err
 		}
 		s, c, m, err := iterators[rec.idx].Next(nil)
@@ -198,28 +198,28 @@ func Merge(writer io.Writer, a, b io.Reader) error {
 		return fmt.Errorf("failed to write header: %w", err)
 	}
 	var err1, err2 error
-	mc := newCoordinator(w)
+	mc := NewMergeCoordinator(w)
 	s1, c1, m1, err1 := it1.Next(nil)
 	s2, c2, m2, err2 := it2.Next(nil)
 	for !errors.Is(err1, io.EOF) || !errors.Is(err2, io.EOF) {
 		switch {
 		case err1 == nil && errors.Is(err2, io.EOF):
-			if err := mc.write(s1, c1, m1); err != nil {
+			if err := mc.Write(s1, c1, m1); err != nil {
 				return err
 			}
 			s1, c1, m1, err1 = it1.Next(nil)
 		case err2 == nil && errors.Is(err1, io.EOF):
-			if err := mc.write(s2, c2, m2); err != nil {
+			if err := mc.Write(s2, c2, m2); err != nil {
 				return err
 			}
 			s2, c2, m2, err2 = it2.Next(nil)
 		case m1.LogTime < m2.LogTime:
-			if err := mc.write(s1, c1, m1); err != nil {
+			if err := mc.Write(s1, c1, m1); err != nil {
 				return err
 			}
 			s1, c1, m1, err1 = it1.Next(nil)
 		default:
-			if err := mc.write(s2, c2, m2); err != nil {
+			if err := mc.Write(s2, c2, m2); err != nil {
 				return err
 			}
 			s2, c2, m2, err2 = it2.Next(nil)
