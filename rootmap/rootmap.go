@@ -6,8 +6,6 @@ import (
 	"github.com/wkalt/dp3/nodestore"
 )
 
-var ErrNodeNotFound = nodestore.ErrNodeNotFound
-
 type Rootmap interface {
 	GetLatest(ctx context.Context, streamID string) (nodestore.NodeID, error)
 	Get(ctx context.Context, streamID string, version uint64) (nodestore.NodeID, error)

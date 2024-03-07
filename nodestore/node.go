@@ -7,6 +7,17 @@ const (
 	Leaf
 )
 
+func (n NodeType) String() string {
+	switch n {
+	case Inner:
+		return "inner"
+	case Leaf:
+		return "leaf"
+	default:
+		return "unknown"
+	}
+}
+
 // Node is an interface to which leaf and inner nodes adhere.
 type Node interface {
 	// ToBytes serializes the node to a byte slice

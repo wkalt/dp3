@@ -23,8 +23,7 @@ type Iterator struct {
 }
 
 func (ti *Iterator) initialize(ctx context.Context, rootID nodestore.NodeID) error {
-	var stack []nodestore.NodeID
-	stack = append(stack, rootID)
+	stack := []nodestore.NodeID{rootID}
 	for len(stack) > 0 {
 		nodeID := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]

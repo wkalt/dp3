@@ -98,7 +98,7 @@ func (n *Nodestore) Get(ctx context.Context, id NodeID) (Node, error) {
 	data, err := n.store.GetRange(ctx, id.OID(), id.Offset(), id.Length())
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotFound) {
-			return nil, ErrNodeNotFound
+			return nil, NodeNotFoundError{id}
 		}
 		return nil, fmt.Errorf("failed to get node: %w", err)
 	}

@@ -62,7 +62,7 @@ func (rm *sqlRootmap) GetLatest(ctx context.Context, streamID string) (nodestore
 	).Scan(&nodeID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nodestore.NodeID{}, nodestore.ErrNodeNotFound
+			return nodestore.NodeID{}, StreamNotFoundError{streamID}
 		}
 		return nodestore.NodeID{}, fmt.Errorf("failed to read from rootmap: %w", err)
 	}
@@ -81,7 +81,7 @@ func (rm *sqlRootmap) Get(ctx context.Context, streamID string, version uint64) 
 	).Scan(&nodeID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nodestore.NodeID{}, nodestore.ErrNodeNotFound
+			return nodestore.NodeID{}, StreamNotFoundError{streamID}
 		}
 		return nodestore.NodeID{}, fmt.Errorf("failed to read from rootmap: %w", err)
 	}

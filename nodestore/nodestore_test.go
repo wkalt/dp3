@@ -25,8 +25,9 @@ func TestNodestoreErrors(t *testing.T) {
 	require.NoError(t, err)
 	ns := nodestore.NewNodestore(store, cache, wal)
 	t.Run("get non-existent node", func(t *testing.T) {
-		_, err := ns.Get(ctx, nodestore.NodeID{})
-		assert.ErrorIs(t, err, nodestore.ErrNodeNotFound)
+		id := nodestore.RandomNodeID()
+		_, err := ns.Get(ctx, id)
+		assert.ErrorIs(t, err, nodestore.NodeNotFoundError{id})
 	})
 	t.Run("flush a nonexistent node", func(t *testing.T) {
 		_, err := ns.Flush(ctx, nodestore.NodeID{})

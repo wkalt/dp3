@@ -248,7 +248,7 @@ func (tm *treeManager) IngestStream(ctx context.Context, hashid string, data io.
 			_, err := tm.rootmap.GetLatest(ctx, streamID)
 			if err != nil {
 				switch {
-				case errors.Is(err, nodestore.ErrNodeNotFound):
+				case errors.Is(err, rootmap.StreamNotFoundError{StreamID: streamID}):
 					if err := tm.newRoot(ctx, streamID); err != nil {
 						return fmt.Errorf("failed to create new root: %w", err)
 					}
