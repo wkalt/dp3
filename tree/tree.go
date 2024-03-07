@@ -40,7 +40,6 @@ func Insert(
 		}
 		depth--
 	}
-
 	// current is now the final parent
 	bucket := bucket(start, current)
 	if bucket > uint64(len(current.Children)-1) {
@@ -193,7 +192,8 @@ func stageNode(ns *nodestore.Nodestore, node nodestore.Node) (nodestore.NodeID, 
 	return id, nil
 }
 
-// descend descends the tree to the node that should contain the given timestamp.
+// descend the tree to the node that contains the given timestamp, copying nodes
+// at each step and recording the path taken.
 func descend(
 	ctx context.Context,
 	ns *nodestore.Nodestore,
