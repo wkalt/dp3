@@ -1,49 +1,14 @@
 package tree
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
-	fmcap "github.com/foxglove/mcap/go/mcap"
-	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
 )
-
-// todo
-// * tree dimensions (branching factor, depth) must be chosen at runtime based
-//    on some initial samples of the data and a target leaf node size.
-
-type TreeStats struct {
-	Depth           uint8
-	BranchingFactor int
-	LeafWidth       time.Duration
-	Start           time.Time
-	End             time.Time
-}
-
-func Stats(ctx context.Context, ns *nodestore.Nodestore, rootID nodestore.NodeID) (TreeStats, error) {
-	root, err := ns.Get(ctx, rootID)
-	if err != nil {
-		return TreeStats{}, err
-	}
-	node := root.(*nodestore.InnerNode)
-	coverage := node.End - node.Start
-	for i := uint8(0); i < node.Depth; i++ {
-		coverage /= uint64(len(node.Children))
-	}
-	return TreeStats{
-		Depth:           node.Depth,
-		BranchingFactor: len(node.Children),
-		LeafWidth:       time.Duration(coverage * 1e9),
-		Start:           time.Unix(int64(node.Start), 0),
-		End:             time.Unix(int64(node.End), 0),
-	}, nil
-}
 
 // Insert the slice of data into the node corresponding to the given start time.
 // The blob of data should be a well-formed MCAP file, and it must fit into
@@ -75,6 +40,7 @@ func Insert(
 		}
 		depth--
 	}
+
 	// current is now the final parent
 	bucket := bucket(start, current)
 	if bucket > uint64(len(current.Children)-1) {
@@ -94,11 +60,80 @@ func Insert(
 	}
 	nodes = append(nodes, stagedID)
 	current.PlaceChild(bucket, stagedID, version)
-	//nodeIDs, err := ns.Flush(ctx, nodes...)
-	//if err != nil {
-	//	return rootID, nil, fmt.Errorf("failed to flush nodes: %w", err)
-	//}
 	return nodes[0], nodes, nil
+}
+
+type TreeStats struct {
+	Depth           uint8
+	BranchingFactor int
+	LeafWidth       time.Duration
+	Start           time.Time
+	End             time.Time
+}
+
+func Stats(ctx context.Context, ns *nodestore.Nodestore, rootID nodestore.NodeID) (TreeStats, error) {
+	root, err := ns.Get(ctx, rootID)
+	if err != nil {
+		return TreeStats{}, err
+	}
+	node := root.(*nodestore.InnerNode)
+	coverage := node.End - node.Start
+	for i := uint8(0); i < node.Depth; i++ {
+		coverage /= uint64(len(node.Children))
+	}
+	return TreeStats{
+		Depth:           node.Depth,
+		BranchingFactor: len(node.Children),
+		LeafWidth:       time.Duration(coverage * 1e9),
+		Start:           time.Unix(int64(node.Start), 0),
+		End:             time.Unix(int64(node.End), 0),
+	}, nil
+}
+
+func Print(ctx context.Context, ns *nodestore.Nodestore, nodeID nodestore.NodeID, version uint64) (string, error) {
+	sb := &strings.Builder{}
+	var node nodestore.Node
+	var ok bool
+	var err error
+	if node, ok = ns.GetStagedNode(nodeID); !ok {
+		node, err = ns.Get(ctx, nodeID)
+		if err != nil {
+			return "", fmt.Errorf("failed to get node %d: %w", nodeID, err)
+		}
+	}
+	switch node := node.(type) {
+	case *nodestore.InnerNode:
+		sb.WriteString(fmt.Sprintf("[%d-%d:%d", node.Start, node.End, version))
+		span := node.End - node.Start
+		for i, child := range node.Children {
+			if child == nil {
+				continue
+			}
+			childstr, err := Print(ctx, ns, child.ID, child.Version)
+			if err != nil {
+				return "", err
+			}
+			var childNode nodestore.Node
+			var ok bool
+			if childNode, ok = ns.GetStagedNode(child.ID); !ok {
+				childNode, err = ns.Get(ctx, child.ID)
+				if err != nil {
+					return "", fmt.Errorf("failed to get node %d: %w", child.ID, err)
+				}
+			}
+			if cnode, ok := childNode.(*nodestore.LeafNode); ok {
+				start := node.Start + uint64(i)*span/uint64(len(node.Children))
+				end := node.Start + uint64(i+1)*span/uint64(len(node.Children))
+				sb.WriteString(fmt.Sprintf(" [%d-%d:%d %s]", start, end, child.Version, cnode))
+			} else {
+				sb.WriteString(" " + childstr)
+			}
+		}
+		sb.WriteString("]")
+	case *nodestore.LeafNode:
+		sb.WriteString(node.String())
+	}
+	return sb.String(), nil
 }
 
 // bwidth returns the width of each bucket in seconds.
@@ -112,9 +147,6 @@ func bwidth(n *nodestore.InnerNode) uint64 {
 func bucket(nanos uint64, n *nodestore.InnerNode) uint64 {
 	bwidth := bwidth(n)
 	bucket := (nanos - n.Start*1e9) / (1e9 * bwidth)
-	if bucket > uint64(len(n.Children)-1) {
-		fmt.Println("wud")
-	}
 	return bucket
 }
 
@@ -150,19 +182,6 @@ func cloneLeafNode(ctx context.Context, ns *nodestore.Nodestore, id nodestore.No
 		return nil, fmt.Errorf("failed to clone node: %w", err)
 	}
 	return merged, nil
-}
-
-// root returns the root node of the tree.
-func root(ctx context.Context, ns *nodestore.Nodestore, rootID nodestore.NodeID) (*nodestore.InnerNode, error) {
-	root, err := ns.Get(ctx, rootID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get root: %w", err)
-	}
-	rootnode, ok := root.(*nodestore.InnerNode)
-	if !ok {
-		return nil, errors.New("expected inner node - database is corrupt")
-	}
-	return rootnode, nil
 }
 
 // stageNode stages the given node in the nodestore and returns its ID.
@@ -205,170 +224,4 @@ func descend(
 	current.PlaceChild(bucket, nodeID, version)
 	*nodeIDs = append(*nodeIDs, nodeID)
 	return node, nil
-}
-
-// Bounds returns the time bounds of the leaf node that contains the given
-// nanosecond timestamp. The units of the return value are seconds.
-func Bounds(ctx context.Context, ns *nodestore.Nodestore, rootID nodestore.NodeID, ts uint64) ([]uint64, error) {
-	root, err := root(ctx, ns, rootID)
-	if err != nil {
-		return nil, err
-	}
-	width := root.End - root.Start
-	for i := 0; i < int(root.Depth); i++ {
-		width /= uint64(len(root.Children))
-	}
-	inset := ts/1e9 - root.Start
-	bucket := inset / width
-	return []uint64{root.Start + width*bucket, root.Start + width*(bucket+1)}, nil
-}
-
-func mergeLeaves(ctx context.Context, ns *nodestore.Nodestore, nodeIDs []nodestore.NodeID) (nodestore.NodeID, error) {
-	if len(nodeIDs) == 1 {
-		return nodeIDs[0], nil
-	}
-	iterators := make([]fmcap.MessageIterator, len(nodeIDs))
-	var ok bool
-	var err error
-	var leaf nodestore.Node
-	for i, id := range nodeIDs {
-		if leaf, ok = ns.GetStagedNode(id); !ok {
-			if leaf, err = ns.Get(ctx, id); err != nil {
-				return nodestore.NodeID{}, fmt.Errorf("failed to get leaf %d", id)
-			}
-		}
-		reader, err := fmcap.NewReader(leaf.(*nodestore.LeafNode).Data())
-		if err != nil {
-			return nodestore.NodeID{}, fmt.Errorf("failed to create reader: %w", err)
-		}
-		defer reader.Close()
-		iterators[i], err = reader.Messages()
-		if err != nil {
-			return nodestore.NodeID{}, fmt.Errorf("failed to create iterator: %w", err)
-		}
-	}
-	buf := &bytes.Buffer{}
-	if err := mcap.Nmerge(buf, iterators...); err != nil {
-		return nodestore.NodeID{}, fmt.Errorf("failed to merge leaves: %w", err)
-	}
-	newLeaf := nodestore.NewLeafNode(buf.Bytes())
-	return stageNode(ns, newLeaf)
-}
-
-// NodeMerge does an N-way tree merge, returning a "path" from the root to leaf
-// of the new tree. All nodes are from the same level of the tree, and can thus
-// be assumed to have the same type and same number of children.
-func NodeMerge(ctx context.Context, ns *nodestore.Nodestore, version uint64, nodeIDs []nodestore.NodeID) ([]nodestore.NodeID, error) {
-	if len(nodeIDs) == 0 {
-		return nil, errors.New("no nodes to merge")
-	}
-	var err error
-	var ok bool
-	nodes := make([]nodestore.Node, len(nodeIDs))
-	for i, id := range nodeIDs {
-		if nodes[i], ok = ns.GetStagedNode(id); !ok {
-			if nodes[i], err = ns.Get(ctx, id); err != nil {
-				return nil, fmt.Errorf("failed to get node %d", id)
-			}
-		}
-	}
-	switch node := (nodes[0]).(type) {
-	case *nodestore.InnerNode:
-		conflicts := []int{}
-		for i, outer := range node.Children {
-			var conflicted bool
-			for _, node := range nodes {
-				inner := (node).(*nodestore.InnerNode).Children[i]
-				if outer == nil && inner != nil ||
-					outer != nil && inner == nil ||
-					outer != nil && inner != nil && outer.ID != inner.ID {
-					conflicted = true
-				}
-				if conflicted {
-					conflicts = append(conflicts, i)
-				}
-			}
-		}
-		newInner := nodestore.NewInnerNode(node.Depth, node.Start, node.End, len(node.Children))
-		newID, err := ns.Stage(newInner)
-		if err != nil {
-			return nil, err
-		}
-		result := []nodestore.NodeID{newID}
-		for _, conflict := range conflicts {
-			children := []nodestore.NodeID{} // set of not-null children mapping to conflicts
-			for _, node := range nodes {
-				if inner := (node).(*nodestore.InnerNode).Children[conflict]; inner != nil {
-					children = append(children, inner.ID)
-				}
-			}
-			merged, err := NodeMerge(ctx, ns, version, children) // merged child for this conflict
-			if err != nil {
-				return nil, err
-			}
-			newInner.Children[conflict] = &nodestore.Child{ID: merged[0], Version: version}
-			result = append(result, merged...)
-		}
-
-		for i := range node.Children {
-			if !slices.Contains(conflicts, i) {
-				newInner.Children[i] = node.Children[i]
-			}
-		}
-		return result, nil
-	case *nodestore.LeafNode:
-		merged, err := mergeLeaves(ctx, ns, nodeIDs)
-		if err != nil {
-			return nil, err
-		}
-		return []nodestore.NodeID{merged}, nil
-	default:
-		return nil, fmt.Errorf("unrecognized node type: %T", node)
-	}
-}
-
-func PrintTree(ctx context.Context, ns *nodestore.Nodestore, nodeID nodestore.NodeID, version uint64) (string, error) {
-	sb := &strings.Builder{}
-	var node nodestore.Node
-	var ok bool
-	var err error
-	if node, ok = ns.GetStagedNode(nodeID); !ok {
-		node, err = ns.Get(ctx, nodeID)
-		if err != nil {
-			return "", fmt.Errorf("failed to get node %d: %w", nodeID, err)
-		}
-	}
-	switch node := node.(type) {
-	case *nodestore.InnerNode:
-		sb.WriteString(fmt.Sprintf("[%d-%d:%d", node.Start, node.End, version))
-		span := node.End - node.Start
-		for i, child := range node.Children {
-			if child == nil {
-				continue
-			}
-			childstr, err := PrintTree(ctx, ns, child.ID, child.Version)
-			if err != nil {
-				return "", err
-			}
-			var childNode nodestore.Node
-			var ok bool
-			if childNode, ok = ns.GetStagedNode(child.ID); !ok {
-				childNode, err = ns.Get(ctx, child.ID)
-				if err != nil {
-					return "", fmt.Errorf("failed to get node %d: %w", child.ID, err)
-				}
-			}
-			if cnode, ok := childNode.(*nodestore.LeafNode); ok {
-				start := node.Start + uint64(i)*span/uint64(len(node.Children))
-				end := node.Start + uint64(i+1)*span/uint64(len(node.Children))
-				sb.WriteString(fmt.Sprintf(" [%d-%d:%d %s]", start, end, child.Version, cnode))
-			} else {
-				sb.WriteString(" " + childstr)
-			}
-		}
-		sb.WriteString("]")
-	case *nodestore.LeafNode:
-		sb.WriteString(node.String())
-	}
-	return sb.String(), nil
 }
