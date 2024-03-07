@@ -9,10 +9,6 @@ import (
 	"github.com/wkalt/dp3/nodestore"
 )
 
-// Insert the slice of data into the node corresponding to the given start time.
-// The blob of data should be a well-formed MCAP file, and it must fit into
-// exactly one leaf node. The caller is responsible for sectioning off MCAP
-// files based on the configuration of the tree.
 func Insert(
 	ctx context.Context,
 	ns *nodestore.Nodestore,
@@ -29,24 +25,22 @@ func Insert(
 	if err != nil {
 		return rootID, nil, err
 	}
-	nodes := make([]nodestore.NodeID, 0)
-	nodes = append(nodes, rootID)
+	nodes := []nodestore.NodeID{rootID}
 	current := root
-	depth := root.Depth
 	for current.Depth > 1 {
-		if current, err = descend(ctx, ns, &nodes, current, start, version); err != nil {
+		current, err = descend(ctx, ns, &nodes, current, start, version)
+		if err != nil {
 			return rootID, nil, err
 		}
-		depth--
 	}
-	// current is now the final parent
 	bucket := bucket(start, current)
 	if bucket > uint64(len(current.Children)-1) {
 		return rootID, nil, fmt.Errorf("bucket %d is out of range", bucket)
 	}
 	var node *nodestore.LeafNode
 	if existing := current.Children[bucket]; existing != nil {
-		if node, err = cloneLeafNode(ctx, ns, existing.ID, data); err != nil {
+		node, err = cloneLeafNode(ctx, ns, existing.ID, data)
+		if err != nil {
 			return rootID, nil, err
 		}
 	} else {
@@ -62,42 +56,50 @@ func Insert(
 }
 
 func Print(ctx context.Context, ns *nodestore.Nodestore, nodeID nodestore.NodeID, version uint64) (string, error) {
-	sb := &strings.Builder{}
-	var node nodestore.Node
-	var err error
-	node, err = ns.Get(ctx, nodeID)
+	node, err := ns.Get(ctx, nodeID)
 	if err != nil {
 		return "", fmt.Errorf("failed to get node %d: %w", nodeID, err)
 	}
 	switch node := node.(type) {
 	case *nodestore.InnerNode:
-		sb.WriteString(fmt.Sprintf("[%d-%d:%d", node.Start, node.End, version))
-		span := node.End - node.Start
-		for i, child := range node.Children {
-			if child == nil {
-				continue
-			}
-			childstr, err := Print(ctx, ns, child.ID, child.Version)
-			if err != nil {
-				return "", err
-			}
-			var childNode nodestore.Node
-			childNode, err = ns.Get(ctx, child.ID)
-			if err != nil {
-				return "", fmt.Errorf("failed to get node %d: %w", child.ID, err)
-			}
-			if cnode, ok := childNode.(*nodestore.LeafNode); ok {
-				start := node.Start + uint64(i)*span/uint64(len(node.Children))
-				end := node.Start + uint64(i+1)*span/uint64(len(node.Children))
-				sb.WriteString(fmt.Sprintf(" [%d-%d:%d %s]", start, end, child.Version, cnode))
-			} else {
-				sb.WriteString(" " + childstr)
-			}
-		}
-		sb.WriteString("]")
+		return printInnerNode(ctx, ns, node, version)
 	case *nodestore.LeafNode:
-		sb.WriteString(node.String())
+		return node.String(), nil
+	default:
+		return "", errors.New("unexpected node type")
 	}
+}
+
+func printInnerNode(
+	ctx context.Context,
+	ns *nodestore.Nodestore,
+	node *nodestore.InnerNode,
+	version uint64,
+) (string, error) {
+	sb := &strings.Builder{}
+	sb.WriteString(fmt.Sprintf("[%d-%d:%d", node.Start, node.End, version))
+	span := node.End - node.Start
+	for i, child := range node.Children {
+		if child == nil {
+			continue
+		}
+		childStr, err := Print(ctx, ns, child.ID, child.Version)
+		if err != nil {
+			return "", err
+		}
+		childNode, err := ns.Get(ctx, child.ID)
+		if err != nil {
+			return "", fmt.Errorf("failed to get node %d: %w", child.ID, err)
+		}
+		if cnode, ok := childNode.(*nodestore.LeafNode); ok {
+			start := node.Start + uint64(i)*span/uint64(len(node.Children))
+			end := node.Start + uint64(i+1)*span/uint64(len(node.Children))
+			sb.WriteString(fmt.Sprintf(" [%d-%d:%d %s]", start, end, child.Version, cnode))
+		} else {
+			sb.WriteString(" " + childStr)
+		}
+	}
+	sb.WriteString("]")
 	return sb.String(), nil
 }
 
