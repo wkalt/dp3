@@ -17,17 +17,6 @@ import (
 	"github.com/wkalt/dp3/util"
 )
 
-type nodestore interface {
-	Get(ctx context.Context, id NodeID) (Node, error)
-
-	Stage(node Node) (NodeID, error)
-	GetStagedNode(NodeID) (Node, bool)
-	Flush(ctx context.Context, ids ...NodeID) ([]NodeID, error)
-	WALFlush(walid string, version uint64, ids []NodeID) error
-	ListWAL() ([]WALListing, error)
-	WALDelete(ctx context.Context, id NodeID) error
-}
-
 func (n *Nodestore) String() string {
 	return n.cache.String()
 }
@@ -45,7 +34,10 @@ type Nodestore struct {
 }
 
 func (n *Nodestore) WALDelete(ctx context.Context, id NodeID) error {
-	return n.wal.Delete(ctx, id)
+	if err := n.wal.Delete(ctx, id); err != nil {
+		return fmt.Errorf("failed to delete node: %w", err)
+	}
+	return nil
 }
 
 // generateStagingID generates a temporary ID that will not collide with "real"
@@ -119,7 +111,11 @@ func (n *Nodestore) Get(ctx context.Context, id NodeID) (Node, error) {
 }
 
 func (n *Nodestore) ListWAL(ctx context.Context) ([]WALListing, error) {
-	return n.wal.List(ctx)
+	wal, err := n.wal.List(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list wal: %w", err)
+	}
+	return wal, nil
 }
 
 func (n *Nodestore) WALFlush(ctx context.Context, walid string, version uint64, ids []NodeID) error {
@@ -241,7 +237,13 @@ func NewNodestore(
 
 // NewRoot creates a new root node with the given depth and range, and persists
 // it to storage, returning the ID.
-func (ns *Nodestore) NewRoot(ctx context.Context, start, end uint64, leafWidthSecs int, bfactor int) (nodeID NodeID, err error) {
+func (n *Nodestore) NewRoot(
+	ctx context.Context,
+	start uint64,
+	end uint64,
+	leafWidthSecs int,
+	bfactor int,
+) (nodeID NodeID, err error) {
 	var depth int
 	span := end - start
 	coverage := leafWidthSecs
@@ -250,72 +252,71 @@ func (ns *Nodestore) NewRoot(ctx context.Context, start, end uint64, leafWidthSe
 		depth++
 	}
 	root := NewInnerNode(uint8(depth), start, start+uint64(coverage), bfactor)
-	tmpid, err := ns.Stage(root)
+	tmpid, err := n.Stage(root)
 	if err != nil {
 		return nodeID, fmt.Errorf("failed to stage root: %w", err)
 	}
-	id, err := ns.Flush(ctx, tmpid)
+	id, err := n.Flush(ctx, tmpid)
 	if err != nil {
 		return nodeID, fmt.Errorf("failed to flush root %s: %w", tmpid, err)
 	}
 	return id, nil
 }
 
-func (ns *Nodestore) FlushWALPath(ctx context.Context, path []NodeID) (nodeID NodeID, err error) {
+func (n *Nodestore) FlushWALPath(ctx context.Context, path []NodeID) (nodeID NodeID, err error) {
 	result := []NodeID{}
 	for _, nodeID := range path {
-		data, err := ns.wal.Get(ctx, nodeID)
+		data, err := n.wal.Get(ctx, nodeID)
 		if err != nil {
 			return nodeID, fmt.Errorf("failed to get node %s from wal: %w", nodeID, err)
 		}
-		node, err := ns.bytesToNode(data)
+		node, err := n.bytesToNode(data)
 		if err != nil {
 			return nodeID, fmt.Errorf("failed to parse node: %w", err)
 		}
-		if err := ns.StageWithID(nodeID, node); err != nil {
+		if err := n.StageWithID(nodeID, node); err != nil {
 			return nodeID, fmt.Errorf("failed to stage node: %w", err)
 		}
 		result = append(result, nodeID)
 	}
-	flushedRoot, err := ns.Flush(ctx, result...)
+	flushedRoot, err := n.Flush(ctx, result...)
 	if err != nil {
 		return nodeID, fmt.Errorf("failed to flush root: %w", err)
 	}
 	for _, node := range path { // todo transaction
-		if err := ns.wal.Delete(ctx, node); err != nil {
+		if err := n.wal.Delete(ctx, node); err != nil {
 			return nodeID, fmt.Errorf("failed to delete node: %w", err)
 		}
 	}
 	return flushedRoot, nil
 }
 
-func (ns *Nodestore) WALMerge(ctx context.Context, version uint64, nodeIDs []NodeID) (nodeID NodeID, err error) {
-	mergedPath, err := ns.NodeMerge(ctx, version, nodeIDs)
+func (n *Nodestore) WALMerge(ctx context.Context, version uint64, nodeIDs []NodeID) (nodeID NodeID, err error) {
+	mergedPath, err := n.NodeMerge(ctx, version, nodeIDs)
 	if err != nil {
 		return nodeID, fmt.Errorf("failed to merge nodes: %w", err)
 	}
-	flushedRoot, err := ns.Flush(ctx, mergedPath...)
+	flushedRoot, err := n.Flush(ctx, mergedPath...)
 	if err != nil {
 		return nodeID, fmt.Errorf("failed to flush root: %w", err)
 	}
-
 	return flushedRoot, nil
 }
 
 // NodeMerge does an N-way tree merge, returning a "path" from the root to leaf
 // of the new tree. All nodes are from the same level of the tree, and can thus
 // be assumed to have the same type and same number of children.
-func (ns *Nodestore) NodeMerge(ctx context.Context, version uint64, nodeIDs []NodeID) ([]NodeID, error) {
+func (n *Nodestore) NodeMerge(ctx context.Context, version uint64, nodeIDs []NodeID) ([]NodeID, error) {
 	if len(nodeIDs) == 0 {
 		return nil, errors.New("no nodes to merge")
 	}
 	nodes := make([]Node, len(nodeIDs))
 	for i, id := range nodeIDs {
-		data, err := ns.wal.Get(ctx, id)
+		data, err := n.wal.Get(ctx, id)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get node %s from wal: %w", id, err)
 		}
-		node, err := ns.bytesToNode(data)
+		node, err := n.bytesToNode(data)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse node: %w", err)
 		}
@@ -323,50 +324,17 @@ func (ns *Nodestore) NodeMerge(ctx context.Context, version uint64, nodeIDs []No
 	}
 	switch node := (nodes[0]).(type) {
 	case *InnerNode:
-		conflicts := []int{}
-		for i, outer := range node.Children {
-			var conflicted bool
-			for _, node := range nodes {
-				inner := (node).(*InnerNode).Children[i]
-				if outer == nil && inner != nil ||
-					outer != nil && inner == nil ||
-					outer != nil && inner != nil && outer.ID != inner.ID {
-					conflicted = true
-				}
-				if conflicted && !slices.Contains(conflicts, i) {
-					conflicts = append(conflicts, i)
-				}
-			}
+		inner := make([]*InnerNode, len(nodes))
+		for i, node := range nodes {
+			inner[i] = node.(*InnerNode)
 		}
-		newInner := NewInnerNode(node.Depth, node.Start, node.End, len(node.Children))
-		newID, err := ns.Stage(newInner)
+		nodeIDs, err := n.mergeInnerNodes(ctx, version, inner)
 		if err != nil {
 			return nil, err
 		}
-		result := []NodeID{newID}
-		for _, conflict := range conflicts {
-			children := []NodeID{} // set of not-null children mapping to conflicts
-			for _, node := range nodes {
-				if inner := (node).(*InnerNode).Children[conflict]; inner != nil && !slices.Contains(children, inner.ID) {
-					children = append(children, inner.ID)
-				}
-			}
-			merged, err := ns.NodeMerge(ctx, version, children) // merged child for this conflict
-			if err != nil {
-				return nil, err
-			}
-			newInner.Children[conflict] = &Child{ID: merged[0], Version: version}
-			result = append(result, merged...)
-		}
-
-		for i := range node.Children {
-			if !slices.Contains(conflicts, i) {
-				newInner.Children[i] = node.Children[i]
-			}
-		}
-		return result, nil
+		return nodeIDs, nil
 	case *LeafNode:
-		merged, err := ns.mergeLeaves(ctx, nodeIDs)
+		merged, err := n.mergeLeaves(ctx, nodeIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -376,18 +344,62 @@ func (ns *Nodestore) NodeMerge(ctx context.Context, version uint64, nodeIDs []No
 	}
 }
 
-func (ns *Nodestore) mergeLeaves(ctx context.Context, nodeIDs []NodeID) (NodeID, error) {
+func (n *Nodestore) mergeInnerNodes(ctx context.Context, version uint64, nodes []*InnerNode) ([]NodeID, error) {
+	conflicts := []int{}
+	node := nodes[0]
+	for i, outer := range node.Children {
+		var conflicted bool
+		for _, node := range nodes {
+			inner := node.Children[i]
+			if outer == nil && inner != nil || outer != nil && inner == nil ||
+				outer != nil && inner != nil && outer.ID != inner.ID {
+				conflicted = true
+			}
+			if conflicted && !slices.Contains(conflicts, i) {
+				conflicts = append(conflicts, i)
+			}
+		}
+	}
+	newInner := NewInnerNode(node.Depth, node.Start, node.End, len(node.Children))
+	newID, err := n.Stage(newInner)
+	if err != nil {
+		return nil, err
+	}
+	result := []NodeID{newID}
+	for _, conflict := range conflicts {
+		children := []NodeID{} // set of not-null children mapping to conflicts
+		for _, node := range nodes {
+			if inner := node.Children[conflict]; inner != nil && !slices.Contains(children, inner.ID) {
+				children = append(children, inner.ID)
+			}
+		}
+		merged, err := n.NodeMerge(ctx, version, children) // merged child for this conflict
+		if err != nil {
+			return nil, err
+		}
+		newInner.Children[conflict] = &Child{ID: merged[0], Version: version}
+		result = append(result, merged...)
+	}
+	for i := range node.Children {
+		if !slices.Contains(conflicts, i) {
+			newInner.Children[i] = node.Children[i]
+		}
+	}
+	return result, nil
+}
+
+func (n *Nodestore) mergeLeaves(ctx context.Context, nodeIDs []NodeID) (NodeID, error) {
 	if len(nodeIDs) == 1 {
 		id := nodeIDs[0]
-		data, err := ns.wal.Get(ctx, id)
+		data, err := n.wal.Get(ctx, id)
 		if err != nil {
 			return NodeID{}, fmt.Errorf("failed to get leaf %d from wal: %w", id, err)
 		}
-		node, err := ns.bytesToNode(data)
+		node, err := n.bytesToNode(data)
 		if err != nil {
 			return NodeID{}, fmt.Errorf("failed to parse node: %w", err)
 		}
-		nodeID, err := ns.Stage(node)
+		nodeID, err := n.Stage(node)
 		if err != nil {
 			return NodeID{}, fmt.Errorf("failed to stage node: %w", err)
 		}
@@ -395,11 +407,11 @@ func (ns *Nodestore) mergeLeaves(ctx context.Context, nodeIDs []NodeID) (NodeID,
 	}
 	iterators := make([]fmcap.MessageIterator, len(nodeIDs))
 	for i, id := range nodeIDs {
-		data, err := ns.wal.Get(ctx, id)
+		data, err := n.wal.Get(ctx, id)
 		if err != nil {
 			return NodeID{}, fmt.Errorf("failed to get leaf %d from wal: %w", id, err)
 		}
-		leaf, err := ns.bytesToNode(data)
+		leaf, err := n.bytesToNode(data)
 		if err != nil {
 			return NodeID{}, fmt.Errorf("failed to parse node: %w", err)
 		}
@@ -418,5 +430,5 @@ func (ns *Nodestore) mergeLeaves(ctx context.Context, nodeIDs []NodeID) (NodeID,
 		return NodeID{}, fmt.Errorf("failed to merge leaves: %w", err)
 	}
 	newLeaf := NewLeafNode(buf.Bytes())
-	return ns.Stage(newLeaf)
+	return n.Stage(newLeaf)
 }

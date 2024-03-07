@@ -27,7 +27,11 @@ func (pq PriorityQueue[_, _]) Swap(i, j int) {
 }
 
 func (pq *PriorityQueue[K, P]) Push(item any) {
-	*pq = append(*pq, item.(*Item[K, P]))
+	value, ok := item.(*Item[K, P])
+	if !ok {
+		panic("invalid type")
+	}
+	*pq = append(*pq, value)
 }
 
 func (pq *PriorityQueue[K, P]) Pop() any {

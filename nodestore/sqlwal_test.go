@@ -1,26 +1,37 @@
-package nodestore
+package nodestore_test
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/require"
+	"github.com/wkalt/dp3/nodestore"
 )
+
+func genNodeID(t *testing.T) nodestore.NodeID {
+	t.Helper()
+	bytes := make([]byte, 16)
+	_, err := rand.Read(bytes)
+	require.NoError(t, err)
+	return nodestore.NodeID(bytes)
+}
 
 func TestSQLWAL(t *testing.T) {
 	ctx := context.Background()
 	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
-	wal, err := NewSQLWAL(ctx, db)
+	wal, err := nodestore.NewSQLWAL(ctx, db)
 	require.NoError(t, err)
 
 	t.Run("test put/get stream", func(t *testing.T) {
 		for i := 0; i < 10; i++ {
-			entry := WALEntry{
+			nodeID := genNodeID(t)
+			entry := nodestore.WALEntry{
 				StreamID: "stream",
-				NodeID:   generateNodeID(10, 10, i),
+				NodeID:   nodeID,
 				Version:  10,
 				Data:     []byte("data"),
 			}
@@ -30,13 +41,13 @@ func TestSQLWAL(t *testing.T) {
 
 		result, err := wal.GetStream(ctx, "stream")
 		require.NoError(t, err)
-		require.Equal(t, 1, len(result))
-		require.Equal(t, 10, len(result[0]))
+		require.Len(t, result, 1)
+		require.Len(t, result[0], 10)
 	})
 
 	t.Run("test get", func(t *testing.T) {
-		nodeID := generateNodeID(10, 10, 10)
-		entry := WALEntry{
+		nodeID := genNodeID(t)
+		entry := nodestore.WALEntry{
 			StreamID: "stream",
 			NodeID:   nodeID,
 			Version:  10,

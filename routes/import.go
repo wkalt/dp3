@@ -10,7 +10,7 @@ import (
 )
 
 type ImportRequest struct {
-	ProducerID string `json:"producerID"`
+	ProducerID string `json:"producerId"`
 	Path       string `json:"path"`
 }
 

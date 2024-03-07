@@ -154,7 +154,10 @@ func Nmerge(writer io.Writer, iterators ...mcap.MessageIterator) error {
 	}
 
 	for pq.Len() > 0 {
-		rec := heap.Pop(pq).(record)
+		rec, ok := heap.Pop(pq).(record)
+		if !ok {
+			return errors.New("failed to pop from priority queue")
+		}
 		if err := mc.Write(rec.schema, rec.channel, rec.message); err != nil {
 			return err
 		}
@@ -163,7 +166,7 @@ func Nmerge(writer io.Writer, iterators ...mcap.MessageIterator) error {
 			if errors.Is(err, io.EOF) {
 				continue
 			}
-			return err
+			return fmt.Errorf("failed to get next message: %w", err)
 		}
 		var item = util.Item[record, uint64]{
 			Value:    record{s, c, m, rec.idx},
@@ -171,7 +174,10 @@ func Nmerge(writer io.Writer, iterators ...mcap.MessageIterator) error {
 		}
 		heap.Push(pq, &item)
 	}
-	return w.Close()
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("failed to close writer: %w", err)
+	}
+	return nil
 }
 
 // Merge two mcap streams into one. Both streams are assumed to be sorted.

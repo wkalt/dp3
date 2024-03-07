@@ -32,12 +32,12 @@ linters:
     - errchkjson
     - errname
     - errorlint
-    - execinquery
+      #- execinquery
     #- exhaustive
     #- exhaustruct
     - exportloopref
     - forbidigo
-    - forcetypeassert
+      #- forcetypeassert
     - funlen
     - gci
     - ginkgolinter
@@ -57,7 +57,7 @@ linters:
     #- gomoddirectives
     - gomodguard
     - goprintffuncname
-    - gosec
+      #- gosec
     - gosimple
     - gosmopolitan
     - govet
@@ -87,7 +87,7 @@ linters:
     - promlinter
     - protogetter
     - reassign
-    - revive
+      #- revive
     - rowserrcheck
     - sloglint
     - spancheck

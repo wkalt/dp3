@@ -37,7 +37,7 @@ func (dp3 *DP3) Start(ctx context.Context) error {
 	}
 	vs := versionstore.NewMemVersionStore()
 	tmgr := treemgr.NewTreeManager(ns, vs, rm, 2)
-	//go tmgr.StartWALSyncLoop(ctx)
+	// go tmgr.StartWALSyncLoop(ctx)
 	r := routes.MakeRoutes(tmgr)
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", 8089),

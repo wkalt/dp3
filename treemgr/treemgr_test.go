@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"fmt"
 	"math"
 	"os"
 	"testing"
@@ -44,7 +43,6 @@ func TestStreamingAndIngestion(t *testing.T) {
 	buf := &bytes.Buffer{}
 	streamID := util.ComputeStreamID("my-device", "/diagnostics")
 	require.NoError(t, tmgr.GetMessagesLatest(ctx, buf, 0, math.MaxUint64, []string{streamID}))
-	fmt.Println(buf.Bytes())
 }
 
 func TestIngestion(t *testing.T) {
@@ -85,7 +83,7 @@ func TestTreeMgr(t *testing.T) {
 	require.NoError(t, err)
 	version, err := vs.Next(ctx)
 	require.NoError(t, err)
-	rm.Put(ctx, "stream", version, nodeID)
+	require.NoError(t, rm.Put(ctx, "stream", version, nodeID))
 
 	buf := &bytes.Buffer{}
 	mcap.WriteFile(t, buf, []uint64{10})

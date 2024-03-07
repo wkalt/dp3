@@ -57,7 +57,6 @@ func TestTreeIterator(t *testing.T) {
 	version++
 	rootID, _, err = tree.Insert(ctx, ns, rootID, version, 64*1e9, buf2.Bytes())
 	require.NoError(t, err)
-	version++
 
 	it, err := tree.NewTreeIterator(ctx, ns, rootID, 0, 128)
 	require.NoError(t, err)

@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
+	"log"
 
 	"github.com/wkalt/dp3/service"
 )
@@ -13,6 +13,6 @@ func main() {
 
 	// Start the service
 	if err := dp3.Start(ctx); err != nil {
-		fmt.Printf("failed to start service: %v\n", err)
+		log.Printf("failed to start service: %v\n", err)
 	}
 }

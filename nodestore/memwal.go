@@ -2,7 +2,7 @@ package nodestore
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
 	"golang.org/x/exp/maps"
 )
@@ -36,7 +36,7 @@ func (m *memwal) Get(ctx context.Context, nodeID NodeID) ([]byte, error) {
 			return entry.Data, nil
 		}
 	}
-	return nil, fmt.Errorf("not found")
+	return nil, errors.New("not found")
 }
 
 func (m *memwal) Delete(ctx context.Context, nodeID NodeID) error {
@@ -46,7 +46,7 @@ func (m *memwal) Delete(ctx context.Context, nodeID NodeID) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("not found")
+	return errors.New("not found")
 }
 
 func (m *memwal) List(ctx context.Context) ([]WALListing, error) {

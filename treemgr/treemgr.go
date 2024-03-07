@@ -24,24 +24,51 @@ type StatisticalSummary struct {
 }
 
 type TreeManager interface {
-	GetMessages(context.Context, uint64, uint64, []string, uint64) (io.Reader, error)
-	GetStatistics(context.Context, uint64, uint64, string, uint64) (StatisticalSummary, error)
-	Insert(context.Context, string, uint64, []byte) error
-
-	GetMessagesLatest(context.Context, io.Writer, uint64, uint64, []string) error
-	GetStatisticsLatest(context.Context, uint64, uint64, string) (StatisticalSummary, error)
-
-	SyncWAL(context.Context) error
-	StartWALSyncLoop(context.Context)
-
+	GetMessages(
+		ctx context.Context,
+		start uint64,
+		end uint64,
+		streamIDs []string,
+		version uint64,
+	) (io.Reader, error)
+	GetStatistics(
+		ctx context.Context,
+		start uint64,
+		end uint64,
+		streamID string,
+		version uint64,
+	) (StatisticalSummary, error)
+	Insert(
+		ctx context.Context,
+		streamID string,
+		time uint64,
+		data []byte,
+	) error
+	GetMessagesLatest(
+		ctx context.Context,
+		output io.Writer,
+		start uint64,
+		end uint64,
+		streamIDs []string,
+	) error
+	GetStatisticsLatest(
+		ctx context.Context,
+		start uint64,
+		end uint64,
+		streamID string,
+	) (StatisticalSummary, error)
+	SyncWAL(ctx context.Context) error
+	StartWALSyncLoop(ctx context.Context)
 	IngestStream(ctx context.Context, hashid string, data io.Reader) error
 }
 
-func (tm *treeManager) GetMessages(ctx context.Context, start, end uint64, streamIDs []string, limit uint64) (io.Reader, error) {
+func (tm *treeManager) GetMessages(
+	ctx context.Context, start, end uint64, streamIDs []string, limit uint64) (io.Reader, error) {
 	return nil, nil
 }
 
-func (tm *treeManager) GetStatistics(ctx context.Context, start, end uint64, streamID string, limit uint64) (StatisticalSummary, error) {
+func (tm *treeManager) GetStatistics(
+	ctx context.Context, start, end uint64, streamID string, limit uint64) (StatisticalSummary, error) {
 	return StatisticalSummary{}, nil
 }
 
@@ -52,7 +79,8 @@ type record struct {
 	idx     int
 }
 
-func (tm *treeManager) GetMessagesLatest(ctx context.Context, w io.Writer, start, end uint64, streamIDs []string) error {
+func (tm *treeManager) GetMessagesLatest(
+	ctx context.Context, w io.Writer, start, end uint64, streamIDs []string) error {
 	pq := util.NewPriorityQueue[record, uint64]()
 	heap.Init(pq)
 	iterators := make([]*tree.Iterator, 0, len(streamIDs))
@@ -82,17 +110,14 @@ func (tm *treeManager) GetMessagesLatest(ctx context.Context, w io.Writer, start
 			heap.Push(pq, &item)
 		}
 	}
-
 	writer, err := mcap.NewWriter(w)
 	if err != nil {
 		return fmt.Errorf("failed to create mcap writer: %w", err)
 	}
 	defer writer.Close()
-
 	if err := writer.WriteHeader(&fmcap.Header{}); err != nil {
 		return fmt.Errorf("failed to write header: %w", err)
 	}
-
 	mc := mcap.NewMergeCoordinator(writer)
 	for pq.Len() > 0 {
 		rec := heap.Pop(pq).(record)
@@ -115,7 +140,8 @@ func (tm *treeManager) GetMessagesLatest(ctx context.Context, w io.Writer, start
 	return nil
 }
 
-func (tm *treeManager) GetStatisticsLatest(ctx context.Context, start, end uint64, streamID string) (StatisticalSummary, error) {
+func (tm *treeManager) GetStatisticsLatest(
+	ctx context.Context, start, end uint64, streamID string) (StatisticalSummary, error) {
 	return StatisticalSummary{}, nil
 }
 
@@ -142,11 +168,11 @@ func (tm *treeManager) dimensions(
 ) (*treeDimensions, error) {
 	root, err := tm.rootmap.GetLatest(ctx, streamID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to get latest root: %w", err)
 	}
 	node, err := tm.ns.Get(ctx, root)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to look up node: %w", err)
 	}
 	inner := node.(*nodestore.InnerNode)
 	return &treeDimensions{
@@ -181,6 +207,21 @@ type treeManager struct {
 	syncWorkers int
 }
 
+func (tm *treeManager) newRoot(ctx context.Context, streamID string) error {
+	rootID, err := tm.ns.NewRoot(ctx, util.DateSeconds("1970-01-01"), util.DateSeconds("2038-01-19"), 60, 64)
+	if err != nil {
+		return fmt.Errorf("failed to create new root: %w", err)
+	}
+	version, err := tm.vs.Next(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get next version: %w", err)
+	}
+	if err := tm.rootmap.Put(ctx, streamID, version, rootID); err != nil {
+		return fmt.Errorf("failed to update rootmap: %w", err)
+	}
+	return nil
+}
+
 func (tm *treeManager) IngestStream(ctx context.Context, hashid string, data io.Reader) error {
 	writers := map[string]*writer{}
 	reader, err := mcap.NewReader(data)
@@ -198,23 +239,21 @@ func (tm *treeManager) IngestStream(ctx context.Context, hashid string, data io.
 			if errors.Is(err, io.EOF) {
 				break
 			}
-			return err
+			return fmt.Errorf("failed to read next message: %w", err)
 		}
 		var writer *writer
 		var ok bool
 		if writer, ok = writers[channel.Topic]; !ok {
 			streamID := util.ComputeStreamID(hashid, channel.Topic)
-			if _, err := tm.rootmap.GetLatest(ctx, streamID); errors.Is(err, nodestore.ErrNodeNotFound) {
-				rootID, err := tm.ns.NewRoot(ctx, util.DateSeconds("1970-01-01"), util.DateSeconds("2038-01-19"), 60, 64)
-				if err != nil {
-					return fmt.Errorf("failed to create new root: %w", err)
-				}
-				version, err := tm.vs.Next(ctx)
-				if err != nil {
-					return err
-				}
-				if err := tm.rootmap.Put(ctx, streamID, version, rootID); err != nil {
-					return err
+			_, err := tm.rootmap.GetLatest(ctx, streamID)
+			if err != nil {
+				switch {
+				case errors.Is(err, nodestore.ErrNodeNotFound):
+					if err := tm.newRoot(ctx, streamID); err != nil {
+						return fmt.Errorf("failed to create new root: %w", err)
+					}
+				default:
+					return fmt.Errorf("failed to get latest root: %w", err)
 				}
 			}
 			writer, err = newWriter(ctx, tm, streamID)
@@ -245,15 +284,15 @@ func (tm *treeManager) IngestStream(ctx context.Context, hashid string, data io.
 func (tm *treeManager) Insert(ctx context.Context, streamID string, time uint64, data []byte) error {
 	rootID, err := tm.rootmap.GetLatest(ctx, streamID)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get root ID: %w", err)
 	}
 	version, err := tm.vs.Next(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get next version: %w", err)
 	}
 	_, nodeIDs, err := tree.Insert(ctx, tm.ns, rootID, version, time, data)
 	if err != nil {
-		return err
+		return fmt.Errorf("insertion failure: %w", err)
 	}
 	if err := tm.ns.WALFlush(ctx, streamID, version, nodeIDs); err != nil {
 		return fmt.Errorf("failed to flush to WAL: %w", err)
@@ -285,7 +324,7 @@ func (tm *treeManager) SyncWAL(ctx context.Context) error {
 		roots := []nodestore.NodeID{}
 		version, err := tm.vs.Next(ctx)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to get next version: %w", err)
 		}
 		var rootID nodestore.NodeID
 		if len(listing.Versions) == 1 {
@@ -293,7 +332,7 @@ func (tm *treeManager) SyncWAL(ctx context.Context) error {
 			value := maps.Values(listing.Versions)[0]
 			rootID, err = tm.ns.FlushWALPath(ctx, value)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to flush wal path: %w", err)
 			}
 		} else {
 			slog.InfoContext(ctx, "merging WAL entries", "streamID", listing.StreamID, "count", len(listing.Versions))
@@ -302,7 +341,7 @@ func (tm *treeManager) SyncWAL(ctx context.Context) error {
 			}
 			rootID, err = tm.ns.WALMerge(ctx, version, roots)
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to merge WAL into tree: %w", err)
 			}
 		}
 		for _, nodeIDs := range listing.Versions {
@@ -313,7 +352,7 @@ func (tm *treeManager) SyncWAL(ctx context.Context) error {
 			}
 		}
 		if err := tm.rootmap.Put(ctx, listing.StreamID, version, rootID); err != nil {
-			return err
+			return fmt.Errorf("failed to update rootmap: %w", err)
 		}
 	}
 	return nil

@@ -16,9 +16,9 @@ type WALListing struct {
 }
 
 type WAL interface {
-	Put(context.Context, WALEntry) error
-	GetStream(context.Context, string) ([][]NodeID, error)
-	Get(context.Context, NodeID) ([]byte, error)
-	List(context.Context) ([]WALListing, error)
-	Delete(context.Context, NodeID) error
+	Put(ctx context.Context, entry WALEntry) error
+	GetStream(ctx context.Context, streamID string) ([][]NodeID, error)
+	Get(ctx context.Context, nodeID NodeID) ([]byte, error)
+	List(ctx context.Context) ([]WALListing, error)
+	Delete(ctx context.Context, nodeID NodeID) error
 }

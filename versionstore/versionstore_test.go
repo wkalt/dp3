@@ -1,4 +1,4 @@
-package versionstore
+package versionstore_test
 
 import (
 	"context"
@@ -6,26 +6,28 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/wkalt/dp3/versionstore"
 )
 
 func TestVersionStore(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
 		assertion string
-		f         func(*testing.T) Versionstore
+		f         func(*testing.T) versionstore.Versionstore
 	}{
 		{
 			"mem",
-			func(t *testing.T) Versionstore {
-				return NewMemVersionStore()
+			func(_ *testing.T) versionstore.Versionstore {
+				return versionstore.NewMemVersionStore()
 			},
 		},
 		{
 			"sql",
-			func(t *testing.T) Versionstore {
+			func(t *testing.T) versionstore.Versionstore {
+				t.Helper()
 				db, err := sql.Open("sqlite3", ":memory:")
 				require.NoError(t, err)
-				return NewSQLVersionstore(db, 1000)
+				return versionstore.NewSQLVersionstore(db, 1000)
 			},
 		},
 	}

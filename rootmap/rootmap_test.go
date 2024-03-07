@@ -25,12 +25,14 @@ func TestRootmaps(t *testing.T) {
 		{
 			"mem",
 			func(t *testing.T) rootmap.Rootmap {
+				t.Helper()
 				return rootmap.NewMemRootmap()
 			},
 		},
 		{
 			"sql",
 			func(t *testing.T) rootmap.Rootmap {
+				t.Helper()
 				rm, err := rootmap.NewSQLRootmap(db)
 				require.NoError(t, err)
 				return rm

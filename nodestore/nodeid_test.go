@@ -1,17 +1,20 @@
-package nodestore
+package nodestore_test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/wkalt/dp3/nodestore"
 )
 
 func TestNodeIDScanner(t *testing.T) {
-	id := generateNodeID(objectID(9223372036854775807), 2377854190, 1653944042)
-	value, err := id.Value()
-	require.NoError(t, err)
-	var id2 NodeID
-	require.NoError(t, id2.Scan(value))
-	assert.Equal(t, id, id2)
+	for i := 0; i < 1e3; i++ {
+		id := genNodeID(t)
+		value, err := id.Value()
+		require.NoError(t, err)
+		var id2 nodestore.NodeID
+		require.NoError(t, id2.Scan(value))
+		assert.Equal(t, id, id2)
+	}
 }

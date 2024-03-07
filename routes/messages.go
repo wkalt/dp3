@@ -2,7 +2,6 @@ package routes
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	"github.com/wkalt/dp3/treemgr"
@@ -11,7 +10,7 @@ import (
 )
 
 type MessagesRequest struct {
-	ProducerID string   `json:"producerID"`
+	ProducerID string   `json:"producerId"`
 	Topics     []string `json:"topics"`
 	Start      uint64   `json:"start"`
 	End        uint64   `json:"end"`
@@ -22,11 +21,16 @@ func newMessagesHandler(tmgr treemgr.TreeManager) http.HandlerFunc {
 		ctx := r.Context()
 		req := MessagesRequest{}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			fmt.Println("error decoding request", err)
+			slog.ErrorContext(ctx, "error decoding request", "error", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		slog.InfoContext(ctx, "messages request", "hashid", req.ProducerID, "topics", req.Topics, "start", req.Start, "end", req.End)
+		slog.InfoContext(ctx, "messages request",
+			"hashid", req.ProducerID,
+			"topics", req.Topics,
+			"start", req.Start,
+			"end", req.End,
+		)
 
 		streamIDs := make([]string, len(req.Topics))
 		for i, topic := range req.Topics {

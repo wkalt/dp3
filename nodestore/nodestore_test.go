@@ -34,7 +34,8 @@ func TestNodestoreErrors(t *testing.T) {
 	})
 }
 
-func testNodeStore(t *testing.T) *nodestore.Nodestore {
+func makeTestNodestore(t *testing.T) *nodestore.Nodestore {
+	t.Helper()
 	ctx := context.Background()
 	store := storage.NewMemStore()
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1e6)
@@ -47,7 +48,7 @@ func testNodeStore(t *testing.T) *nodestore.Nodestore {
 
 func TestWALMerge(t *testing.T) {
 	ctx := context.Background()
-	ns := testNodeStore(t)
+	ns := makeTestNodestore(t)
 	root, err := ns.NewRoot(
 		ctx,
 		util.DateSeconds("1970-01-01"),
@@ -87,6 +88,7 @@ func TestNewRoot(t *testing.T) {
 	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
 	wal, err := nodestore.NewSQLWAL(ctx, db)
+	require.NoError(t, err)
 	ns := nodestore.NewNodestore(store, cache, wal)
 	root, err := ns.NewRoot(
 		ctx,
@@ -107,6 +109,7 @@ func TestNodeStore(t *testing.T) {
 	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
 	wal, err := nodestore.NewSQLWAL(ctx, db)
+	require.NoError(t, err)
 	ns := nodestore.NewNodestore(store, cache, wal)
 	t.Run("store and retrieve an inner node", func(t *testing.T) {
 		node := nodestore.NewInnerNode(0, 10, 20, 64)
@@ -170,6 +173,5 @@ func TestNodeStore(t *testing.T) {
 
 		_, err = ns.Flush(ctx, rootID, inner1ID, inner2ID, leafID)
 		require.NoError(t, err)
-
 	})
 }

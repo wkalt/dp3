@@ -133,7 +133,12 @@ func cloneInnerNode(ctx context.Context, ns *nodestore.Nodestore, id nodestore.N
 
 // cloneLeafNode returns a new leaf node with contents equal to the existing
 // leaf node at the provide address, merged with the provided data.
-func cloneLeafNode(ctx context.Context, ns *nodestore.Nodestore, id nodestore.NodeID, data []byte) (*nodestore.LeafNode, error) {
+func cloneLeafNode(
+	ctx context.Context,
+	ns *nodestore.Nodestore,
+	id nodestore.NodeID,
+	data []byte,
+) (*nodestore.LeafNode, error) {
 	node, err := ns.Get(ctx, id)
 	if err != nil {
 		return nil, fmt.Errorf("failed to clone leaf node %d: %w", id, err)
