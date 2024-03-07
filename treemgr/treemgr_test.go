@@ -1,4 +1,4 @@
-package treemgr
+package treemgr_test
 
 import (
 	"bytes"
@@ -15,6 +15,7 @@ import (
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/rootmap"
 	"github.com/wkalt/dp3/storage"
+	"github.com/wkalt/dp3/treemgr"
 	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/versionstore"
 )
@@ -30,7 +31,7 @@ func TestStreamingAndIngestion(t *testing.T) {
 	ns := nodestore.NewNodestore(store, cache, wal)
 	vs := versionstore.NewMemVersionStore()
 	rm := rootmap.NewMemRootmap()
-	tmgr := NewTreeManager(ns, vs, rm, 2)
+	tmgr := treemgr.NewTreeManager(ns, vs, rm, 2)
 
 	f, err := os.Open("/home/wyatt/data/bags/demo.mcap")
 	require.NoError(t, err)
@@ -57,7 +58,7 @@ func TestIngestion(t *testing.T) {
 	ns := nodestore.NewNodestore(store, cache, wal)
 	vs := versionstore.NewMemVersionStore()
 	rm := rootmap.NewMemRootmap()
-	tmgr := NewTreeManager(ns, vs, rm, 2)
+	tmgr := treemgr.NewTreeManager(ns, vs, rm, 2)
 
 	f, err := os.Open("/home/wyatt/data/bags/cal_loop.mcap")
 	require.NoError(t, err)
@@ -79,7 +80,7 @@ func TestTreeMgr(t *testing.T) {
 	ns := nodestore.NewNodestore(store, cache, wal)
 	vs := versionstore.NewMemVersionStore()
 	rm := rootmap.NewMemRootmap()
-	tmgr := NewTreeManager(ns, vs, rm, 2)
+	tmgr := treemgr.NewTreeManager(ns, vs, rm, 2)
 
 	nodeID, err := ns.NewRoot(ctx, 0, 4096, 64, 64)
 	require.NoError(t, err)

@@ -9,15 +9,15 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-type IngestRequest struct {
-	HashID string `json:"hashID"`
-	Path   string `json:"path"`
+type ImportRequest struct {
+	ProducerID string `json:"producerID"`
+	Path       string `json:"path"`
 }
 
-func newIngestHandler(tmgr treemgr.TreeManager) http.HandlerFunc {
+func newImportHandler(tmgr treemgr.TreeManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		req := IngestRequest{}
+		req := ImportRequest{}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -31,10 +31,10 @@ func newIngestHandler(tmgr treemgr.TreeManager) http.HandlerFunc {
 		}
 		defer f.Close()
 
-		if err := tmgr.IngestStream(ctx, req.HashID, f); err != nil {
+		if err := tmgr.IngestStream(ctx, req.ProducerID, f); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		slog.InfoContext(ctx, "ingested", "location", req.Path, "hashid", req.HashID)
+		slog.InfoContext(ctx, "imported", "location", req.Path, "producerID", req.ProducerID)
 	}
 }

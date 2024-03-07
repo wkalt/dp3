@@ -11,10 +11,10 @@ import (
 )
 
 type MessagesRequest struct {
-	HashID string   `json:"hashid"`
-	Topics []string `json:"topics"`
-	Start  uint64   `json:"start"`
-	End    uint64   `json:"end"`
+	ProducerID string   `json:"producerID"`
+	Topics     []string `json:"topics"`
+	Start      uint64   `json:"start"`
+	End        uint64   `json:"end"`
 }
 
 func newMessagesHandler(tmgr treemgr.TreeManager) http.HandlerFunc {
@@ -26,11 +26,11 @@ func newMessagesHandler(tmgr treemgr.TreeManager) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		slog.InfoContext(ctx, "messages request", "hashid", req.HashID, "topics", req.Topics, "start", req.Start, "end", req.End)
+		slog.InfoContext(ctx, "messages request", "hashid", req.ProducerID, "topics", req.Topics, "start", req.Start, "end", req.End)
 
 		streamIDs := make([]string, len(req.Topics))
 		for i, topic := range req.Topics {
-			streamID := util.ComputeStreamID(req.HashID, topic)
+			streamID := util.ComputeStreamID(req.ProducerID, topic)
 			streamIDs[i] = streamID
 		}
 

@@ -17,6 +17,7 @@ import (
 	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/versionstore"
 	"golang.org/x/exp/maps"
+	"golang.org/x/sync/errgroup"
 )
 
 type StatisticalSummary struct {
@@ -164,10 +165,11 @@ func NewTreeManager(
 	batchsize int,
 ) TreeManager {
 	return &treeManager{
-		ns:        ns,
-		vs:        vs,
-		rootmap:   rm,
-		batchsize: batchsize,
+		ns:          ns,
+		vs:          vs,
+		rootmap:     rm,
+		batchsize:   batchsize,
+		syncWorkers: 10,
 	}
 }
 
@@ -176,7 +178,8 @@ type treeManager struct {
 	vs      versionstore.Versionstore
 	rootmap rootmap.Rootmap
 
-	batchsize int
+	batchsize   int
+	syncWorkers int
 }
 
 func (tm *treeManager) IngestStream(ctx context.Context, hashid string, data io.Reader) error {
@@ -279,43 +282,48 @@ func (tm *treeManager) SyncWAL(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to list WAL: %w", err)
 	}
+	grp := errgroup.Group{}
+	grp.SetLimit(tm.syncWorkers)
 	for _, listing := range listings {
-		//if len(listing.Versions) < tm.batchsize {
-		//	continue
-		//}
-		roots := []nodestore.NodeID{}
-		version, err := tm.vs.Next(ctx)
-		if err != nil {
-			return err
-		}
-		var rootID nodestore.NodeID
-		if len(listing.Versions) == 1 {
-			slog.InfoContext(ctx, "flushing WAL entries", "streamID", listing.StreamID, "count", len(listing.Versions))
-			value := maps.Values(listing.Versions)[0]
-			rootID, err = tm.ns.FlushWALPath(ctx, value)
+		grp.Go(func() error {
+			roots := []nodestore.NodeID{}
+			version, err := tm.vs.Next(ctx)
 			if err != nil {
 				return err
 			}
-		} else {
-			slog.InfoContext(ctx, "merging WAL entries", "streamID", listing.StreamID, "count", len(listing.Versions))
-			for _, nodeIDs := range listing.Versions {
-				roots = append(roots, nodeIDs[0])
-			}
-			rootID, err = tm.ns.WALMerge(ctx, version, roots)
-			if err != nil {
-				return err
-			}
-		}
-		for _, nodeIDs := range listing.Versions {
-			for _, nodeID := range nodeIDs {
-				if err = tm.ns.WALDelete(ctx, nodeID); err != nil { // todo transaction
-					return fmt.Errorf("failed to delete node %s from WAL: %w", nodeID, err)
+			var rootID nodestore.NodeID
+			if len(listing.Versions) == 1 {
+				slog.InfoContext(ctx, "flushing WAL entries", "streamID", listing.StreamID, "count", len(listing.Versions))
+				value := maps.Values(listing.Versions)[0]
+				rootID, err = tm.ns.FlushWALPath(ctx, value)
+				if err != nil {
+					return err
+				}
+			} else {
+				slog.InfoContext(ctx, "merging WAL entries", "streamID", listing.StreamID, "count", len(listing.Versions))
+				for _, nodeIDs := range listing.Versions {
+					roots = append(roots, nodeIDs[0])
+				}
+				rootID, err = tm.ns.WALMerge(ctx, version, roots)
+				if err != nil {
+					return err
 				}
 			}
-		}
-		if err := tm.rootmap.Put(ctx, listing.StreamID, version, rootID); err != nil {
-			return err
-		}
+			for _, nodeIDs := range listing.Versions {
+				for _, nodeID := range nodeIDs {
+					if err = tm.ns.WALDelete(ctx, nodeID); err != nil { // todo transaction
+						return fmt.Errorf("failed to delete node %s from WAL: %w", nodeID, err)
+					}
+				}
+			}
+			if err := tm.rootmap.Put(ctx, listing.StreamID, version, rootID); err != nil {
+				return err
+			}
+			return nil
+		})
+	}
+	if err := grp.Wait(); err != nil {
+		return fmt.Errorf("failed to sync WAL: %w", err)
 	}
 	return nil
 }
