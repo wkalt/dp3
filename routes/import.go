@@ -14,7 +14,7 @@ type ImportRequest struct {
 	Path       string `json:"path"`
 }
 
-func newImportHandler(tmgr treemgr.TreeManager) http.HandlerFunc {
+func newImportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		req := ImportRequest{}
@@ -31,7 +31,7 @@ func newImportHandler(tmgr treemgr.TreeManager) http.HandlerFunc {
 		}
 		defer f.Close()
 
-		if err := tmgr.IngestStream(ctx, req.ProducerID, f); err != nil {
+		if err := tmgr.Receive(ctx, req.ProducerID, f); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

@@ -57,6 +57,10 @@ func TestLeafNode(t *testing.T) {
 	})
 	t.Run("string", func(t *testing.T) {
 		node := nodestore.NewLeafNode([]byte{})
-		assert.Equal(t, "[leaf 0]", node.String())
+		assert.Equal(t, "[leaf <unknown 0 bytes>]", node.String())
+		buf := &bytes.Buffer{}
+		mcap.WriteFile(t, buf, []uint64{1, 2, 3})
+		node = nodestore.NewLeafNode(buf.Bytes())
+		assert.Equal(t, "[leaf 3 msgs]", node.String())
 	})
 }

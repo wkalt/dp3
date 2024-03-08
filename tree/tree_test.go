@@ -112,25 +112,25 @@ func TestTreeInsert(t *testing.T) {
 			"single insert",
 			1,
 			[]uint64{10},
-			"[0-4096:1 [0-64:1 [leaf 566]]]",
+			"[0-4096:1 [0-64:1 [leaf 1 msg]]]",
 		},
 		{
 			"two inserts same bucket get merged",
 			1,
 			[]uint64{10, 20},
-			"[0-4096:2 [0-64:2 [leaf 697]]]",
+			"[0-4096:2 [0-64:2 [leaf 2 msgs]]]",
 		},
 		{
 			"inserts in different bucket, simulate single inserts",
 			1,
 			[]uint64{10, 20, 128, 256},
-			"[0-4096:4 [0-64:2 [leaf 697]] [128-192:3 [leaf 568]] [256-320:4 [leaf 568]]]",
+			"[0-4096:4 [0-64:2 [leaf 2 msgs]] [128-192:3 [leaf 1 msg]] [256-320:4 [leaf 1 msg]]]",
 		},
 		{
 			"depth 2",
 			2,
 			[]uint64{10, 20, 4097},
-			"[0-262144:3 [0-4096:2 [0-64:2 [leaf 697]]] [4096-8192:3 [4096-4160:3 [leaf 568]]]]",
+			"[0-262144:3 [0-4096:2 [0-64:2 [leaf 2 msgs]]] [4096-8192:3 [4096-4160:3 [leaf 1 msg]]]]",
 		},
 	}
 	for _, c := range cases {

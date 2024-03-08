@@ -2,6 +2,7 @@ package mcap
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"testing"
 
@@ -29,7 +30,7 @@ func ReadFile(t *testing.T, r io.Reader) []uint64 {
 	return timestamps
 }
 
-func WriteFile(t *testing.T, w io.Writer, timestamps []uint64) {
+func WriteFile(t *testing.T, w io.Writer, timestampsets ...[]uint64) {
 	t.Helper()
 	writer, err := NewWriter(w)
 	require.NoError(t, err)
@@ -40,18 +41,23 @@ func WriteFile(t *testing.T, w io.Writer, timestamps []uint64) {
 		Name:     "test",
 		Encoding: "ros1msg",
 	}))
-	require.NoError(t, writer.WriteChannel(&mcap.Channel{
-		ID:       0,
-		SchemaID: 1,
-		Topic:    "/foo",
-	}))
 
-	for _, ts := range timestamps {
-		require.NoError(t, writer.WriteMessage(&mcap.Message{
-			ChannelID: 0,
-			LogTime:   ts,
-			Data:      []byte("hello"),
+	for i := range timestampsets {
+		require.NoError(t, writer.WriteChannel(&mcap.Channel{
+			ID:       uint16(i),
+			SchemaID: 1,
+			Topic:    fmt.Sprintf("topic-%d", i),
 		}))
+	}
+
+	for chanID, timestamps := range timestampsets {
+		for _, ts := range timestamps {
+			require.NoError(t, writer.WriteMessage(&mcap.Message{
+				ChannelID: uint16(chanID),
+				LogTime:   ts,
+				Data:      []byte("hello"),
+			}))
+		}
 	}
 	require.NoError(t, writer.Close())
 }

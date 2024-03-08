@@ -63,7 +63,7 @@ func TestRootmaps(t *testing.T) {
 				err = rm.Put(ctx, streamID, 20, node2)
 				require.NoError(t, err)
 
-				nodeID, err := rm.GetLatest(ctx, streamID)
+				nodeID, _, err := rm.GetLatest(ctx, streamID)
 				require.NoError(t, err)
 				require.Equal(t, node2, nodeID)
 			})

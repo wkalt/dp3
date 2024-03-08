@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 
+	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/mcap"
 )
 
@@ -51,7 +52,18 @@ func (n *LeafNode) Type() NodeType {
 }
 
 func (n *LeafNode) String() string {
-	return fmt.Sprintf("[leaf %d]", len(n.data))
+	reader, err := fmcap.NewReader(bytes.NewReader(n.data))
+	if err != nil {
+		return fmt.Sprintf("[leaf <unknown %d bytes>]", len(n.data))
+	}
+	info, err := reader.Info()
+	if err != nil {
+		return fmt.Sprintf("[leaf <unknown %d bytes>]", len(n.data))
+	}
+	if info.Statistics.MessageCount == 1 {
+		return "[leaf 1 msg]"
+	}
+	return fmt.Sprintf("[leaf %d msgs]", info.Statistics.MessageCount)
 }
 
 func NewLeafNode(data []byte) *LeafNode {

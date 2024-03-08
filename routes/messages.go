@@ -16,7 +16,7 @@ type MessagesRequest struct {
 	End        uint64   `json:"end"`
 }
 
-func newMessagesHandler(tmgr treemgr.TreeManager) http.HandlerFunc {
+func newMessagesHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		req := MessagesRequest{}

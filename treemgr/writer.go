@@ -12,7 +12,7 @@ import (
 )
 
 type writer struct {
-	tmgr *treeManager
+	tmgr *TreeManager
 
 	lower    uint64
 	upper    uint64
@@ -28,7 +28,7 @@ type writer struct {
 	dims *treeDimensions
 }
 
-func newWriter(ctx context.Context, tmgr *treeManager, streamID string) (*writer, error) {
+func newWriter(ctx context.Context, tmgr *TreeManager, streamID string) (*writer, error) {
 	dims, err := tmgr.dimensions(ctx, streamID)
 	if err != nil {
 		return nil, fmt.Errorf("unable to find tree dimensions: %w", err)

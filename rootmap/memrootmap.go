@@ -16,10 +16,10 @@ func NewMemRootmap() Rootmap {
 	}
 }
 
-func (rm *memrootmap) GetLatest(ctx context.Context, streamID string) (nodestore.NodeID, error) {
+func (rm *memrootmap) GetLatest(ctx context.Context, streamID string) (nodestore.NodeID, uint64, error) {
 	versions, ok := rm.m[streamID]
 	if !ok {
-		return nodestore.NodeID{}, StreamNotFoundError{streamID}
+		return nodestore.NodeID{}, 0, StreamNotFoundError{streamID}
 	}
 	var latest uint64
 	for v := range versions {
@@ -27,7 +27,7 @@ func (rm *memrootmap) GetLatest(ctx context.Context, streamID string) (nodestore
 			latest = v
 		}
 	}
-	return versions[latest], nil
+	return versions[latest], latest, nil
 }
 
 func (rm *memrootmap) Get(ctx context.Context, streamID string, version uint64) (nodestore.NodeID, error) {
