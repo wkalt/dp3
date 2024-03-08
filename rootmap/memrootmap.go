@@ -6,44 +6,51 @@ import (
 	"github.com/wkalt/dp3/nodestore"
 )
 
+type root struct {
+	streamID   string
+	producerID string
+	version    uint64
+	nodeID     nodestore.NodeID
+}
+
 type memrootmap struct {
-	m map[string]map[uint64]nodestore.NodeID
+	roots []root
 }
 
 func NewMemRootmap() Rootmap {
 	return &memrootmap{
-		m: make(map[string]map[uint64]nodestore.NodeID),
+		roots: []root{},
 	}
 }
 
 func (rm *memrootmap) GetLatest(ctx context.Context, streamID string) (nodestore.NodeID, uint64, error) {
-	versions, ok := rm.m[streamID]
-	if !ok {
-		return nodestore.NodeID{}, 0, StreamNotFoundError{streamID}
-	}
-	var latest uint64
-	for v := range versions {
-		if v > latest {
-			latest = v
+	for i := len(rm.roots) - 1; i >= 0; i-- { // nb: assumes roots added in ascending order
+		root := rm.roots[i]
+		if root.streamID == streamID {
+			return root.nodeID, root.version, nil
 		}
 	}
-	return versions[latest], latest, nil
+	return nodestore.NodeID{}, 0, StreamNotFoundError{streamID}
 }
 
 func (rm *memrootmap) Get(ctx context.Context, streamID string, version uint64) (nodestore.NodeID, error) {
-	versions, ok := rm.m[streamID]
-	if !ok {
-		return nodestore.NodeID{}, StreamNotFoundError{streamID}
+	for i := len(rm.roots) - 1; i >= 0; i-- {
+		root := rm.roots[i]
+		if root.streamID == streamID && root.version == version {
+			return root.nodeID, nil
+		}
 	}
-	return versions[version], nil
+	return nodestore.NodeID{}, StreamNotFoundError{streamID}
 }
 
-func (rm *memrootmap) Put(ctx context.Context, streamID string, version uint64, nodeID nodestore.NodeID) error {
-	versions, ok := rm.m[streamID]
-	if !ok {
-		versions = make(map[uint64]nodestore.NodeID)
-		rm.m[streamID] = versions
-	}
-	versions[version] = nodeID
+func (rm *memrootmap) Put(
+	ctx context.Context, producerID string, topic string,
+	streamID string, version uint64, nodeID nodestore.NodeID) error {
+	rm.roots = append(rm.roots, root{
+		streamID:   streamID,
+		producerID: producerID,
+		version:    version,
+		nodeID:     nodeID,
+	})
 	return nil
 }

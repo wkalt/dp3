@@ -45,7 +45,7 @@ func TestRootmaps(t *testing.T) {
 			t.Run("put", func(t *testing.T) {
 				streamID := uuid.New().String()
 				expected := randNodeID()
-				err := rm.Put(ctx, streamID, 10, expected)
+				err := rm.Put(ctx, "my-device", "my-topic", streamID, 10, expected)
 				require.NoError(t, err)
 
 				nodeID, err := rm.Get(ctx, streamID, 10)
@@ -56,11 +56,11 @@ func TestRootmaps(t *testing.T) {
 			t.Run("get latest", func(t *testing.T) {
 				streamID := uuid.New().String()
 				node1 := randNodeID()
-				err := rm.Put(ctx, streamID, 10, node1)
+				err := rm.Put(ctx, "my-device", "my-topic", streamID, 10, node1)
 				require.NoError(t, err)
 
 				node2 := randNodeID()
-				err = rm.Put(ctx, streamID, 20, node2)
+				err = rm.Put(ctx, "my-device", "my-topic", streamID, 20, node2)
 				require.NoError(t, err)
 
 				nodeID, _, err := rm.GetLatest(ctx, streamID)

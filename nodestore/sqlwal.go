@@ -24,6 +24,8 @@ func (w *sqlWAL) initialize(ctx context.Context) error {
 	_, err := w.db.ExecContext(ctx, `
 	create table if not exists wal (
 		id serial primary key,
+		producer_id text,
+		topic text,
 		stream_id text,
 		node_id text,
 		version bigint,
@@ -41,10 +43,10 @@ func (w *sqlWAL) initialize(ctx context.Context) error {
 }
 
 func (w *sqlWAL) Put(ctx context.Context, entry WALEntry) error {
-	stmt := `insert into wal (stream_id, node_id, version, data)
+	stmt := `insert into wal (producer_id, topic, stream_id, node_id, version, data)
 	values
-	($1, $2, $3, $4)`
-	params := []interface{}{entry.StreamID, entry.NodeID, entry.Version, entry.Data}
+	($1, $2, $3, $4, $5, $6)`
+	params := []interface{}{entry.ProducerID, entry.Topic, entry.StreamID, entry.NodeID, entry.Version, entry.Data}
 	_, err := w.db.ExecContext(ctx, stmt, params...)
 	if err != nil {
 		return fmt.Errorf("failed to insert wal: %w", err)
@@ -106,7 +108,7 @@ func (w *sqlWAL) Delete(ctx context.Context, nodeID NodeID) error {
 }
 
 func (w *sqlWAL) List(ctx context.Context) (paths []WALListing, err error) {
-	stmt := `select stream_id, version, node_id from wal where deleted is null order by id`
+	stmt := `select producer_id, topic, stream_id, version, node_id from wal where deleted is null order by id`
 	rows, err := w.db.QueryContext(ctx, stmt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list wal: %w", err)
@@ -115,7 +117,7 @@ func (w *sqlWAL) List(ctx context.Context) (paths []WALListing, err error) {
 	defer rows.Close()
 	for rows.Next() {
 		var entry WALEntry
-		if err := rows.Scan(&entry.StreamID, &entry.Version, &entry.NodeID); err != nil {
+		if err := rows.Scan(&entry.ProducerID, &entry.Topic, &entry.StreamID, &entry.Version, &entry.NodeID); err != nil {
 			return nil, fmt.Errorf("failed to scan row: %w", err)
 		}
 		if _, ok := streams[entry.StreamID]; !ok {

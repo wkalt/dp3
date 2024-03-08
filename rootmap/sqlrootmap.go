@@ -22,6 +22,8 @@ func (rm *sqlRootmap) initialize() error {
 	}
 	if _, err := rm.db.Exec(`
 	create table if not exists rootmap (
+		producer_id text not null,
+		topic text not null,
 		stream_id uuid not null,
 		version bigint not null,
 		node_id text not null,
@@ -43,10 +45,17 @@ func (rm *sqlRootmap) initialize() error {
 	return nil
 }
 
-func (rm *sqlRootmap) Put(ctx context.Context, streamID string, version uint64, nodeID nodestore.NodeID) error {
+func (rm *sqlRootmap) Put(
+	ctx context.Context,
+	producerID string,
+	topic string,
+	streamID string,
+	version uint64,
+	nodeID nodestore.NodeID,
+) error {
 	_, err := rm.db.ExecContext(ctx, `
-	insert into rootmap (stream_id, version, node_id) values ($1, $2, $3)`,
-		streamID, version, hex.EncodeToString(nodeID[:]),
+	insert into rootmap (producer_id, topic, stream_id, version, node_id) values ($1, $2, $3, $4, $5)`,
+		producerID, topic, streamID, version, hex.EncodeToString(nodeID[:]),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to store to rootmap: %w", err)

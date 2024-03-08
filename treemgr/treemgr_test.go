@@ -1,20 +1,9 @@
 package treemgr_test
 
 import (
-	"bytes"
-	"context"
-	"database/sql"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
-	"github.com/stretchr/testify/require"
-	"github.com/wkalt/dp3/mcap"
-	"github.com/wkalt/dp3/nodestore"
-	"github.com/wkalt/dp3/rootmap"
-	"github.com/wkalt/dp3/storage"
-	"github.com/wkalt/dp3/treemgr"
-	"github.com/wkalt/dp3/util"
-	"github.com/wkalt/dp3/versionstore"
 )
 
 func TestGetMessages(t *testing.T) {
@@ -35,42 +24,53 @@ func TestGetStatisticsLatest(t *testing.T) {
 func TestSyncWAL(t *testing.T) {
 }
 
-func TestReceive(t *testing.T) {
-	ctx := context.Background()
-	buf := &bytes.Buffer{}
-
-	// cases := []struct {
-	// 	assertion string
-	// 	input     [][]uint64
-	// 	output    string
-	// }{
-	// 	{
-	// 		"single-topic file, single message",
-	// 		[][]uint64{{10}},
-	// 		"",
-	// 	},
-	// }
-
-	mcap.WriteFile(t, buf, []uint64{10, 100, 1000, 10000})
-	tmgr := testTreeManager(t)
-	require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
-}
-
-func testTreeManager(t *testing.T) *treemgr.TreeManager {
-	t.Helper()
-	ctx := context.Background()
-	store := storage.NewMemStore()
-	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1000)
-	db, err := sql.Open("sqlite3", ":memory:")
-	require.NoError(t, err)
-	wal, err := nodestore.NewSQLWAL(ctx, db)
-	require.NoError(t, err)
-	ns := nodestore.NewNodestore(store, cache, wal)
-	vs := versionstore.NewMemVersionStore()
-	rm := rootmap.NewMemRootmap()
-	tmgr := treemgr.NewTreeManager(ns, vs, rm, 2)
-	return tmgr
-}
+// func TestReceive(t *testing.T) {
+// 	ctx := context.Background()
+// 	buf := &bytes.Buffer{}
+//
+// 	cases := []struct {
+// 		assertion string
+// 		input     [][]uint64
+// 		output    string
+// 	}{
+// 		{
+// 			"single-topic file, single message",
+// 			[][]uint64{{10}},
+// 			"",
+// 		},
+// 	}
+// 	for _, c := range cases {
+// 		t.Run(c.assertion, func(t *testing.T) {
+// 			buf.Reset()
+// 			mcap.WriteFile(t, buf, c.input...)
+// 			tmgr := testTreeManager(t)
+// 			require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
+//
+// 			str := tmgr.printStream(ctx, "my-device")
+// 			require.Equal(t, c.output, "")
+// 		})
+// 	}
+//
+// 	mcap.WriteFile(t, buf, []uint64{10, 100, 1000, 10000})
+// 	tmgr := testTreeManager(t)
+// 	require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
+// }
+//
+// func testTreeManager(t *testing.T) *treemgr.TreeManager {
+// 	t.Helper()
+// 	ctx := context.Background()
+// 	store := storage.NewMemStore()
+// 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1000)
+// 	db, err := sql.Open("sqlite3", ":memory:")
+// 	require.NoError(t, err)
+// 	wal, err := nodestore.NewSQLWAL(ctx, db)
+// 	require.NoError(t, err)
+// 	ns := nodestore.NewNodestore(store, cache, wal)
+// 	vs := versionstore.NewMemVersionStore()
+// 	rm := rootmap.NewMemRootmap()
+// 	tmgr := treemgr.NewTreeManager(ns, vs, rm, 2)
+// 	return tmgr
+// }
 
 // func TestStreamingAndIngestion(t *testing.T) {
 // 	ctx := context.Background()

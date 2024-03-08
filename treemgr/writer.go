@@ -14,9 +14,12 @@ import (
 type writer struct {
 	tmgr *TreeManager
 
-	lower    uint64
-	upper    uint64
-	streamID string
+	lower uint64
+	upper uint64
+
+	producerID string
+	topic      string
+	streamID   string
 
 	schemas     []*fmcap.Schema
 	channels    []*fmcap.Channel
@@ -28,7 +31,7 @@ type writer struct {
 	dims *treeDimensions
 }
 
-func newWriter(ctx context.Context, tmgr *TreeManager, streamID string) (*writer, error) {
+func newWriter(ctx context.Context, tmgr *TreeManager, producerID, topic, streamID string) (*writer, error) {
 	dims, err := tmgr.dimensions(ctx, streamID)
 	if err != nil {
 		return nil, fmt.Errorf("unable to find tree dimensions: %w", err)
@@ -45,6 +48,9 @@ func newWriter(ctx context.Context, tmgr *TreeManager, streamID string) (*writer
 		buf:         buf,
 		w:           nil,
 		dims:        dims,
+
+		producerID: producerID,
+		topic:      topic,
 	}, nil
 }
 
@@ -110,7 +116,7 @@ func (w *writer) flush(ctx context.Context) error {
 	if err := w.w.Close(); err != nil {
 		return fmt.Errorf("failed to close mcap writer: %w", err)
 	}
-	if err := w.tmgr.Insert(ctx, w.streamID, w.lower*1e9, w.buf.Bytes()); err != nil {
+	if err := w.tmgr.Insert(ctx, w.producerID, w.topic, w.streamID, w.lower*1e9, w.buf.Bytes()); err != nil {
 		return fmt.Errorf("failed to insert %d bytes data for stream %s at time %d: %w",
 			w.buf.Len(), w.streamID, w.lower, err)
 	}

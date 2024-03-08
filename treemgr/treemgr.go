@@ -79,14 +79,14 @@ func (tm *TreeManager) Receive(ctx context.Context, producerID string, data io.R
 			if err != nil {
 				switch {
 				case errors.Is(err, rootmap.StreamNotFoundError{StreamID: streamID}):
-					if err := tm.newRoot(ctx, streamID); err != nil {
+					if err := tm.newRoot(ctx, producerID, channel.Topic, streamID); err != nil {
 						return fmt.Errorf("failed to create new root: %w", err)
 					}
 				default:
 					return fmt.Errorf("failed to get latest root: %w", err)
 				}
 			}
-			writer, err = newWriter(ctx, tm, streamID)
+			writer, err = newWriter(ctx, tm, producerID, channel.Topic, streamID)
 			if err != nil {
 				return fmt.Errorf("failed to create writer: %w", err)
 			}
@@ -191,7 +191,14 @@ func (tm *TreeManager) GetStatisticsLatest(
 }
 
 // Insert data into the tree and flush it to the WAL.
-func (tm *TreeManager) Insert(ctx context.Context, streamID string, time uint64, data []byte) error {
+func (tm *TreeManager) Insert(
+	ctx context.Context,
+	producerID string,
+	topic string,
+	streamID string,
+	time uint64,
+	data []byte,
+) error {
 	rootID, _, err := tm.rootmap.GetLatest(ctx, streamID)
 	if err != nil {
 		return fmt.Errorf("failed to get root ID: %w", err)
@@ -204,7 +211,7 @@ func (tm *TreeManager) Insert(ctx context.Context, streamID string, time uint64,
 	if err != nil {
 		return fmt.Errorf("insertion failure: %w", err)
 	}
-	if err := tm.ns.WALFlush(ctx, streamID, version, nodeIDs); err != nil {
+	if err := tm.ns.WALFlush(ctx, producerID, topic, streamID, version, nodeIDs); err != nil {
 		return fmt.Errorf("failed to flush to WAL: %w", err)
 	}
 	return nil
@@ -261,7 +268,7 @@ func (tm *TreeManager) SyncWAL(ctx context.Context) error {
 				}
 			}
 		}
-		if err := tm.rootmap.Put(ctx, listing.StreamID, version, rootID); err != nil {
+		if err := tm.rootmap.Put(ctx, listing.ProducerID, listing.Topic, listing.StreamID, version, rootID); err != nil {
 			return fmt.Errorf("failed to update rootmap: %w", err)
 		}
 	}
@@ -313,7 +320,7 @@ func (tm *TreeManager) dimensions(
 	}, nil
 }
 
-func (tm *TreeManager) newRoot(ctx context.Context, streamID string) error {
+func (tm *TreeManager) newRoot(ctx context.Context, producerID string, topic string, streamID string) error {
 	rootID, err := tm.ns.NewRoot(ctx, util.DateSeconds("1970-01-01"), util.DateSeconds("2038-01-19"), 60, 64)
 	if err != nil {
 		return fmt.Errorf("failed to create new root: %w", err)
@@ -322,20 +329,20 @@ func (tm *TreeManager) newRoot(ctx context.Context, streamID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get next version: %w", err)
 	}
-	if err := tm.rootmap.Put(ctx, streamID, version, rootID); err != nil {
+	if err := tm.rootmap.Put(ctx, producerID, topic, streamID, version, rootID); err != nil {
 		return fmt.Errorf("failed to update rootmap: %w", err)
 	}
 	return nil
 }
 
-// func (tm *TreeManager) printStream(ctx context.Context, streamID string) string {
-// 	root, version, err := tm.rootmap.GetLatest(ctx, streamID)
-// 	if err != nil {
-// 		return fmt.Sprintf("failed to get latest root: %v", err)
-// 	}
-// 	s, err := tree.Print(ctx, tm.ns, root, version)
-// 	if err != nil {
-// 		return fmt.Sprintf("failed to print tree: %v", err)
-// 	}
-// 	return s
-// }
+func (tm *TreeManager) PrintStream(ctx context.Context, streamID string) string {
+	root, version, err := tm.rootmap.GetLatest(ctx, streamID)
+	if err != nil {
+		return fmt.Sprintf("failed to get latest root: %v", err)
+	}
+	s, err := tree.Print(ctx, tm.ns, root, version)
+	if err != nil {
+		return fmt.Sprintf("failed to print tree: %v", err)
+	}
+	return s
+}

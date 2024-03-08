@@ -3,16 +3,20 @@ package nodestore
 import "context"
 
 type WALEntry struct {
-	StreamID string
-	NodeID   NodeID
-	Version  uint64
-	Data     []byte
-	Deleted  bool
+	ProducerID string
+	Topic      string
+	StreamID   string
+	NodeID     NodeID
+	Version    uint64
+	Data       []byte
+	Deleted    bool
 }
 
 type WALListing struct {
-	StreamID string
-	Versions map[uint64][]NodeID
+	ProducerID string
+	Topic      string
+	StreamID   string
+	Versions   map[uint64][]NodeID
 }
 
 type WAL interface {

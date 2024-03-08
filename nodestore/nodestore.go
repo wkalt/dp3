@@ -118,7 +118,14 @@ func (n *Nodestore) ListWAL(ctx context.Context) ([]WALListing, error) {
 	return wal, nil
 }
 
-func (n *Nodestore) WALFlush(ctx context.Context, walid string, version uint64, ids []NodeID) error {
+func (n *Nodestore) WALFlush(
+	ctx context.Context,
+	producerID string,
+	topic string,
+	streamID string,
+	version uint64,
+	ids []NodeID,
+) error {
 	for _, id := range ids {
 		node, err := n.Get(ctx, id)
 		if err != nil {
@@ -126,10 +133,12 @@ func (n *Nodestore) WALFlush(ctx context.Context, walid string, version uint64, 
 		}
 		bytes := node.ToBytes()
 		entry := WALEntry{
-			StreamID: walid,
-			NodeID:   id,
-			Version:  version,
-			Data:     bytes,
+			ProducerID: producerID,
+			Topic:      topic,
+			StreamID:   streamID,
+			NodeID:     id,
+			Version:    version,
+			Data:       bytes,
 		}
 		if err := n.wal.Put(ctx, entry); err != nil {
 			return fmt.Errorf("failed to write WAL: %w", err)
