@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"slices"
 	"time"
 
 	fmcap "github.com/foxglove/mcap/go/mcap"
@@ -243,20 +244,26 @@ func (tm *TreeManager) SyncWAL(ctx context.Context) error {
 		return fmt.Errorf("failed to list WAL: %w", err)
 	}
 	for _, listing := range listings {
+		rootID, _, err := tm.rootmap.GetLatest(ctx, listing.ProducerID, listing.Topic)
+		if err != nil {
+			return fmt.Errorf("failed to get latest root: %w", err)
+		}
 		roots := []nodestore.NodeID{}
 		version, err := tm.vs.Next(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get next version: %w", err)
 		}
-		var rootID nodestore.NodeID
-		if len(listing.Versions) == 1 {
+		var newRootID nodestore.NodeID
+		versions := maps.Keys(listing.Versions)
+		slices.Sort(versions)
+		if len(versions) == 1 {
 			slog.InfoContext(ctx, "flushing WAL entries",
 				"producerID", listing.ProducerID,
 				"topic", listing.Topic,
 				"count", len(listing.Versions),
 			)
 			value := maps.Values(listing.Versions)[0]
-			rootID, err = tm.ns.FlushWALPath(ctx, value)
+			newRootID, err = tm.ns.FlushWALPath(ctx, value)
 			if err != nil {
 				return fmt.Errorf("failed to flush wal path: %w", err)
 			}
@@ -265,22 +272,24 @@ func (tm *TreeManager) SyncWAL(ctx context.Context) error {
 				"producerID", listing.ProducerID,
 				"topic", listing.Topic,
 				"count", len(listing.Versions))
-			for _, nodeIDs := range listing.Versions {
+			for _, version := range versions {
+				nodeIDs := listing.Versions[version]
 				roots = append(roots, nodeIDs[0])
 			}
-			rootID, err = tm.ns.WALMerge(ctx, version, roots)
+			newRootID, err = tm.ns.WALMerge(ctx, rootID, version, roots)
 			if err != nil {
 				return fmt.Errorf("failed to merge WAL into tree: %w", err)
 			}
 		}
-		for _, nodeIDs := range listing.Versions {
+		for _, version := range versions {
+			nodeIDs := listing.Versions[version]
 			for _, nodeID := range nodeIDs {
 				if err = tm.ns.WALDelete(ctx, nodeID); err != nil { // todo transaction
 					return fmt.Errorf("failed to delete node %s from WAL: %w", nodeID, err)
 				}
 			}
 		}
-		if err := tm.rootmap.Put(ctx, listing.ProducerID, listing.Topic, version, rootID); err != nil {
+		if err := tm.rootmap.Put(ctx, listing.ProducerID, listing.Topic, version, newRootID); err != nil {
 			return fmt.Errorf("failed to update rootmap: %w", err)
 		}
 	}
@@ -353,7 +362,7 @@ func (tm *TreeManager) PrintStream(ctx context.Context, producerID string, topic
 	if err != nil {
 		return fmt.Sprintf("failed to get latest root: %v", err)
 	}
-	s, err := tree.Print(ctx, tm.ns, root, version)
+	s, err := tm.ns.Print(ctx, root, version)
 	if err != nil {
 		return fmt.Sprintf("failed to print tree: %v", err)
 	}

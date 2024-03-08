@@ -3,6 +3,7 @@ package nodestore
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"golang.org/x/exp/maps"
@@ -31,7 +32,7 @@ func (w *sqlWAL) initialize(ctx context.Context) error {
 		deleted text,
 		data blob
 	);
-	create unique index producer_id_topic_node_id_uniq_idx on wal(producer_id, topic, node_id);
+	create unique index if not exists producer_id_topic_node_id_uniq_idx on wal(producer_id, topic, node_id);
 	create index if not exists wal_node_id_idx on wal(node_id);
 	`)
 	if err != nil {
@@ -52,45 +53,13 @@ func (w *sqlWAL) Put(ctx context.Context, entry WALEntry) error {
 	return nil
 }
 
-func (w *sqlWAL) GetStream(ctx context.Context, producerID string, topic string) ([][]NodeID, error) {
-	stmt := `select node_id, version from wal where producer_id = $1 and topic = $2 and deleted is null order by id`
-	rows, err := w.db.QueryContext(ctx, stmt, producerID, topic)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get stream %s/%s from wal: %w", producerID, topic, err)
-	}
-	defer rows.Close()
-	var result [][]NodeID
-	var group []NodeID
-	var last uint64 = 0
-	for rows.Next() {
-		var version uint64
-		var nodeID NodeID
-		if err := rows.Scan(&nodeID, &version); err != nil {
-			return nil, fmt.Errorf("failed to scan row: %w", err)
-		}
-		if version != last {
-			if len(group) > 0 {
-				result = append(result, group)
-			}
-			group = []NodeID{nodeID}
-			last = version
-		} else {
-			group = append(group, nodeID)
-		}
-	}
-	if rows.Err() != nil {
-		return nil, fmt.Errorf("failed to get stream %s/%s from wal: %w", producerID, topic, rows.Err())
-	}
-	if len(group) > 0 {
-		result = append(result, group)
-	}
-	return result, nil
-}
-
 func (w *sqlWAL) Get(ctx context.Context, nodeID NodeID) (data []byte, err error) {
 	stmt := `select data from wal where node_id = $1 and deleted is null`
 	err = w.db.QueryRowContext(ctx, stmt, nodeID).Scan(&data)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, NodeNotFoundError{nodeID}
+		}
 		return nil, fmt.Errorf("failed to get node %s from wal: %w", nodeID, err)
 	}
 	return data, nil
@@ -100,6 +69,9 @@ func (w *sqlWAL) Delete(ctx context.Context, nodeID NodeID) error {
 	stmt := `update wal set deleted = current_timestamp where node_id = $1`
 	_, err := w.db.ExecContext(ctx, stmt, nodeID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return NodeNotFoundError{nodeID}
+		}
 		return fmt.Errorf("failed to delete node %s from wal: %w", nodeID, err)
 	}
 	return nil

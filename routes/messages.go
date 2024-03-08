@@ -25,13 +25,12 @@ func newMessagesHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			return
 		}
 		slog.InfoContext(ctx, "messages request",
-			"hashid", req.ProducerID,
+			"producer_id", req.ProducerID,
 			"topics", req.Topics,
 			"start", req.Start,
 			"end", req.End,
 		)
-		err := tmgr.GetMessagesLatest(ctx, w, req.Start*1e9, req.End*1e9, req.ProducerID, req.Topics)
-		if err != nil {
+		if err := tmgr.GetMessagesLatest(ctx, w, req.Start, req.End, req.ProducerID, req.Topics); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

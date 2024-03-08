@@ -2,9 +2,7 @@ package tree
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"strings"
 
 	"github.com/wkalt/dp3/nodestore"
 )
@@ -21,6 +19,9 @@ func Insert(
 	if err != nil {
 		return rootID, nil, err
 	}
+	if start < root.Start*1e9 || start >= root.End*1e9 {
+		return rootID, nil, OutOfBoundsError{start, root.Start, root.End}
+	}
 	rootID = ns.Stage(root)
 	nodes := []nodestore.NodeID{rootID}
 	current := root
@@ -31,15 +32,7 @@ func Insert(
 		}
 	}
 	bucket := bucket(start, current)
-	var node *nodestore.LeafNode
-	if existing := current.Children[bucket]; existing != nil {
-		node, err = cloneLeafNode(ctx, ns, existing.ID, data)
-		if err != nil {
-			return rootID, nil, err
-		}
-	} else {
-		node = nodestore.NewLeafNode(data)
-	}
+	node := nodestore.NewLeafNode(data)
 	stagedID := ns.Stage(node)
 	nodes = append(nodes, stagedID)
 	current.PlaceChild(bucket, stagedID, version)
@@ -67,36 +60,20 @@ func cloneInnerNode(ctx context.Context, ns *nodestore.Nodestore, id nodestore.N
 	if err != nil {
 		return nil, fmt.Errorf("failed to clone inner node %d: %w", id, err)
 	}
-	newNode := nodestore.NewInnerNode(0, 0, 0, 0)
 	oldNode, ok := node.(*nodestore.InnerNode)
 	if !ok {
 		return nil, newUnexpectedNodeError(nodestore.Inner, node)
 	}
-	*newNode = *oldNode
+	newNode := nodestore.NewInnerNode(oldNode.Depth, oldNode.Start, oldNode.End, len(oldNode.Children))
+	for i := range oldNode.Children {
+		if oldNode.Children[i] != nil {
+			newNode.Children[i] = &nodestore.Child{
+				ID:      oldNode.Children[i].ID,
+				Version: oldNode.Children[i].Version,
+			}
+		}
+	}
 	return newNode, nil
-}
-
-// cloneLeafNode returns a new leaf node with contents equal to the existing
-// leaf node at the provide address, merged with the provided data.
-func cloneLeafNode(
-	ctx context.Context,
-	ns *nodestore.Nodestore,
-	id nodestore.NodeID,
-	data []byte,
-) (*nodestore.LeafNode, error) {
-	node, err := ns.Get(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("failed to clone leaf node %d: %w", id, err)
-	}
-	oldNode, ok := node.(*nodestore.LeafNode)
-	if !ok {
-		return nil, newUnexpectedNodeError(nodestore.Leaf, node)
-	}
-	merged, err := oldNode.Merge(data)
-	if err != nil {
-		return nil, fmt.Errorf("failed to clone node: %w", err)
-	}
-	return merged, nil
 }
 
 // descend the tree to the node that contains the given timestamp, copying nodes
@@ -128,53 +105,4 @@ func descend(
 	current.PlaceChild(bucket, nodeID, version)
 	*nodeIDs = append(*nodeIDs, nodeID)
 	return node, nil
-}
-
-// Print returns a string representation of the node with the given id and version.
-func Print(ctx context.Context, ns *nodestore.Nodestore, nodeID nodestore.NodeID, version uint64) (string, error) {
-	node, err := ns.Get(ctx, nodeID)
-	if err != nil {
-		return "", fmt.Errorf("failed to get node %d: %w", nodeID, err)
-	}
-	switch node := node.(type) {
-	case *nodestore.InnerNode:
-		return printInnerNode(ctx, ns, node, version)
-	case *nodestore.LeafNode:
-		return node.String(), nil
-	default:
-		return "", errors.New("unexpected node type")
-	}
-}
-
-func printInnerNode(
-	ctx context.Context,
-	ns *nodestore.Nodestore,
-	node *nodestore.InnerNode,
-	version uint64,
-) (string, error) {
-	sb := &strings.Builder{}
-	sb.WriteString(fmt.Sprintf("[%d-%d:%d", node.Start, node.End, version))
-	span := node.End - node.Start
-	for i, child := range node.Children {
-		if child == nil {
-			continue
-		}
-		childStr, err := Print(ctx, ns, child.ID, child.Version)
-		if err != nil {
-			return "", err
-		}
-		childNode, err := ns.Get(ctx, child.ID)
-		if err != nil {
-			return "", fmt.Errorf("failed to get node %d: %w", child.ID, err)
-		}
-		if cnode, ok := childNode.(*nodestore.LeafNode); ok {
-			start := node.Start + uint64(i)*span/uint64(len(node.Children))
-			end := node.Start + uint64(i+1)*span/uint64(len(node.Children))
-			sb.WriteString(fmt.Sprintf(" [%d-%d:%d %s]", start, end, child.Version, cnode))
-		} else {
-			sb.WriteString(" " + childStr)
-		}
-	}
-	sb.WriteString("]")
-	return sb.String(), nil
 }

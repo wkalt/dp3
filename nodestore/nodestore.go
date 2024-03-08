@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 
 	fmcap "github.com/foxglove/mcap/go/mcap"
@@ -80,20 +81,12 @@ func (n *Nodestore) bytesToNode(value []byte) (Node, error) {
 }
 
 // Get retrieves a node from the store. If the node is not in the cache, it will be loaded from the store.
-// todo seems messed up this draws from 4 stores, maybe we can get rid of staging.
 func (n *Nodestore) Get(ctx context.Context, id NodeID) (Node, error) {
 	if value, ok := n.cache.Get(id); ok {
 		return value, nil
 	}
 	if value, ok := n.staging[id]; ok {
 		return value, nil
-	}
-	if value, err := n.wal.Get(ctx, id); err == nil {
-		node, err := n.bytesToNode(value)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse node: %w", err)
-		}
-		return node, nil
 	}
 	data, err := n.store.GetRange(ctx, id.OID(), id.Offset(), id.Length())
 	if err != nil {
@@ -180,8 +173,9 @@ func generateNodeID(oid objectID, offset int, length int) NodeID {
 // Flush flushes a list of node IDs to the store in a single object. The IDs are
 // assumed to be in root -> leaf order, such that the reversed list will capture
 // dependency ordering. All nodes will be removed from staging under any exit
-// condition.
-func (n *Nodestore) Flush(ctx context.Context, ids ...NodeID) (rootID NodeID, err error) {
+// condition. Existing content in the same logical location is cloned and copied
+// into the final output tree.
+func (n *Nodestore) Flush(ctx context.Context, ids ...NodeID) (newRootID NodeID, err error) {
 	defer func() {
 		n.mtx.Lock()
 		for _, id := range ids {
@@ -195,11 +189,13 @@ func (n *Nodestore) Flush(ctx context.Context, ids ...NodeID) (rootID NodeID, er
 	slices.Reverse(ids)
 	processed := make(map[NodeID]NodeID)
 	oid := n.generateObjectID()
+
 	for i, id := range ids {
 		node, ok := n.getStagedNode(id)
 		if !ok {
-			return rootID, ErrNodeNotStaged
+			return newRootID, ErrNodeNotStaged
 		}
+
 		if inner, ok := node.(*InnerNode); ok {
 			for _, child := range inner.Children {
 				if child != nil {
@@ -212,7 +208,7 @@ func (n *Nodestore) Flush(ctx context.Context, ids ...NodeID) (rootID NodeID, er
 		}
 		n, err := buf.Write(node.ToBytes())
 		if err != nil {
-			return rootID, fmt.Errorf("failed to write node to buffer: %w", err)
+			return newRootID, fmt.Errorf("failed to write node to buffer: %w", err)
 		}
 		nodeID := generateNodeID(oid, offset, n)
 		offset += n
@@ -220,7 +216,7 @@ func (n *Nodestore) Flush(ctx context.Context, ids ...NodeID) (rootID NodeID, er
 		newIDs[i] = nodeID
 	}
 	if err := n.store.Put(ctx, oid.String(), buf.Bytes()); err != nil {
-		return rootID, fmt.Errorf("failed to put object: %w", err)
+		return newRootID, fmt.Errorf("failed to put object: %w", err)
 	}
 	return newIDs[len(newIDs)-1], nil
 }
@@ -295,8 +291,19 @@ func (n *Nodestore) FlushWALPath(ctx context.Context, path []NodeID) (nodeID Nod
 	return flushedRoot, nil
 }
 
-func (n *Nodestore) WALMerge(ctx context.Context, version uint64, nodeIDs []NodeID) (nodeID NodeID, err error) {
-	mergedPath, err := n.NodeMerge(ctx, version, nodeIDs)
+// WALMerge merges a list of root node IDs that exist in WAL into a single
+// partial tree in the staging area, and then merges that tree into persistent
+// storage.
+func (n *Nodestore) WALMerge(
+	ctx context.Context,
+	rootID NodeID,
+	version uint64,
+	nodeIDs []NodeID,
+) (nodeID NodeID, err error) {
+	ids := make([]NodeID, len(nodeIDs)+1)
+	ids[0] = rootID
+	copy(ids[1:], nodeIDs)
+	mergedPath, err := n.nodeMerge(ctx, version, ids)
 	if err != nil {
 		return nodeID, fmt.Errorf("failed to merge nodes: %w", err)
 	}
@@ -307,20 +314,17 @@ func (n *Nodestore) WALMerge(ctx context.Context, version uint64, nodeIDs []Node
 	return flushedRoot, nil
 }
 
-// NodeMerge does an N-way tree merge, returning a "path" from the root to leaf
+// nodeMerge does an N-way tree merge, returning a "path" from the root to leaf
 // of the new tree. All nodes are from the same level of the tree, and can thus
 // be assumed to have the same type and same number of children.
-func (n *Nodestore) NodeMerge(ctx context.Context, version uint64, nodeIDs []NodeID) ([]NodeID, error) {
+func (n *Nodestore) nodeMerge(ctx context.Context, version uint64, nodeIDs []NodeID) ([]NodeID, error) {
 	if len(nodeIDs) == 0 {
 		return nil, errors.New("no nodes to merge")
 	}
 	nodes := make([]Node, len(nodeIDs))
 	for i, id := range nodeIDs {
-		data, err := n.wal.Get(ctx, id)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get node %s from wal: %w", id, err)
-		}
-		node, err := n.bytesToNode(data)
+		var node Node
+		node, err := n.getWALOrStorage(ctx, id)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse node: %w", err)
 		}
@@ -374,7 +378,7 @@ func (n *Nodestore) mergeInnerNodes(ctx context.Context, version uint64, nodes [
 				children = append(children, inner.ID)
 			}
 		}
-		merged, err := n.NodeMerge(ctx, version, children) // merged child for this conflict
+		merged, err := n.nodeMerge(ctx, version, children) // merged child for this conflict
 		if err != nil {
 			return nil, err
 		}
@@ -389,29 +393,41 @@ func (n *Nodestore) mergeInnerNodes(ctx context.Context, version uint64, nodes [
 	return result, nil
 }
 
+func (n *Nodestore) getWALOrStorage(ctx context.Context, nodeID NodeID) (Node, error) {
+	data, err := n.wal.Get(ctx, nodeID)
+	if err != nil {
+		if errors.Is(err, NodeNotFoundError{}) {
+			node, err := n.Get(ctx, nodeID)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get node %d: %w", nodeID, err)
+			}
+			return node, nil
+		}
+		return nil, fmt.Errorf("failed to get node %d from wal: %w", nodeID, err)
+	}
+	node, err := n.bytesToNode(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse node: %w", err)
+	}
+	return node, nil
+}
+
 func (n *Nodestore) mergeLeaves(ctx context.Context, nodeIDs []NodeID) (NodeID, error) {
 	if len(nodeIDs) == 1 {
 		id := nodeIDs[0]
-		data, err := n.wal.Get(ctx, id)
+		var node Node
+		node, err := n.getWALOrStorage(ctx, id)
 		if err != nil {
-			return NodeID{}, fmt.Errorf("failed to get leaf %d from wal: %w", id, err)
-		}
-		node, err := n.bytesToNode(data)
-		if err != nil {
-			return NodeID{}, fmt.Errorf("failed to parse node: %w", err)
+			return NodeID{}, fmt.Errorf("failed to get node: %w", err)
 		}
 		nodeID := n.Stage(node)
 		return nodeID, nil
 	}
 	iterators := make([]fmcap.MessageIterator, len(nodeIDs))
 	for i, id := range nodeIDs {
-		data, err := n.wal.Get(ctx, id)
+		leaf, err := n.getWALOrStorage(ctx, id)
 		if err != nil {
 			return NodeID{}, fmt.Errorf("failed to get leaf %d from wal: %w", id, err)
-		}
-		leaf, err := n.bytesToNode(data)
-		if err != nil {
-			return NodeID{}, fmt.Errorf("failed to parse node: %w", err)
 		}
 		reader, err := fmcap.NewReader(leaf.(*LeafNode).Data())
 		if err != nil {
@@ -429,4 +445,71 @@ func (n *Nodestore) mergeLeaves(ctx context.Context, nodeIDs []NodeID) (NodeID, 
 	}
 	newLeaf := NewLeafNode(buf.Bytes())
 	return n.Stage(newLeaf), nil
+}
+
+func (n *Nodestore) Print(ctx context.Context, nodeID NodeID, version uint64) (string, error) {
+	node, err := n.Get(ctx, nodeID)
+	if err != nil {
+		switch {
+		case errors.As(err, &NodeNotFoundError{}):
+			if value, err := n.wal.Get(ctx, nodeID); err == nil {
+				node, err = n.bytesToNode(value)
+				if err != nil {
+					return "", fmt.Errorf("failed to parse node: %w", err)
+				}
+			}
+		default:
+			return "", fmt.Errorf("failed to get node %d: %w", nodeID, err)
+		}
+	}
+	switch node := node.(type) {
+	case *InnerNode:
+		return n.printInnerNode(ctx, node, version)
+	case *LeafNode:
+		return node.String(), nil
+	default:
+		return "", fmt.Errorf("unexpected node type: %+v", node)
+	}
+}
+
+func (n *Nodestore) printInnerNode(
+	ctx context.Context,
+	node *InnerNode,
+	version uint64,
+) (string, error) {
+	sb := &strings.Builder{}
+	sb.WriteString(fmt.Sprintf("[%d-%d:%d", node.Start, node.End, version))
+	span := node.End - node.Start
+	for i, child := range node.Children {
+		if child == nil {
+			continue
+		}
+		childStr, err := n.Print(ctx, child.ID, child.Version)
+		if err != nil {
+			return "", err
+		}
+		childNode, err := n.Get(ctx, child.ID)
+		if err != nil {
+			switch {
+			case errors.As(err, &NodeNotFoundError{}):
+				if value, err := n.wal.Get(ctx, child.ID); err == nil {
+					childNode, err = n.bytesToNode(value)
+					if err != nil {
+						return "", fmt.Errorf("failed to parse node: %w", err)
+					}
+				}
+			default:
+				return "", fmt.Errorf("failed to get node %d: %w", child.ID, err)
+			}
+		}
+		if cnode, ok := childNode.(*LeafNode); ok {
+			start := node.Start + uint64(i)*span/uint64(len(node.Children))
+			end := node.Start + uint64(i+1)*span/uint64(len(node.Children))
+			sb.WriteString(fmt.Sprintf(" [%d-%d:%d %s]", start, end, child.Version, cnode))
+		} else {
+			sb.WriteString(" " + childStr)
+		}
+	}
+	sb.WriteString("]")
+	return sb.String(), nil
 }

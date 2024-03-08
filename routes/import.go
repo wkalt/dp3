@@ -35,6 +35,6 @@ func newImportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		slog.InfoContext(ctx, "imported", "location", req.Path, "producerID", req.ProducerID)
+		slog.InfoContext(ctx, "imported", "location", req.Path, "producer_id", req.ProducerID)
 	}
 }

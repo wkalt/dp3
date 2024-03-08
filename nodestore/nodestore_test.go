@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -35,64 +36,130 @@ func TestNodestoreErrors(t *testing.T) {
 	})
 }
 
+func removeSpace(s string) string {
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "  ", "")
+	s = strings.ReplaceAll(s, "\t", "")
+	return s
+}
+
+func assertEqualTrees(t *testing.T, a, b string) {
+	t.Helper()
+	require.Equal(t, removeSpace(a), removeSpace(b), "%s != %s", a, b)
+}
+
 func makeTestNodestore(t *testing.T) *nodestore.Nodestore {
 	t.Helper()
-	ctx := context.Background()
 	store := storage.NewMemStore()
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1e6)
-	db, err := sql.Open("sqlite3", ":memory:")
-	require.NoError(t, err)
-	wal, err := nodestore.NewSQLWAL(ctx, db)
-	require.NoError(t, err)
+	wal := nodestore.NewMemWAL()
 	return nodestore.NewNodestore(store, cache, wal)
 }
 
 func TestWALMerge(t *testing.T) {
 	ctx := context.Background()
-	ns := makeTestNodestore(t)
-	root, err := ns.NewRoot(
-		ctx,
-		util.DateSeconds("1970-01-01"),
-		util.DateSeconds("2030-01-01"),
-		60,
-		64,
-	)
-	require.NoError(t, err)
+	cases := []struct {
+		assertion string
+		root      []string
+		nodes     [][]string
+		expected  string
+	}{
+		{
+			"single node into empty root",
+			[]string{},
+			[][]string{{"1970-01-03"}},
+			"[0-707788800:2 [0-11059200:2 [172800-345600:1 [leaf 1 msg]]]]",
+		},
+		{
+			"single node into populated, nonoverlapping root",
+			[]string{"1970-01-01"},
+			[][]string{{"1970-01-03"}},
+			"[0-707788800:2 [0-11059200:2 [0-172800:1 [leaf 1 msg]] [172800-345600:2 [leaf 1 msg]]]]",
+		},
+		{
+			"two nonoverlapping nodes into empty root",
+			[]string{},
+			[][]string{{"1970-01-03"}, {"1970-01-05"}},
+			"[0-707788800:3 [0-11059200:3 [172800-345600:3 [leaf 1 msg]] [345600-518400:3 [leaf 1 msg]]]]",
+		},
+		{
+			"two nonoverlapping nodes into nonempty empty root",
+			[]string{"1970-01-01"},
+			[][]string{{"1970-01-03"}, {"1970-01-05"}},
+			`[0-707788800:3 [0-11059200:3 [0-172800:1 [leaf 1 msg]]
+			[172800-345600:3 [leaf 1 msg]] [345600-518400:3 [leaf 1 msg]]]]`,
+		},
+		{
+			"overlapping nodes into empty root",
+			[]string{},
+			[][]string{{"1970-01-01"}, {"1970-01-02"}},
+			"[0-707788800:3 [0-11059200:3 [0-172800:3 [leaf 2 msgs]]]]",
+		},
+		{
+			"overlapping nodes into nonempty root",
+			[]string{"1970-01-01"},
+			[][]string{{"1970-01-01"}, {"1970-01-02"}},
+			"[0-707788800:3 [0-11059200:3 [0-172800:3 [leaf 3 msgs]]]]",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			ns := makeTestNodestore(t)
+			rootID, err := ns.NewRoot(
+				ctx,
+				util.DateSeconds("1970-01-01"),
+				util.DateSeconds("1975-01-01"),
+				60*60*24*2, // five years, two day buckets
+				64,
+			)
+			require.NoError(t, err)
+			if len(c.root) > 0 {
+				var nodeIDs []nodestore.NodeID
+				buf := &bytes.Buffer{}
 
-	producer := "my-device"
-	topic := "/topic"
+				secs := util.DateSeconds(c.root[0])
+				nsecs := secs * 1e9
+				mcap.WriteFile(t, buf, []uint64{nsecs})
+				_, nodeIDs, err = tree.Insert(ctx, ns, rootID, 1, nsecs, buf.Bytes())
+				require.NoError(t, err)
+				rootID, err = ns.Flush(ctx, nodeIDs...)
+				require.NoError(t, err)
+			}
 
-	// inserts go into the staging area
-	buf1 := &bytes.Buffer{}
-	mcap.WriteFile(t, buf1, []uint64{50 * 1e9})
-	root1, path, err := tree.Insert(ctx, ns, root, 1, 50*1e9, buf1.Bytes())
-	require.NoError(t, err)
-	require.NoError(t, ns.WALFlush(ctx, producer, topic, 2, path))
+			version := uint64(1)
+			producer := "producer"
+			topic := "topic"
+			roots := make([]nodestore.NodeID, len(c.nodes))
+			for i, node := range c.nodes {
+				buf := &bytes.Buffer{}
 
-	buf2 := &bytes.Buffer{}
-	mcap.WriteFile(t, buf2, []uint64{70 * 1e9})
-	root2, path2, err := tree.Insert(ctx, ns, root1, 1, 70*1e9, buf2.Bytes())
-	require.NoError(t, err)
-	require.NoError(t, ns.WALFlush(ctx, producer, topic, 3, path2))
+				times := []uint64{}
+				for _, time := range node {
+					times = append(times, 1e9*util.DateSeconds(time))
+				}
+				mcap.WriteFile(t, buf, times)
+				newRootID, nodeIDs, err := tree.Insert(ctx, ns, rootID, version, times[0], buf.Bytes()) // into staging
+				require.NoError(t, err)
+				require.NoError(t, ns.WALFlush(ctx, producer, topic, version, nodeIDs)) // staging -> wal
+				version++
+				roots[i] = newRootID
+			}
 
-	buf3 := &bytes.Buffer{}
-	mcap.WriteFile(t, buf3, []uint64{70 * 1e9})
-	root3, path3, err := tree.Insert(ctx, ns, root2, 1, 70*1e9, buf3.Bytes())
-	require.NoError(t, err)
-	require.NoError(t, ns.WALFlush(ctx, producer, topic, 3, path3))
+			rootID, err = ns.WALMerge(ctx, rootID, version, roots)
+			require.NoError(t, err)
 
-	_, err = ns.WALMerge(ctx, 4, []nodestore.NodeID{root1, root2, root3})
-	require.NoError(t, err)
+			str, err := ns.Print(ctx, rootID, version)
+			require.NoError(t, err)
+			assertEqualTrees(t, c.expected, str)
+		})
+	}
 }
 
 func TestNewRoot(t *testing.T) {
 	ctx := context.Background()
 	store := storage.NewMemStore()
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1e6)
-	db, err := sql.Open("sqlite3", ":memory:")
-	require.NoError(t, err)
-	wal, err := nodestore.NewSQLWAL(ctx, db)
-	require.NoError(t, err)
+	wal := nodestore.NewMemWAL()
 	ns := nodestore.NewNodestore(store, cache, wal)
 	root, err := ns.NewRoot(
 		ctx,

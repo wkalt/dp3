@@ -26,3 +26,18 @@ func newUnexpectedNodeError(expected nodestore.NodeType, found nodestore.Node) e
 		found:    found,
 	}
 }
+
+type OutOfBoundsError struct {
+	t     uint64
+	start uint64
+	end   uint64
+}
+
+func (e OutOfBoundsError) Error() string {
+	return fmt.Sprintf("timestamp %d out of range [%d, %d)", e.t, e.start, e.end)
+}
+
+func (e OutOfBoundsError) Is(target error) bool {
+	_, ok := target.(OutOfBoundsError)
+	return ok
+}

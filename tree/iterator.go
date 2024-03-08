@@ -44,11 +44,10 @@ func (ti *Iterator) initialize(ctx context.Context, rootID nodestore.NodeID) err
 		left := inner.Start
 		right := inner.Start + step
 		for _, child := range inner.Children {
-			if child == nil {
-				continue
-			}
-			if left < ti.end && right >= ti.start {
-				stack = append(stack, child.ID)
+			if child != nil {
+				if ti.start < right*1e9 && ti.end >= left*1e9 {
+					stack = append(stack, child.ID)
+				}
 			}
 			left += step
 			right += step

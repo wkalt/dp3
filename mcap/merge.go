@@ -140,6 +140,9 @@ func Nmerge(writer io.Writer, iterators ...mcap.MessageIterator) error {
 	for i, it := range iterators {
 		schema, channel, message, err := it.Next(nil)
 		if err != nil {
+			if errors.Is(err, io.EOF) {
+				continue
+			}
 			return fmt.Errorf("failed to get next message from iterator %d: %w", i, err)
 		}
 		var item = util.Item[record, uint64]{
