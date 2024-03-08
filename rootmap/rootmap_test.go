@@ -6,7 +6,6 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/rootmap"
@@ -43,27 +42,25 @@ func TestRootmaps(t *testing.T) {
 		t.Run(c.assertion, func(t *testing.T) {
 			rm := c.f(t)
 			t.Run("put", func(t *testing.T) {
-				streamID := uuid.New().String()
 				expected := randNodeID()
-				err := rm.Put(ctx, "my-device", "my-topic", streamID, 10, expected)
+				err := rm.Put(ctx, "my-device", "my-topic", 10, expected)
 				require.NoError(t, err)
 
-				nodeID, err := rm.Get(ctx, streamID, 10)
+				nodeID, err := rm.Get(ctx, "my-device", "my-topic", 10)
 				require.NoError(t, err)
 				require.Equal(t, expected, nodeID)
 			})
 
 			t.Run("get latest", func(t *testing.T) {
-				streamID := uuid.New().String()
 				node1 := randNodeID()
-				err := rm.Put(ctx, "my-device", "my-topic", streamID, 10, node1)
+				err := rm.Put(ctx, "my-device", "my-topic", 20, node1)
 				require.NoError(t, err)
 
 				node2 := randNodeID()
-				err = rm.Put(ctx, "my-device", "my-topic", streamID, 20, node2)
+				err = rm.Put(ctx, "my-device", "my-topic", 30, node2)
 				require.NoError(t, err)
 
-				nodeID, _, err := rm.GetLatest(ctx, streamID)
+				nodeID, _, err := rm.GetLatest(ctx, "my-device", "my-topic")
 				require.NoError(t, err)
 				require.Equal(t, node2, nodeID)
 			})

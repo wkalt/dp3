@@ -20,10 +20,10 @@ func (m *memwal) Put(ctx context.Context, entry WALEntry) error {
 	return nil
 }
 
-func (m *memwal) GetStream(ctx context.Context, streamID string) ([][]NodeID, error) {
+func (m *memwal) GetStream(ctx context.Context, producerID, topic string) ([][]NodeID, error) {
 	versions := make(map[uint64][]NodeID)
 	for _, entry := range m.entries {
-		if entry.StreamID == streamID && !entry.Deleted {
+		if entry.ProducerID == producerID && entry.Topic == topic && !entry.Deleted {
 			versions[entry.Version] = append(versions[entry.Version], entry.NodeID)
 		}
 	}
@@ -52,13 +52,18 @@ func (m *memwal) Delete(ctx context.Context, nodeID NodeID) error {
 func (m *memwal) List(ctx context.Context) ([]WALListing, error) {
 	streams := make(map[string]WALListing)
 	for _, entry := range m.entries {
-		listing, ok := streams[entry.StreamID]
+		key := entry.ProducerID + entry.Topic
+		listing, ok := streams[key]
 		if !ok {
-			listing = WALListing{StreamID: entry.StreamID, Versions: make(map[uint64][]NodeID)}
-			streams[entry.StreamID] = listing
+			listing = WALListing{
+				ProducerID: entry.ProducerID,
+				Topic:      entry.Topic,
+				Versions:   make(map[uint64][]NodeID),
+			}
+			streams[key] = listing
 		}
 		listing.Versions[entry.Version] = append(listing.Versions[entry.Version], entry.NodeID)
-		streams[entry.StreamID] = listing
+		streams[key] = listing
 	}
 	return maps.Values(streams), nil
 }

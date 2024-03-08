@@ -26,20 +26,24 @@ func TestSQLWAL(t *testing.T) {
 	wal, err := nodestore.NewSQLWAL(ctx, db)
 	require.NoError(t, err)
 
+	producer := "my-device"
+	topic := "my-topic"
+
 	t.Run("test put/get stream", func(t *testing.T) {
 		for i := 0; i < 10; i++ {
 			nodeID := genNodeID(t)
 			entry := nodestore.WALEntry{
-				StreamID: "stream",
-				NodeID:   nodeID,
-				Version:  10,
-				Data:     []byte("data"),
+				ProducerID: producer,
+				Topic:      topic,
+				NodeID:     nodeID,
+				Version:    10,
+				Data:       []byte("data"),
 			}
 			err := wal.Put(ctx, entry)
 			require.NoError(t, err)
 		}
 
-		result, err := wal.GetStream(ctx, "stream")
+		result, err := wal.GetStream(ctx, producer, topic)
 		require.NoError(t, err)
 		require.Len(t, result, 1)
 		require.Len(t, result[0], 10)
@@ -48,10 +52,11 @@ func TestSQLWAL(t *testing.T) {
 	t.Run("test get", func(t *testing.T) {
 		nodeID := genNodeID(t)
 		entry := nodestore.WALEntry{
-			StreamID: "stream",
-			NodeID:   nodeID,
-			Version:  10,
-			Data:     []byte("data"),
+			ProducerID: producer,
+			Topic:      topic,
+			NodeID:     nodeID,
+			Version:    10,
+			Data:       []byte("data"),
 		}
 		err := wal.Put(ctx, entry)
 		require.NoError(t, err)

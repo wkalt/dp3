@@ -7,8 +7,8 @@ import (
 )
 
 type root struct {
-	streamID   string
 	producerID string
+	topic      string
 	version    uint64
 	nodeID     nodestore.NodeID
 }
@@ -23,32 +23,34 @@ func NewMemRootmap() Rootmap {
 	}
 }
 
-func (rm *memrootmap) GetLatest(ctx context.Context, streamID string) (nodestore.NodeID, uint64, error) {
+func (rm *memrootmap) GetLatest(
+	ctx context.Context, producerID string, topic string) (nodestore.NodeID, uint64, error) {
 	for i := len(rm.roots) - 1; i >= 0; i-- { // nb: assumes roots added in ascending order
 		root := rm.roots[i]
-		if root.streamID == streamID {
+		if root.producerID == producerID && root.topic == topic {
 			return root.nodeID, root.version, nil
 		}
 	}
-	return nodestore.NodeID{}, 0, StreamNotFoundError{streamID}
+	return nodestore.NodeID{}, 0, StreamNotFoundError{producerID, topic}
 }
 
-func (rm *memrootmap) Get(ctx context.Context, streamID string, version uint64) (nodestore.NodeID, error) {
+func (rm *memrootmap) Get(
+	ctx context.Context, producerID string, topic string, version uint64) (nodestore.NodeID, error) {
 	for i := len(rm.roots) - 1; i >= 0; i-- {
 		root := rm.roots[i]
-		if root.streamID == streamID && root.version == version {
+		if root.producerID == producerID && root.topic == topic && root.version == version {
 			return root.nodeID, nil
 		}
 	}
-	return nodestore.NodeID{}, StreamNotFoundError{streamID}
+	return nodestore.NodeID{}, StreamNotFoundError{producerID, topic}
 }
 
 func (rm *memrootmap) Put(
 	ctx context.Context, producerID string, topic string,
-	streamID string, version uint64, nodeID nodestore.NodeID) error {
+	version uint64, nodeID nodestore.NodeID) error {
 	rm.roots = append(rm.roots, root{
-		streamID:   streamID,
 		producerID: producerID,
+		topic:      topic,
 		version:    version,
 		nodeID:     nodeID,
 	})

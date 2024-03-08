@@ -26,15 +26,13 @@ func (w *sqlWAL) initialize(ctx context.Context) error {
 		id serial primary key,
 		producer_id text,
 		topic text,
-		stream_id text,
 		node_id text,
 		version bigint,
 		deleted text,
 		data blob
 	);
-	create index if not exists wal_stream_id_idx on wal(stream_id);
+	create unique index producer_id_topic_node_id_uniq_idx on wal(producer_id, topic, node_id);
 	create index if not exists wal_node_id_idx on wal(node_id);
-	create unique index if not exists wal_stream_node_uniq_idx on wal(stream_id, node_id);
 	`)
 	if err != nil {
 		return fmt.Errorf("failed to create wal: %w", err)
@@ -43,10 +41,10 @@ func (w *sqlWAL) initialize(ctx context.Context) error {
 }
 
 func (w *sqlWAL) Put(ctx context.Context, entry WALEntry) error {
-	stmt := `insert into wal (producer_id, topic, stream_id, node_id, version, data)
+	stmt := `insert into wal (producer_id, topic, node_id, version, data)
 	values
-	($1, $2, $3, $4, $5, $6)`
-	params := []interface{}{entry.ProducerID, entry.Topic, entry.StreamID, entry.NodeID, entry.Version, entry.Data}
+	($1, $2, $3, $4, $5)`
+	params := []interface{}{entry.ProducerID, entry.Topic, entry.NodeID, entry.Version, entry.Data}
 	_, err := w.db.ExecContext(ctx, stmt, params...)
 	if err != nil {
 		return fmt.Errorf("failed to insert wal: %w", err)
@@ -54,11 +52,11 @@ func (w *sqlWAL) Put(ctx context.Context, entry WALEntry) error {
 	return nil
 }
 
-func (w *sqlWAL) GetStream(ctx context.Context, streamID string) ([][]NodeID, error) {
-	stmt := `select node_id, version from wal where stream_id = $1 and deleted is null order by id`
-	rows, err := w.db.QueryContext(ctx, stmt, streamID)
+func (w *sqlWAL) GetStream(ctx context.Context, producerID string, topic string) ([][]NodeID, error) {
+	stmt := `select node_id, version from wal where producer_id = $1 and topic = $2 and deleted is null order by id`
+	rows, err := w.db.QueryContext(ctx, stmt, producerID, topic)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get stream %s from wal: %w", streamID, err)
+		return nil, fmt.Errorf("failed to get stream %s/%s from wal: %w", producerID, topic, err)
 	}
 	defer rows.Close()
 	var result [][]NodeID
@@ -81,7 +79,7 @@ func (w *sqlWAL) GetStream(ctx context.Context, streamID string) ([][]NodeID, er
 		}
 	}
 	if rows.Err() != nil {
-		return nil, fmt.Errorf("failed to get stream %s from wal: %w", streamID, rows.Err())
+		return nil, fmt.Errorf("failed to get stream %s/%s from wal: %w", producerID, topic, rows.Err())
 	}
 	if len(group) > 0 {
 		result = append(result, group)
@@ -108,7 +106,7 @@ func (w *sqlWAL) Delete(ctx context.Context, nodeID NodeID) error {
 }
 
 func (w *sqlWAL) List(ctx context.Context) (paths []WALListing, err error) {
-	stmt := `select producer_id, topic, stream_id, version, node_id from wal where deleted is null order by id`
+	stmt := `select producer_id, topic, version, node_id from wal where deleted is null order by id`
 	rows, err := w.db.QueryContext(ctx, stmt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list wal: %w", err)
@@ -117,17 +115,22 @@ func (w *sqlWAL) List(ctx context.Context) (paths []WALListing, err error) {
 	defer rows.Close()
 	for rows.Next() {
 		var entry WALEntry
-		if err := rows.Scan(&entry.ProducerID, &entry.Topic, &entry.StreamID, &entry.Version, &entry.NodeID); err != nil {
+		if err := rows.Scan(&entry.ProducerID, &entry.Topic, &entry.Version, &entry.NodeID); err != nil {
 			return nil, fmt.Errorf("failed to scan row: %w", err)
 		}
-		if _, ok := streams[entry.StreamID]; !ok {
-			streams[entry.StreamID] = WALListing{StreamID: entry.StreamID, Versions: make(map[uint64][]NodeID)}
+		key := entry.ProducerID + entry.Topic
+		if _, ok := streams[key]; !ok {
+			streams[key] = WALListing{
+				ProducerID: entry.ProducerID,
+				Topic:      entry.Topic,
+				Versions:   make(map[uint64][]NodeID),
+			}
 		}
-		if _, ok := streams[entry.StreamID].Versions[entry.Version]; !ok {
-			streams[entry.StreamID].Versions[entry.Version] = []NodeID{entry.NodeID}
+		if _, ok := streams[key].Versions[entry.Version]; !ok {
+			streams[key].Versions[entry.Version] = []NodeID{entry.NodeID}
 		}
-		streams[entry.StreamID].Versions[entry.Version] = append(
-			streams[entry.StreamID].Versions[entry.Version], entry.NodeID)
+		streams[key].Versions[entry.Version] = append(
+			streams[key].Versions[entry.Version], entry.NodeID)
 	}
 	if rows.Err() != nil {
 		return nil, fmt.Errorf("failed to list wal: %w", rows.Err())

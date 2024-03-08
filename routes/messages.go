@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/wkalt/dp3/treemgr"
-	"github.com/wkalt/dp3/util"
 	"golang.org/x/exp/slog"
 )
 
@@ -31,14 +30,7 @@ func newMessagesHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			"start", req.Start,
 			"end", req.End,
 		)
-
-		streamIDs := make([]string, len(req.Topics))
-		for i, topic := range req.Topics {
-			streamID := util.ComputeStreamID(req.ProducerID, topic)
-			streamIDs[i] = streamID
-		}
-
-		err := tmgr.GetMessagesLatest(ctx, w, req.Start*1e9, req.End*1e9, streamIDs)
+		err := tmgr.GetMessagesLatest(ctx, w, req.Start*1e9, req.End*1e9, req.ProducerID, req.Topics)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

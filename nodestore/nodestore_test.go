@@ -67,19 +67,19 @@ func TestWALMerge(t *testing.T) {
 	mcap.WriteFile(t, buf1, []uint64{50 * 1e9})
 	root1, path, err := tree.Insert(ctx, ns, root, 1, 50*1e9, buf1.Bytes())
 	require.NoError(t, err)
-	require.NoError(t, ns.WALFlush(ctx, producer, topic, "my-stream", 2, path))
+	require.NoError(t, ns.WALFlush(ctx, producer, topic, 2, path))
 
 	buf2 := &bytes.Buffer{}
 	mcap.WriteFile(t, buf2, []uint64{70 * 1e9})
 	root2, path2, err := tree.Insert(ctx, ns, root1, 1, 70*1e9, buf2.Bytes())
 	require.NoError(t, err)
-	require.NoError(t, ns.WALFlush(ctx, producer, topic, "my-stream", 3, path2))
+	require.NoError(t, ns.WALFlush(ctx, producer, topic, 3, path2))
 
 	buf3 := &bytes.Buffer{}
 	mcap.WriteFile(t, buf3, []uint64{70 * 1e9})
 	root3, path3, err := tree.Insert(ctx, ns, root2, 1, 70*1e9, buf3.Bytes())
 	require.NoError(t, err)
-	require.NoError(t, ns.WALFlush(ctx, producer, topic, "my-stream", 3, path3))
+	require.NoError(t, ns.WALFlush(ctx, producer, topic, 3, path3))
 
 	_, err = ns.WALMerge(ctx, 4, []nodestore.NodeID{root1, root2, root3})
 	require.NoError(t, err)

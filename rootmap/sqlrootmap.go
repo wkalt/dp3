@@ -24,14 +24,11 @@ func (rm *sqlRootmap) initialize() error {
 	create table if not exists rootmap (
 		producer_id text not null,
 		topic text not null,
-		stream_id uuid not null,
 		version bigint not null,
 		node_id text not null,
 		timestamp text not null default current_timestamp,
-		primary key (stream_id, version)
+		primary key (producer_id, topic, version)
 	);
-
-	create index rootmap_stream_id_timestamp_idx on rootmap (stream_id, timestamp);
 
 	create table schema_migrations(
 		version bigint not null,
@@ -49,13 +46,12 @@ func (rm *sqlRootmap) Put(
 	ctx context.Context,
 	producerID string,
 	topic string,
-	streamID string,
 	version uint64,
 	nodeID nodestore.NodeID,
 ) error {
 	_, err := rm.db.ExecContext(ctx, `
-	insert into rootmap (producer_id, topic, stream_id, version, node_id) values ($1, $2, $3, $4, $5)`,
-		producerID, topic, streamID, version, hex.EncodeToString(nodeID[:]),
+	insert into rootmap (producer_id, topic, version, node_id) values ($1, $2, $3, $4)`,
+		producerID, topic, version, hex.EncodeToString(nodeID[:]),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to store to rootmap: %w", err)
@@ -63,16 +59,17 @@ func (rm *sqlRootmap) Put(
 	return nil
 }
 
-func (rm *sqlRootmap) GetLatest(ctx context.Context, streamID string) (nodestore.NodeID, uint64, error) {
+func (rm *sqlRootmap) GetLatest(
+	ctx context.Context, producerID string, topic string) (nodestore.NodeID, uint64, error) {
 	var nodeID string
 	var version uint64
 	err := rm.db.QueryRowContext(ctx, `
-	select node_id, version from rootmap where stream_id = $1 order by version desc limit 1`,
-		streamID,
+	select node_id, version from rootmap where producer_id = $1 and topic = $2 order by version desc limit 1`,
+		producerID, topic,
 	).Scan(&nodeID, &version)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nodestore.NodeID{}, 0, StreamNotFoundError{streamID}
+			return nodestore.NodeID{}, 0, StreamNotFoundError{producerID, topic}
 		}
 		return nodestore.NodeID{}, 0, fmt.Errorf("failed to read from rootmap: %w", err)
 	}
@@ -83,15 +80,16 @@ func (rm *sqlRootmap) GetLatest(ctx context.Context, streamID string) (nodestore
 	return nodestore.NodeID(decoded), version, nil
 }
 
-func (rm *sqlRootmap) Get(ctx context.Context, streamID string, version uint64) (nodestore.NodeID, error) {
+func (rm *sqlRootmap) Get(
+	ctx context.Context, producerID string, topic string, version uint64) (nodestore.NodeID, error) {
 	var nodeID string
 	err := rm.db.QueryRowContext(ctx, `
-	select node_id from rootmap where stream_id = $1 and version = $2`,
-		streamID, version,
+	select node_id from rootmap where producer_id = $1 and topic = $2 and version = $3`,
+		producerID, topic, version,
 	).Scan(&nodeID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nodestore.NodeID{}, StreamNotFoundError{streamID}
+			return nodestore.NodeID{}, StreamNotFoundError{producerID, topic}
 		}
 		return nodestore.NodeID{}, fmt.Errorf("failed to read from rootmap: %w", err)
 	}

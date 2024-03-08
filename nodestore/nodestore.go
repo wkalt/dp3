@@ -122,7 +122,6 @@ func (n *Nodestore) WALFlush(
 	ctx context.Context,
 	producerID string,
 	topic string,
-	streamID string,
 	version uint64,
 	ids []NodeID,
 ) error {
@@ -135,7 +134,6 @@ func (n *Nodestore) WALFlush(
 		entry := WALEntry{
 			ProducerID: producerID,
 			Topic:      topic,
-			StreamID:   streamID,
 			NodeID:     id,
 			Version:    version,
 			Data:       bytes,

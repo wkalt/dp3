@@ -1,11 +1,14 @@
 package rootmap
 
+import "fmt"
+
 type StreamNotFoundError struct {
-	StreamID string
+	ProducerID string
+	Topic      string
 }
 
 func (e StreamNotFoundError) Error() string {
-	return "stream " + e.StreamID + " not found"
+	return fmt.Sprintf("stream %s/%s not found", e.ProducerID, e.Topic)
 }
 
 func (e StreamNotFoundError) Is(target error) bool {
