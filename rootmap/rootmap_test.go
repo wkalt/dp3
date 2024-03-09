@@ -64,6 +64,14 @@ func TestRootmaps(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, node2, nodeID)
 			})
+			t.Run("get version that does not exist", func(t *testing.T) {
+				_, err := rm.Get(ctx, "fake-device", "my-topic", 1e9)
+				require.ErrorIs(t, err, rootmap.StreamNotFoundError{})
+			})
+			t.Run("get latest version that does not exist", func(t *testing.T) {
+				_, _, err := rm.GetLatest(ctx, "fake-device", "my-topic")
+				require.ErrorIs(t, err, rootmap.StreamNotFoundError{})
+			})
 		})
 	}
 }
