@@ -26,8 +26,9 @@ type InnerNode struct {
 }
 
 type Child struct {
-	ID      NodeID `json:"id"`
-	Version uint64 `json:"version"`
+	ID         NodeID      `json:"id"`
+	Version    uint64      `json:"version"`
+	Statistics *Statistics `json:"statistics"`
 }
 
 func (n *InnerNode) Size() uint64 {
@@ -56,10 +57,11 @@ func (n *InnerNode) FromBytes(data []byte) error {
 	return nil
 }
 
-func (n *InnerNode) PlaceChild(index uint64, id NodeID, version uint64) {
+func (n *InnerNode) PlaceChild(index uint64, id NodeID, version uint64, statistics *Statistics) {
 	n.Children[index] = &Child{
-		ID:      id,
-		Version: version,
+		ID:         id,
+		Version:    version,
+		Statistics: statistics,
 	}
 }
 

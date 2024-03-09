@@ -68,38 +68,40 @@ func TestWALMerge(t *testing.T) {
 			"single node into empty root",
 			[]string{},
 			[][]string{{"1970-01-03"}},
-			"[0-707788800:2 [0-11059200:2 [172800-345600:1 [leaf 1 msg]]]]",
+			"[0-707788800:2 [0-11059200:2 (count=1) [172800-345600:1 (count=1) [leaf 1 msg]]]]",
 		},
 		{
 			"single node into populated, nonoverlapping root",
 			[]string{"1970-01-01"},
 			[][]string{{"1970-01-03"}},
-			"[0-707788800:3 [0-11059200:3 [0-172800:1 [leaf 1 msg]] [172800-345600:3 [leaf 1 msg]]]]",
+			`[0-707788800:3 [0-11059200:3 (count=2) [0-172800:1 (count=1) [leaf 1 msg]]
+			[172800-345600:3 (count=1) [leaf 1 msg]]]]`,
 		},
 		{
 			"two nonoverlapping nodes into empty root",
 			[]string{},
 			[][]string{{"1970-01-03"}, {"1970-01-05"}},
-			"[0-707788800:3 [0-11059200:3 [172800-345600:3 [leaf 1 msg]] [345600-518400:3 [leaf 1 msg]]]]",
+			`[0-707788800:3 [0-11059200:3 (count=2) [172800-345600:3 (count=1) [leaf 1 msg]]
+			[345600-518400:3 (count=1) [leaf 1 msg]]]]`,
 		},
 		{
 			"two nonoverlapping nodes into nonempty empty root",
 			[]string{"1970-01-01"},
 			[][]string{{"1970-01-03"}, {"1970-01-05"}},
-			`[0-707788800:4 [0-11059200:4 [0-172800:1 [leaf 1 msg]]
-			[172800-345600:4 [leaf 1 msg]] [345600-518400:4 [leaf 1 msg]]]]`,
+			`[0-707788800:4 [0-11059200:4 (count=3) [0-172800:1 (count=1) [leaf 1 msg]]
+			[172800-345600:4 (count=1) [leaf 1 msg]] [345600-518400:4 (count=1) [leaf 1 msg]]]]`,
 		},
 		{
 			"overlapping nodes into empty root",
 			[]string{},
 			[][]string{{"1970-01-01"}, {"1970-01-02"}},
-			"[0-707788800:3 [0-11059200:3 [0-172800:3 [leaf 2 msgs]]]]",
+			"[0-707788800:3 [0-11059200:3 (count=2) [0-172800:3 (count=2) [leaf 2 msgs]]]]",
 		},
 		{
 			"overlapping nodes into nonempty root",
 			[]string{"1970-01-01"},
 			[][]string{{"1970-01-01"}, {"1970-01-02"}},
-			"[0-707788800:4 [0-11059200:4 [0-172800:4 [leaf 3 msgs]]]]",
+			"[0-707788800:4 [0-11059200:4 (count=3) [0-172800:4 (count=3) [leaf 3 msgs]]]]",
 		},
 	}
 	for _, c := range cases {
@@ -121,7 +123,10 @@ func TestWALMerge(t *testing.T) {
 				secs := util.DateSeconds(c.root[0])
 				nsecs := secs * 1e9
 				mcap.WriteFile(t, buf, []uint64{nsecs})
-				_, nodeIDs, err = tree.Insert(ctx, ns, rootID, 1, nsecs, buf.Bytes())
+				stats := &nodestore.Statistics{
+					MessageCount: uint64(len(c.root)),
+				}
+				_, nodeIDs, err = tree.Insert(ctx, ns, rootID, 1, nsecs, buf.Bytes(), stats)
 				require.NoError(t, err)
 				rootID, err = ns.Flush(ctx, version, nodeIDs...)
 				require.NoError(t, err)
@@ -139,7 +144,11 @@ func TestWALMerge(t *testing.T) {
 					times = append(times, 1e9*util.DateSeconds(time))
 				}
 				mcap.WriteFile(t, buf, times)
-				newRootID, nodeIDs, err := tree.Insert(ctx, ns, rootID, version, times[0], buf.Bytes()) // into staging
+				stats := &nodestore.Statistics{
+					MessageCount: uint64(len(node)),
+				}
+				newRootID, nodeIDs, err := tree.Insert(
+					ctx, ns, rootID, version, times[0], buf.Bytes(), stats) // into staging
 				require.NoError(t, err)
 				require.NoError(t, ns.WALFlush(ctx, producer, topic, version, nodeIDs)) // staging -> wal
 				version++
@@ -149,7 +158,7 @@ func TestWALMerge(t *testing.T) {
 			rootID, err = ns.WALMerge(ctx, rootID, version, roots)
 			require.NoError(t, err)
 
-			str, err := ns.Print(ctx, rootID, version)
+			str, err := ns.Print(ctx, rootID, version, nil)
 			require.NoError(t, err)
 			assertEqualTrees(t, c.expected, str)
 		})
@@ -231,9 +240,13 @@ func TestNodeStore(t *testing.T) {
 		leaf := nodestore.NewLeafNode([]byte("leaf1"))
 		leafID := ns.Stage(leaf)
 
-		root.PlaceChild(0, inner1ID, 1)
-		inner1.PlaceChild(0, inner2ID, 1)
-		inner2.PlaceChild(0, leafID, 1)
+		stats := &nodestore.Statistics{
+			MessageCount: 1,
+		}
+
+		root.PlaceChild(0, inner1ID, 1, stats)
+		inner1.PlaceChild(0, inner2ID, 1, stats)
+		inner2.PlaceChild(0, leafID, 1, stats)
 
 		_, err = ns.Flush(ctx, 1, rootID, inner1ID, inner2ID, leafID)
 		require.NoError(t, err)

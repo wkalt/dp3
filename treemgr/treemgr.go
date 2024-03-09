@@ -204,6 +204,7 @@ func (tm *TreeManager) Insert(
 	topic string,
 	time uint64,
 	data []byte,
+	statistics *nodestore.Statistics,
 ) error {
 	rootID, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
 	if err != nil {
@@ -213,7 +214,7 @@ func (tm *TreeManager) Insert(
 	if err != nil {
 		return fmt.Errorf("failed to get next version: %w", err)
 	}
-	_, nodeIDs, err := tree.Insert(ctx, tm.ns, rootID, version, time, data)
+	_, nodeIDs, err := tree.Insert(ctx, tm.ns, rootID, version, time, data, statistics)
 	if err != nil {
 		return fmt.Errorf("insertion failure: %w", err)
 	}
@@ -363,7 +364,7 @@ func (tm *TreeManager) PrintStream(ctx context.Context, producerID string, topic
 	if err != nil {
 		return fmt.Sprintf("failed to get latest root: %v", err)
 	}
-	s, err := tm.ns.Print(ctx, root, version)
+	s, err := tm.ns.Print(ctx, root, version, nil)
 	if err != nil {
 		return fmt.Sprintf("failed to print tree: %v", err)
 	}

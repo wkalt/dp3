@@ -70,7 +70,7 @@ func (ti *Iterator) openNextLeaf(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to create reader: %w", err)
 	}
-	it, err := reader.Messages(mcap.After(ti.start), mcap.Before(ti.end))
+	it, err := reader.Messages(mcap.AfterNanos(ti.start), mcap.BeforeNanos(ti.end))
 	if err != nil {
 		return fmt.Errorf("failed to create message iterator: %w", err)
 	}

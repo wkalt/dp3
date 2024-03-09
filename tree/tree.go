@@ -14,6 +14,7 @@ func Insert(
 	version uint64,
 	start uint64,
 	data []byte,
+	statistics *nodestore.Statistics,
 ) (rootID nodestore.NodeID, path []nodestore.NodeID, err error) {
 	root, err := cloneInnerNode(ctx, ns, nodeID)
 	if err != nil {
@@ -26,7 +27,7 @@ func Insert(
 	nodes := []nodestore.NodeID{rootID}
 	current := root
 	for current.Depth > 1 {
-		current, err = descend(ctx, ns, &nodes, current, start, version)
+		current, err = descend(ctx, ns, &nodes, current, start, version, statistics)
 		if err != nil {
 			return rootID, nil, err
 		}
@@ -35,7 +36,7 @@ func Insert(
 	node := nodestore.NewLeafNode(data)
 	stagedID := ns.Stage(node)
 	nodes = append(nodes, stagedID)
-	current.PlaceChild(bucket, stagedID, version)
+	current.PlaceChild(bucket, stagedID, version, statistics)
 	return nodes[0], nodes, nil
 }
 
@@ -85,6 +86,7 @@ func descend(
 	current *nodestore.InnerNode,
 	timestamp uint64,
 	version uint64,
+	stats *nodestore.Statistics,
 ) (node *nodestore.InnerNode, err error) {
 	bucket := bucket(timestamp, current)
 	if existing := current.Children[bucket]; existing != nil {
@@ -102,7 +104,7 @@ func descend(
 		)
 	}
 	nodeID := ns.Stage(node)
-	current.PlaceChild(bucket, nodeID, version)
+	current.PlaceChild(bucket, nodeID, version, stats)
 	*nodeIDs = append(*nodeIDs, nodeID)
 	return node, nil
 }

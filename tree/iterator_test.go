@@ -51,11 +51,14 @@ func TestTreeIterator(t *testing.T) {
 		require.NoError(t, w.Close())
 		offset += 64
 	}
+	stats := &nodestore.Statistics{
+		MessageCount: 10,
+	}
 	version := uint64(1)
-	rootID, _, err = tree.Insert(ctx, ns, rootID, version, 0, buf1.Bytes())
+	rootID, _, err = tree.Insert(ctx, ns, rootID, version, 0, buf1.Bytes(), stats)
 	require.NoError(t, err)
 	version++
-	rootID, _, err = tree.Insert(ctx, ns, rootID, version, 64*1e9, buf2.Bytes())
+	rootID, _, err = tree.Insert(ctx, ns, rootID, version, 64*1e9, buf2.Bytes(), stats)
 	require.NoError(t, err)
 
 	it, err := tree.NewTreeIterator(ctx, ns, rootID, 0, 128*1e9)

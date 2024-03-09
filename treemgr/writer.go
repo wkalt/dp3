@@ -8,6 +8,7 @@ import (
 
 	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/mcap"
+	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/util/log"
 )
 
@@ -27,7 +28,8 @@ type writer struct {
 	buf *bytes.Buffer
 	w   *fmcap.Writer
 
-	dims *treeDimensions
+	dims       *treeDimensions
+	statistics *nodestore.Statistics
 }
 
 func newWriter(ctx context.Context, tmgr *TreeManager, producerID string, topic string) (*writer, error) {
@@ -49,6 +51,7 @@ func newWriter(ctx context.Context, tmgr *TreeManager, producerID string, topic 
 
 		producerID: producerID,
 		topic:      topic,
+		statistics: &nodestore.Statistics{},
 	}, nil
 }
 
@@ -107,6 +110,7 @@ func (w *writer) initialize(ts uint64) (err error) {
 		}
 	}
 	w.initialized = true
+	w.statistics = &nodestore.Statistics{}
 	return nil
 }
 
@@ -114,7 +118,7 @@ func (w *writer) flush(ctx context.Context) error {
 	if err := w.w.Close(); err != nil {
 		return fmt.Errorf("failed to close mcap writer: %w", err)
 	}
-	if err := w.tmgr.Insert(ctx, w.producerID, w.topic, w.lower*1e9, w.buf.Bytes()); err != nil {
+	if err := w.tmgr.Insert(ctx, w.producerID, w.topic, w.lower*1e9, w.buf.Bytes(), w.statistics); err != nil {
 		return fmt.Errorf("failed to insert %d bytes data for stream %s/%s at time %d: %w",
 			w.buf.Len(), w.producerID, w.topic, w.lower, err)
 	}
@@ -138,6 +142,10 @@ func (w *writer) reset(ctx context.Context, ts uint64) error {
 	return nil
 }
 
+func (w *writer) updateStatistics(_ *fmcap.Message) {
+	w.statistics.MessageCount++
+}
+
 func (w *writer) WriteMessage(ctx context.Context, message *fmcap.Message) error {
 	if !w.initialized {
 		if err := w.initialize(message.LogTime); err != nil {
@@ -152,6 +160,7 @@ func (w *writer) WriteMessage(ctx context.Context, message *fmcap.Message) error
 	if err := w.w.WriteMessage(message); err != nil {
 		return fmt.Errorf("failed to write message: %w", err)
 	}
+	w.updateStatistics(message)
 	return nil
 }
 

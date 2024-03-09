@@ -318,7 +318,11 @@ func (n *Nodestore) WALMerge(
 // nodeMerge does an N-way tree merge, returning a "path" from the root to leaf
 // of the new tree. All nodes are from the same level of the tree, and can thus
 // be assumed to have the same type and same number of children.
-func (n *Nodestore) nodeMerge(ctx context.Context, version uint64, nodeIDs []NodeID) ([]NodeID, error) {
+func (n *Nodestore) nodeMerge(
+	ctx context.Context,
+	version uint64,
+	nodeIDs []NodeID,
+) (path []NodeID, err error) {
 	if len(nodeIDs) == 0 {
 		return nil, errors.New("no nodes to merge")
 	}
@@ -353,7 +357,9 @@ func (n *Nodestore) nodeMerge(ctx context.Context, version uint64, nodeIDs []Nod
 	}
 }
 
-func (n *Nodestore) mergeInnerNodes(ctx context.Context, version uint64, nodes []*InnerNode) ([]NodeID, error) {
+func (n *Nodestore) mergeInnerNodes(
+	ctx context.Context, version uint64, nodes []*InnerNode,
+) ([]NodeID, error) {
 	conflicts := []int{}
 	node := nodes[0]
 	for i, outer := range node.Children {
@@ -374,16 +380,18 @@ func (n *Nodestore) mergeInnerNodes(ctx context.Context, version uint64, nodes [
 	result := []NodeID{newID}
 	for _, conflict := range conflicts {
 		children := []NodeID{} // set of not-null children mapping to conflicts
+		stats := &Statistics{}
 		for _, node := range nodes {
 			if inner := node.Children[conflict]; inner != nil && !slices.Contains(children, inner.ID) {
 				children = append(children, inner.ID)
+				stats.Add(inner.Statistics)
 			}
 		}
 		merged, err := n.nodeMerge(ctx, version, children) // merged child for this conflict
 		if err != nil {
 			return nil, err
 		}
-		newInner.Children[conflict] = &Child{ID: merged[0], Version: version}
+		newInner.Children[conflict] = &Child{ID: merged[0], Version: version, Statistics: stats}
 		result = append(result, merged...)
 	}
 	for i := range node.Children {
@@ -448,7 +456,7 @@ func (n *Nodestore) mergeLeaves(ctx context.Context, nodeIDs []NodeID) (NodeID, 
 	return n.Stage(newLeaf), nil
 }
 
-func (n *Nodestore) Print(ctx context.Context, nodeID NodeID, version uint64) (string, error) {
+func (n *Nodestore) Print(ctx context.Context, nodeID NodeID, version uint64, statistics *Statistics) (string, error) {
 	node, err := n.Get(ctx, nodeID)
 	if err != nil {
 		switch {
@@ -465,7 +473,7 @@ func (n *Nodestore) Print(ctx context.Context, nodeID NodeID, version uint64) (s
 	}
 	switch node := node.(type) {
 	case *InnerNode:
-		return n.printInnerNode(ctx, node, version)
+		return n.printInnerNode(ctx, node, version, statistics)
 	case *LeafNode:
 		return node.String(), nil
 	default:
@@ -477,17 +485,18 @@ func (n *Nodestore) printInnerNode(
 	ctx context.Context,
 	node *InnerNode,
 	version uint64,
+	statistics *Statistics,
 ) (string, error) {
 	sb := &strings.Builder{}
-	sb.WriteString(fmt.Sprintf("[%d-%d:%d", node.Start, node.End, version))
+	if statistics != nil {
+		sb.WriteString(fmt.Sprintf("[%d-%d:%d %s", node.Start, node.End, version, statistics))
+	} else {
+		sb.WriteString(fmt.Sprintf("[%d-%d:%d", node.Start, node.End, version))
+	}
 	span := node.End - node.Start
 	for i, child := range node.Children {
 		if child == nil {
 			continue
-		}
-		childStr, err := n.Print(ctx, child.ID, child.Version)
-		if err != nil {
-			return "", err
 		}
 		childNode, err := n.Get(ctx, child.ID)
 		if err != nil {
@@ -506,8 +515,12 @@ func (n *Nodestore) printInnerNode(
 		if cnode, ok := childNode.(*LeafNode); ok {
 			start := node.Start + uint64(i)*span/uint64(len(node.Children))
 			end := node.Start + uint64(i+1)*span/uint64(len(node.Children))
-			sb.WriteString(fmt.Sprintf(" [%d-%d:%d %s]", start, end, child.Version, cnode))
+			sb.WriteString(fmt.Sprintf(" [%d-%d:%d %s %s]", start, end, child.Version, child.Statistics, cnode))
 		} else {
+			childStr, err := n.Print(ctx, child.ID, child.Version, child.Statistics)
+			if err != nil {
+				return "", err
+			}
 			sb.WriteString(" " + childStr)
 		}
 	}
