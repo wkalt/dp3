@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	"github.com/wkalt/dp3/treemgr"
-	"golang.org/x/exp/slog"
+	"github.com/wkalt/dp3/util/log"
 )
 
 type MessagesRequest struct {
@@ -20,11 +20,11 @@ func newMessagesHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		ctx := r.Context()
 		req := MessagesRequest{}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			slog.ErrorContext(ctx, "error decoding request", "error", err)
+			log.Errorw(ctx, "error decoding request", "error", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		slog.InfoContext(ctx, "messages request",
+		log.Infow(ctx, "messages request",
 			"producer_id", req.ProducerID,
 			"topics", req.Topics,
 			"start", req.Start,

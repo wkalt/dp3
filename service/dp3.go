@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log/slog"
 	"net/http"
 
 	"github.com/wkalt/dp3/nodestore"
@@ -13,6 +12,7 @@ import (
 	"github.com/wkalt/dp3/storage"
 	"github.com/wkalt/dp3/treemgr"
 	"github.com/wkalt/dp3/util"
+	"github.com/wkalt/dp3/util/log"
 	"github.com/wkalt/dp3/versionstore"
 )
 
@@ -43,7 +43,7 @@ func (dp3 *DP3) Start(ctx context.Context) error {
 		Addr:    fmt.Sprintf(":%d", 8089),
 		Handler: r,
 	}
-	slog.InfoContext(ctx, "Starting server", "port", 8089)
+	log.Infow(ctx, "Starting server", "port", 8089)
 	if err := srv.ListenAndServe(); err != nil {
 		return fmt.Errorf("failed to start server: %w", err)
 	}

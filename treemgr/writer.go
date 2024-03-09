@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log/slog"
 	"slices"
 
 	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/mcap"
+	"github.com/wkalt/dp3/util/log"
 )
 
 type writer struct {
@@ -120,7 +120,7 @@ func (w *writer) flush(ctx context.Context) error {
 	}
 	w.buf.Reset()
 	w.initialized = false
-	slog.DebugContext(ctx, "flushed writer",
+	log.Debugw(ctx, "flushed writer",
 		"producer_id", w.producerID,
 		"topic", w.topic,
 		"lower", w.lower,

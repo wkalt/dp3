@@ -6,7 +6,7 @@ import (
 	"os"
 
 	"github.com/wkalt/dp3/treemgr"
-	"golang.org/x/exp/slog"
+	"github.com/wkalt/dp3/util/log"
 )
 
 type ImportRequest struct {
@@ -35,6 +35,6 @@ func newImportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		slog.InfoContext(ctx, "imported", "location", req.Path, "producer_id", req.ProducerID)
+		log.Infow(ctx, "imported", "location", req.Path, "producer_id", req.ProducerID)
 	}
 }

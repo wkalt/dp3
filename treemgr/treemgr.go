@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 	"slices"
 	"time"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/wkalt/dp3/rootmap"
 	"github.com/wkalt/dp3/tree"
 	"github.com/wkalt/dp3/util"
+	"github.com/wkalt/dp3/util/log"
 	"github.com/wkalt/dp3/versionstore"
 	"golang.org/x/exp/maps"
 )
@@ -228,9 +228,9 @@ func (tm *TreeManager) StartWALSyncLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			slog.InfoContext(ctx, "syncing WAL")
+			log.Infof(ctx, "syncing WAL")
 			if err := tm.SyncWAL(ctx); err != nil {
-				slog.ErrorContext(ctx, "failed to sync WAL: "+err.Error())
+				log.Errorw(ctx, "failed to sync WAL", "error", err.Error())
 			}
 		case <-ctx.Done():
 			return
@@ -257,7 +257,7 @@ func (tm *TreeManager) SyncWAL(ctx context.Context) error {
 		versions := maps.Keys(listing.Versions)
 		slices.Sort(versions)
 		if len(versions) == 1 {
-			slog.InfoContext(ctx, "flushing WAL entries",
+			log.Infow(ctx, "flushing WAL entries",
 				"producerID", listing.ProducerID,
 				"topic", listing.Topic,
 				"count", len(listing.Versions),
@@ -268,7 +268,7 @@ func (tm *TreeManager) SyncWAL(ctx context.Context) error {
 				return fmt.Errorf("failed to flush wal path: %w", err)
 			}
 		} else {
-			slog.InfoContext(ctx, "merging WAL entries",
+			log.Infow(ctx, "merging WAL entries",
 				"producerID", listing.ProducerID,
 				"topic", listing.Topic,
 				"count", len(listing.Versions))
