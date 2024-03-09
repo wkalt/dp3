@@ -35,7 +35,7 @@ func (dp3 *DP3) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to open rootmap: %w", err)
 	}
-	vs := versionstore.NewMemVersionStore()
+	vs := versionstore.NewSQLVersionstore(db, 1e9)
 	tmgr := treemgr.NewTreeManager(ns, vs, rm, 2)
 	// go tmgr.StartWALSyncLoop(ctx)
 	r := routes.MakeRoutes(tmgr)
