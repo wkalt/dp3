@@ -3,8 +3,13 @@ package service
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/rootmap"
@@ -43,10 +48,28 @@ func (dp3 *DP3) Start(ctx context.Context) error {
 		Addr:    fmt.Sprintf(":%d", 8089),
 		Handler: r,
 	}
-	log.Infow(ctx, "Starting server", "port", 8089)
-	if err := srv.ListenAndServe(); err != nil {
-		return fmt.Errorf("failed to start server: %w", err)
+
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Errorf(ctx, "failed to start server: %s", err)
+		}
+	}()
+
+	log.Infow(ctx, "Started server", "port", 8089)
+	<-done
+	log.Infof(ctx, "Allowing 10 seconds for existing connections to close")
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer func() {
+		cancel()
+	}()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		return fmt.Errorf("failed to shut down server: %w", err)
 	}
+	log.Infof(ctx, "Server stopped")
+
 	return nil
 }
 
