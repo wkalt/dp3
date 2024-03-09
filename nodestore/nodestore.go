@@ -99,7 +99,7 @@ func (n *Nodestore) Get(ctx context.Context, id NodeID) (Node, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse node: %w", err)
 	}
-	n.cache.Put(id, node)
+	n.cache.Put(id, node, node.Size())
 	return node, nil
 }
 

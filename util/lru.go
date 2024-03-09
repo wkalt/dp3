@@ -13,14 +13,15 @@ var ErrValueTooLarge = errors.New("value is too large")
 type LRU[K comparable, V any] struct {
 	cache      map[K]*listNode[K, V]
 	head, tail *listNode[K, V]
-	count      int64
-	cap        int64
+	size       uint64
+	cap        uint64
 	mtx        *sync.Mutex
 }
 
 type listNode[K comparable, V any] struct {
 	key        K
 	value      V
+	size       uint64
 	prev, next *listNode[K, V]
 }
 
@@ -28,13 +29,14 @@ func newListNode[K comparable, V any]() *listNode[K, V] {
 	return &listNode[K, V]{
 		key:   *new(K),
 		value: *new(V),
+		size:  0,
 		prev:  nil,
 		next:  nil,
 	}
 }
 
 // NewLRU returns a new LRU cache with the given capacity.
-func NewLRU[K comparable, V any](capacity int64) *LRU[K, V] {
+func NewLRU[K comparable, V any](capacity uint64) *LRU[K, V] {
 	head, tail := newListNode[K, V](), newListNode[K, V]()
 	head.next = tail
 	tail.prev = head
@@ -43,7 +45,7 @@ func NewLRU[K comparable, V any](capacity int64) *LRU[K, V] {
 		head:  head,
 		tail:  tail,
 		cap:   capacity,
-		count: 0,
+		size:  0,
 		mtx:   &sync.Mutex{},
 	}
 }
@@ -55,7 +57,7 @@ func (lru *LRU[K, V]) Reset() {
 	lru.cache = make(map[K]*listNode[K, V])
 	lru.head.next = lru.tail
 	lru.tail.prev = lru.head
-	lru.count = 0
+	lru.size = 0
 }
 
 func (lru *LRU[K, V]) addToFront(node *listNode[K, V]) {
@@ -76,20 +78,20 @@ func (lru *LRU[K, V]) moveToFront(node *listNode[K, V]) {
 }
 
 // Put adds a new key-value pair to the cache. If the key already exists, the value is updated.
-func (lru *LRU[K, V]) Put(key K, value V) {
+func (lru *LRU[K, V]) Put(key K, value V, size uint64) {
 	lru.mtx.Lock()
 	defer lru.mtx.Unlock()
 	if node, exists := lru.cache[key]; exists {
 		node.value = value
 		lru.moveToFront(node)
 	} else {
-		node := &listNode[K, V]{key: key, value: value, prev: nil, next: nil}
+		node := &listNode[K, V]{key: key, value: value, size: size, prev: nil, next: nil}
 		lru.cache[key] = node
 		lru.addToFront(node)
-		lru.count++
+		lru.size += size
 	}
 
-	for lru.count > lru.cap {
+	for lru.size > lru.cap {
 		lru.evict()
 	}
 }
@@ -110,9 +112,10 @@ func (lru *LRU[K, V]) evict() {
 	if lru.tail.prev == lru.head {
 		return // Cache is empty
 	}
-	lru.count--
 	delete(lru.cache, lru.tail.prev.key)
+	tailsize := lru.tail.prev.size
 	lru.removeNode(lru.tail.prev)
+	lru.size -= tailsize
 }
 
 // String returns a string representation of the cache.
@@ -120,7 +123,7 @@ func (lru *LRU[K, V]) String() string {
 	lru.mtx.Lock()
 	defer lru.mtx.Unlock()
 	sb := &strings.Builder{}
-	sb.WriteString(fmt.Sprintf("(%d/%d) [", lru.count, lru.cap))
+	sb.WriteString(fmt.Sprintf("(%d/%d) [", lru.size, lru.cap))
 	for node := lru.head.next; node != lru.tail; node = node.next {
 		sb.WriteString(fmt.Sprintf("%v:%v", node.key, node.value))
 		if node.next != lru.tail {
@@ -129,4 +132,10 @@ func (lru *LRU[K, V]) String() string {
 	}
 	sb.WriteString("]")
 	return sb.String()
+}
+
+func (lru *LRU[K, V]) Size() (int, uint64) {
+	lru.mtx.Lock()
+	defer lru.mtx.Unlock()
+	return len(lru.cache), lru.size
 }

@@ -5,6 +5,7 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"slices"
+	"strconv"
 	"time"
 )
 
@@ -52,4 +53,15 @@ func Okeys[T cmp.Ordered, K any](m map[T]K) []T {
 	}
 	slices.Sort(keys)
 	return keys
+}
+
+// HumanBytes returns a human-readable representation of a number of bytes.
+func HumanBytes(n uint64) string {
+	suffix := []string{"B", "KB", "MB", "GB", "TB", "PB", "EB"}
+	i := 0
+	for n >= 1024 && i < len(suffix)-1 {
+		n /= 1024
+		i++
+	}
+	return strconv.FormatUint(n, 10) + " " + suffix[i]
 }

@@ -24,6 +24,10 @@ func (n *LeafNode) ToBytes() []byte {
 	return buf
 }
 
+func (n *LeafNode) Size() uint64 {
+	return uint64(len(n.data) + 1)
+}
+
 func (n *LeafNode) FromBytes(data []byte) error {
 	version := data[0]
 	if version < 128 {

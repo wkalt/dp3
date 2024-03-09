@@ -28,4 +28,7 @@ type Node interface {
 
 	// Type returns the type of the node
 	Type() NodeType
+
+	// Size returns the size of the node in bytes
+	Size() uint64
 }

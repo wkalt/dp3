@@ -30,6 +30,10 @@ type Child struct {
 	Version uint64 `json:"version"`
 }
 
+func (n *InnerNode) Size() uint64 {
+	return 8 + 8 + 1 + uint64(len(n.Children)*24)
+}
+
 // toBytes serializes the node to a byte array.
 func (n *InnerNode) ToBytes() []byte {
 	bytes, _ := json.Marshal(n) // nolint temporary
