@@ -1,8 +1,10 @@
 package util
 
 import (
+	"cmp"
 	"crypto/md5"
 	"encoding/hex"
+	"slices"
 	"time"
 )
 
@@ -41,4 +43,13 @@ func DateSeconds(date string) uint64 {
 func ComputeStreamID(hashid string, topic string) string {
 	sum := md5.Sum([]byte(hashid + topic))
 	return hex.EncodeToString(sum[:])
+}
+
+func Okeys[T cmp.Ordered, K any](m map[T]K) []T {
+	keys := make([]T, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	return keys
 }

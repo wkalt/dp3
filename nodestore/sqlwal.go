@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"golang.org/x/exp/maps"
+	"github.com/wkalt/dp3/util"
 )
 
 type sqlWAL struct {
@@ -83,6 +83,7 @@ func (w *sqlWAL) List(ctx context.Context) (paths []WALListing, err error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to list wal: %w", err)
 	}
+
 	streams := make(map[string]WALListing)
 	defer rows.Close()
 	for rows.Next() {
@@ -107,5 +108,9 @@ func (w *sqlWAL) List(ctx context.Context) (paths []WALListing, err error) {
 	if rows.Err() != nil {
 		return nil, fmt.Errorf("failed to list wal: %w", rows.Err())
 	}
-	return maps.Values(streams), nil
+	result := make([]WALListing, 0, len(streams))
+	for _, k := range util.Okeys(streams) {
+		result = append(result, streams[k])
+	}
+	return result, nil
 }

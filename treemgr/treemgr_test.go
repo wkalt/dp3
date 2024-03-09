@@ -86,15 +86,15 @@ func TestReceive(t *testing.T) {
 			"single-topic file, single message",
 			[][]uint64{{10}},
 			[]string{
-				`[0-64424509440:4 [0-1006632960:3 [0-15728640:3 [0-245760:3 [0-3840:3 [0-60:3 [leaf 1 msg]]]]]]]`,
+				`[0-64424509440:4 [0-1006632960:4 [0-15728640:4 [0-245760:4 [0-3840:4 [0-60:4 [leaf 1 msg]]]]]]]`,
 			},
 		},
 		{
 			"two topics, single messages, nonoverlapping",
 			[][]uint64{{10e9}, {100e9}},
 			[]string{
-				`[0-64424509440:6 [0-1006632960:4 [0-15728640:4 [0-245760:4 [0-3840:4 [0-60:4 [leaf 1 msg]]]]]]]`,
-				`[0-64424509440:7 [0-1006632960:5 [0-15728640:5 [0-245760:5 [0-3840:5 [60-120:5 [leaf 1 msg]]]]]]]`,
+				`[0-64424509440:6 [0-1006632960:6 [0-15728640:6 [0-245760:6 [0-3840:6 [0-60:6 [leaf 1 msg]]]]]]]`,
+				`[0-64424509440:7 [0-1006632960:7 [0-15728640:7 [0-245760:7 [0-3840:7 [60-120:7 [leaf 1 msg]]]]]]]`,
 			},
 		},
 		{
@@ -115,8 +115,11 @@ func TestReceive(t *testing.T) {
 			require.NoError(t, tmgr.SyncWAL(ctx))
 
 			for i := range c.output {
-				str := tmgr.PrintStream(ctx, "my-device", fmt.Sprintf("topic-%d", i))
-				assertEqualTrees(t, c.output[i], str)
+				topic := fmt.Sprintf("topic-%d", i)
+				t.Run("comparing"+topic, func(t *testing.T) {
+					str := tmgr.PrintStream(ctx, "my-device", topic)
+					assertEqualTrees(t, c.output[i], str)
+				})
 			}
 		})
 	}

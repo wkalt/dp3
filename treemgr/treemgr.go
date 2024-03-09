@@ -261,9 +261,10 @@ func (tm *TreeManager) SyncWAL(ctx context.Context) error {
 				"producerID", listing.ProducerID,
 				"topic", listing.Topic,
 				"count", len(listing.Versions),
+				"version", version,
 			)
 			value := maps.Values(listing.Versions)[0]
-			newRootID, err = tm.ns.FlushWALPath(ctx, value)
+			newRootID, err = tm.ns.FlushWALPath(ctx, version, value)
 			if err != nil {
 				return fmt.Errorf("failed to flush wal path: %w", err)
 			}

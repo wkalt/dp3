@@ -31,7 +31,7 @@ func TestNodestoreErrors(t *testing.T) {
 		assert.ErrorIs(t, err, nodestore.NodeNotFoundError{id})
 	})
 	t.Run("flush a nonexistent node", func(t *testing.T) {
-		_, err := ns.Flush(ctx, nodestore.NodeID{})
+		_, err := ns.Flush(ctx, 1, nodestore.NodeID{})
 		assert.ErrorIs(t, err, nodestore.ErrNodeNotStaged)
 	})
 }
@@ -74,7 +74,7 @@ func TestWALMerge(t *testing.T) {
 			"single node into populated, nonoverlapping root",
 			[]string{"1970-01-01"},
 			[][]string{{"1970-01-03"}},
-			"[0-707788800:2 [0-11059200:2 [0-172800:1 [leaf 1 msg]] [172800-345600:2 [leaf 1 msg]]]]",
+			"[0-707788800:3 [0-11059200:3 [0-172800:1 [leaf 1 msg]] [172800-345600:3 [leaf 1 msg]]]]",
 		},
 		{
 			"two nonoverlapping nodes into empty root",
@@ -86,8 +86,8 @@ func TestWALMerge(t *testing.T) {
 			"two nonoverlapping nodes into nonempty empty root",
 			[]string{"1970-01-01"},
 			[][]string{{"1970-01-03"}, {"1970-01-05"}},
-			`[0-707788800:3 [0-11059200:3 [0-172800:1 [leaf 1 msg]]
-			[172800-345600:3 [leaf 1 msg]] [345600-518400:3 [leaf 1 msg]]]]`,
+			`[0-707788800:4 [0-11059200:4 [0-172800:1 [leaf 1 msg]]
+			[172800-345600:4 [leaf 1 msg]] [345600-518400:4 [leaf 1 msg]]]]`,
 		},
 		{
 			"overlapping nodes into empty root",
@@ -99,7 +99,7 @@ func TestWALMerge(t *testing.T) {
 			"overlapping nodes into nonempty root",
 			[]string{"1970-01-01"},
 			[][]string{{"1970-01-01"}, {"1970-01-02"}},
-			"[0-707788800:3 [0-11059200:3 [0-172800:3 [leaf 3 msgs]]]]",
+			"[0-707788800:4 [0-11059200:4 [0-172800:4 [leaf 3 msgs]]]]",
 		},
 	}
 	for _, c := range cases {
@@ -113,6 +113,7 @@ func TestWALMerge(t *testing.T) {
 				64,
 			)
 			require.NoError(t, err)
+			version := uint64(1)
 			if len(c.root) > 0 {
 				var nodeIDs []nodestore.NodeID
 				buf := &bytes.Buffer{}
@@ -122,11 +123,11 @@ func TestWALMerge(t *testing.T) {
 				mcap.WriteFile(t, buf, []uint64{nsecs})
 				_, nodeIDs, err = tree.Insert(ctx, ns, rootID, 1, nsecs, buf.Bytes())
 				require.NoError(t, err)
-				rootID, err = ns.Flush(ctx, nodeIDs...)
+				rootID, err = ns.Flush(ctx, version, nodeIDs...)
 				require.NoError(t, err)
+				version++
 			}
 
-			version := uint64(1)
 			producer := "producer"
 			topic := "topic"
 			roots := make([]nodestore.NodeID, len(c.nodes))
@@ -185,7 +186,7 @@ func TestNodeStore(t *testing.T) {
 	t.Run("store and retrieve an inner node", func(t *testing.T) {
 		node := nodestore.NewInnerNode(0, 10, 20, 64)
 		nodeID := ns.Stage(node)
-		rootID, err := ns.Flush(ctx, nodeID)
+		rootID, err := ns.Flush(ctx, 1, nodeID)
 		require.NoError(t, err)
 		retrieved, err := ns.Get(ctx, rootID)
 		require.NoError(t, err)
@@ -194,7 +195,7 @@ func TestNodeStore(t *testing.T) {
 	t.Run("store and retrieve a leaf node", func(t *testing.T) {
 		node := nodestore.NewLeafNode(nil)
 		nodeID := ns.Stage(node)
-		rootID, err := ns.Flush(ctx, nodeID)
+		rootID, err := ns.Flush(ctx, 1, nodeID)
 		require.NoError(t, err)
 		retrieved, err := ns.Get(ctx, rootID)
 		require.NoError(t, err)
@@ -203,7 +204,7 @@ func TestNodeStore(t *testing.T) {
 	t.Run("store and retrieve inner node that has been evicted from cache", func(t *testing.T) {
 		node := nodestore.NewInnerNode(0, 90, 100, 64)
 		tmpid := ns.Stage(node)
-		rootID, err := ns.Flush(ctx, tmpid)
+		rootID, err := ns.Flush(ctx, 1, tmpid)
 		require.NoError(t, err)
 		cache.Reset()
 		retrieved, err := ns.Get(ctx, rootID)
@@ -213,7 +214,7 @@ func TestNodeStore(t *testing.T) {
 	t.Run("store and retrieve leaf node that has been evicted from cache", func(t *testing.T) {
 		node := nodestore.NewLeafNode(nil)
 		nodeID := ns.Stage(node)
-		rootID, err := ns.Flush(ctx, nodeID)
+		rootID, err := ns.Flush(ctx, 1, nodeID)
 		require.NoError(t, err)
 		cache.Reset()
 		retrieved, err := ns.Get(ctx, rootID)
@@ -234,7 +235,7 @@ func TestNodeStore(t *testing.T) {
 		inner1.PlaceChild(0, inner2ID, 1)
 		inner2.PlaceChild(0, leafID, 1)
 
-		_, err = ns.Flush(ctx, rootID, inner1ID, inner2ID, leafID)
+		_, err = ns.Flush(ctx, 1, rootID, inner1ID, inner2ID, leafID)
 		require.NoError(t, err)
 	})
 }

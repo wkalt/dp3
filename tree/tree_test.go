@@ -36,7 +36,7 @@ func TestTreeErrors(t *testing.T) {
 			Version: 2,
 		}
 		require.NoError(t, ns.StageWithID(id1, node1))
-		rootID, err := ns.Flush(ctx, id1)
+		rootID, err := ns.Flush(ctx, 2, id1)
 		require.NoError(t, err)
 		_, _, err = tree.Insert(ctx, ns, rootID, 10, 3, []byte{})
 		require.ErrorIs(t, err, nodestore.NodeNotFoundError{NodeID: id2})
@@ -128,7 +128,7 @@ func TestRootConstruction(t *testing.T) {
 			60,
 			64,
 			"1970-01-01",
-			`[0-64424509440:0 [0-1006632960:1 [0-15728640:1 [0-245760:1 [0-3840:1 [0-60:1 [leaf 1 msg]]]]]]]`,
+			`[0-64424509440:1 [0-1006632960:1 [0-15728640:1 [0-245760:1 [0-3840:1 [0-60:1 [leaf 1 msg]]]]]]]`,
 		},
 		{
 			"single year 60 second buckets",
@@ -137,7 +137,7 @@ func TestRootConstruction(t *testing.T) {
 			60,
 			64,
 			"1970-01-02",
-			`[0-1006632960:0 [0-15728640:1 [0-245760:1 [84480-88320:1 [86400-86460:1 [leaf 1 msg]]]]]]`,
+			`[0-1006632960:1 [0-15728640:1 [0-245760:1 [84480-88320:1 [86400-86460:1 [leaf 1 msg]]]]]]`,
 		},
 		{
 			"single year 60 second buckets bfactor 20",
@@ -146,7 +146,7 @@ func TestRootConstruction(t *testing.T) {
 			60,
 			20,
 			"1970-01-02",
-			`[0-192000000:0 [0-9600000:1 [0-480000:1 [72000-96000:1 [86400-87600:1 [86400-86460:1 [leaf 1 msg]]]]]]]`,
+			`[0-192000000:1 [0-9600000:1 [0-480000:1 [72000-96000:1 [86400-87600:1 [86400-86460:1 [leaf 1 msg]]]]]]]`,
 		},
 		{
 			"single year full day buckets bfactor 365",
@@ -155,7 +155,7 @@ func TestRootConstruction(t *testing.T) {
 			60 * 60 * 24,
 			365,
 			"1970-01-02",
-			`[0-31536000:0 [86400-172800:1 [leaf 1 msg]]]`,
+			`[0-31536000:1 [86400-172800:1 [leaf 1 msg]]]`,
 		},
 	}
 
@@ -178,10 +178,10 @@ func TestRootConstruction(t *testing.T) {
 			timestamp := util.DateSeconds(c.time) * 1e9
 			_, path, err := tree.Insert(ctx, ns, rootID, version, timestamp, buf.Bytes())
 			require.NoError(t, err)
-			rootID, err = ns.Flush(ctx, path...)
+			rootID, err = ns.Flush(ctx, version, path...)
 			require.NoError(t, err)
 
-			repr, err := ns.Print(ctx, rootID, version-1)
+			repr, err := ns.Print(ctx, rootID, version)
 			require.NoError(t, err)
 			assert.Equal(t, c.repr, repr)
 		})

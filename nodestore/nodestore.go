@@ -175,7 +175,7 @@ func generateNodeID(oid objectID, offset int, length int) NodeID {
 // dependency ordering. All nodes will be removed from staging under any exit
 // condition. Existing content in the same logical location is cloned and copied
 // into the final output tree.
-func (n *Nodestore) Flush(ctx context.Context, ids ...NodeID) (newRootID NodeID, err error) {
+func (n *Nodestore) Flush(ctx context.Context, version uint64, ids ...NodeID) (newRootID NodeID, err error) {
 	defer func() {
 		n.mtx.Lock()
 		for _, id := range ids {
@@ -201,6 +201,7 @@ func (n *Nodestore) Flush(ctx context.Context, ids ...NodeID) (newRootID NodeID,
 				if child != nil {
 					if remapped, ok := processed[child.ID]; ok {
 						child.ID = remapped
+						child.Version = version
 					}
 				}
 			}
@@ -256,14 +257,14 @@ func (n *Nodestore) NewRoot(
 	}
 	root := NewInnerNode(uint8(depth), start, start+uint64(coverage), bfactor)
 	tmpid := n.Stage(root)
-	id, err := n.Flush(ctx, tmpid)
+	id, err := n.Flush(ctx, 0, tmpid)
 	if err != nil {
 		return nodeID, fmt.Errorf("failed to flush root %s: %w", tmpid, err)
 	}
 	return id, nil
 }
 
-func (n *Nodestore) FlushWALPath(ctx context.Context, path []NodeID) (nodeID NodeID, err error) {
+func (n *Nodestore) FlushWALPath(ctx context.Context, version uint64, path []NodeID) (nodeID NodeID, err error) {
 	result := []NodeID{}
 	for _, nodeID := range path {
 		data, err := n.wal.Get(ctx, nodeID)
@@ -279,7 +280,7 @@ func (n *Nodestore) FlushWALPath(ctx context.Context, path []NodeID) (nodeID Nod
 		}
 		result = append(result, nodeID)
 	}
-	flushedRoot, err := n.Flush(ctx, result...)
+	flushedRoot, err := n.Flush(ctx, version, result...)
 	if err != nil {
 		return nodeID, fmt.Errorf("failed to flush root: %w", err)
 	}
@@ -307,7 +308,7 @@ func (n *Nodestore) WALMerge(
 	if err != nil {
 		return nodeID, fmt.Errorf("failed to merge nodes: %w", err)
 	}
-	flushedRoot, err := n.Flush(ctx, mergedPath...)
+	flushedRoot, err := n.Flush(ctx, version, mergedPath...)
 	if err != nil {
 		return nodeID, fmt.Errorf("failed to flush root: %w", err)
 	}
