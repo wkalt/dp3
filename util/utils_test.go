@@ -41,3 +41,32 @@ func TestDateSeconds(t *testing.T) {
 func TestComputeStreamID(t *testing.T) {
 	assert.Equal(t, "d41d8cd98f00b204e9800998ecf8427e", util.ComputeStreamID("", ""))
 }
+
+func TestOkeys(t *testing.T) {
+	m := map[int]string{3: "c", 1: "a", 2: "b"}
+	for i := 0; i < 1000; i++ {
+		assert.Equal(t, []int{1, 2, 3}, util.Okeys(m))
+	}
+}
+
+func TestHumanBytes(t *testing.T) {
+	cases := []struct {
+		assertion string
+		input     uint64
+		expected  string
+	}{
+		{"0 bytes", 0, "0 B"},
+		{"1 byte", 1, "1 B"},
+		{"50 bytes", 50, "50 B"},
+		{"1 kilobyte", 1024, "1 KB"},
+		{"1 megabyte", 1024 * 1024, "1 MB"},
+		{"1 gigabyte", 1024 * 1024 * 1024, "1 GB"},
+		{"50 gigabytes", 50 * 1024 * 1024 * 1024, "50 GB"},
+		{"1 terabyte", 1024 * 1024 * 1024 * 1024, "1 TB"},
+		{"1 petabyte", 1024 * 1024 * 1024 * 1024 * 1024, "1 PB"},
+		{"1 exabyte", 1024 * 1024 * 1024 * 1024 * 1024 * 1024, "1 EB"},
+	}
+	for _, c := range cases {
+		assert.Equal(t, c.expected, util.HumanBytes(c.input), c.assertion)
+	}
+}

@@ -113,11 +113,6 @@ func (tm *TreeManager) Receive(ctx context.Context, producerID string, data io.R
 	return nil
 }
 
-func (tm *TreeManager) GetMessages(
-	ctx context.Context, start, end uint64, producerID string, topics []string, limit uint64) (io.Reader, error) {
-	return nil, ErrNotImplemented
-}
-
 type StatisticalSummary struct {
 	Start      uint64                `json:"start"`
 	End        uint64                `json:"end"`
@@ -143,24 +138,23 @@ func (tm *TreeManager) GetStatistics(
 	return ranges, nil
 }
 
-func (tm *TreeManager) GetMessagesLatest(
-	ctx context.Context, w io.Writer,
+func (tm *TreeManager) getMessages(
+	ctx context.Context,
+	w io.Writer,
 	start, end uint64,
-	producerID string, topics []string) error {
-	pq := util.NewPriorityQueue[record, uint64]()
-	heap.Init(pq)
-	iterators := make([]*tree.Iterator, 0, len(topics))
-	for _, topic := range topics {
-		root, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
-		if err != nil {
-			return fmt.Errorf("failed to get latest root for %s/%s: %w", producerID, topic, err)
-		}
+	roots []nodestore.NodeID,
+) error {
+	iterators := make([]*tree.Iterator, 0, len(roots))
+	for _, root := range roots {
 		it, err := tree.NewTreeIterator(ctx, tm.ns, root, start, end)
 		if err != nil {
-			return fmt.Errorf("failed to create iterator for %s/%s: %w", producerID, topic, err)
+			return fmt.Errorf("failed to create iterator for %s: %w", root, err)
 		}
 		iterators = append(iterators, it)
 	}
+
+	pq := util.NewPriorityQueue[record, uint64]()
+	heap.Init(pq)
 
 	// pop one message from each iterator and push it onto the priority queue
 	for i, it := range iterators {
@@ -202,6 +196,27 @@ func (tm *TreeManager) GetMessagesLatest(
 			Priority: m.LogTime,
 		}
 		heap.Push(pq, &item)
+	}
+	return nil
+}
+
+func (tm *TreeManager) GetMessagesLatest(
+	ctx context.Context,
+	w io.Writer,
+	start, end uint64,
+	producerID string,
+	topics []string,
+) error {
+	roots := make([]nodestore.NodeID, len(topics))
+	for i, topic := range topics {
+		root, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
+		if err != nil {
+			return fmt.Errorf("failed to get latest root for %s/%s: %w", producerID, topic, err)
+		}
+		roots[i] = root
+	}
+	if err := tm.getMessages(ctx, w, start, end, roots); err != nil {
+		return fmt.Errorf("failed to get messages for %s: %w", producerID, err)
 	}
 	return nil
 }

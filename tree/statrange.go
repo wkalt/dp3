@@ -33,14 +33,13 @@ func GetStatRange(
 		}
 		switch node := node.(type) {
 		case *nodestore.InnerNode:
-			bfactor := uint64(len(node.Children))
-			sufficientlyGranular := 1e9*(node.End-node.Start) < granularity*bfactor
-			span := node.End - node.Start
+			granularEnough := 1e9*bwidth(node) < granularity
+			width := bwidth(node)
 			for i, child := range node.Children {
-				childStart := 1e9 * (node.Start + span/bfactor*uint64(i))
-				childEnd := 1e9 * (node.Start + span/bfactor*uint64(i+1))
+				childStart := 1e9 * (node.Start + width*uint64(i))
+				childEnd := 1e9 * (node.Start + width*uint64(i+1))
 				inRange := child != nil && start < childEnd && end >= childStart
-				if inRange && sufficientlyGranular {
+				if inRange && granularEnough {
 					ranges = append(ranges, StatRange{
 						Start:      childStart,
 						End:        childEnd,

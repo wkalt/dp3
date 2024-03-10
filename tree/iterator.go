@@ -39,8 +39,7 @@ func (ti *Iterator) initialize(ctx context.Context, rootID nodestore.NodeID) err
 		if !ok {
 			return errors.New("expected inner node - tree is corrupt")
 		}
-		span := inner.End - inner.Start
-		step := span / uint64(len(inner.Children))
+		step := bwidth(inner)
 		left := inner.Start
 		right := inner.Start + step
 		for _, child := range inner.Children {

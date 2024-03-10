@@ -370,17 +370,19 @@ func (n *Nodestore) mergeInnerNodes(
 ) ([]NodeID, error) {
 	conflicts := []int{}
 	node := nodes[0]
-	for i, outer := range node.Children {
+	for i, child := range node.Children {
 		var conflicted bool
-		for _, node := range nodes {
-			inner := node.Children[i]
-			if outer == nil && inner != nil || outer != nil && inner == nil ||
-				outer != nil && inner != nil && outer.ID != inner.ID {
+		for _, sibling := range nodes {
+			cousin := sibling.Children[i]
+			if child == nil && cousin != nil ||
+				child != nil && cousin == nil ||
+				child != nil && cousin != nil && child.ID != cousin.ID {
 				conflicted = true
+				break
 			}
-			if conflicted && !slices.Contains(conflicts, i) {
-				conflicts = append(conflicts, i)
-			}
+		}
+		if conflicted {
+			conflicts = append(conflicts, i)
 		}
 	}
 	newInner := NewInnerNode(node.Depth, node.Start, node.End, len(node.Children))
