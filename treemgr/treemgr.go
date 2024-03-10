@@ -119,13 +119,28 @@ func (tm *TreeManager) GetMessages(
 }
 
 type StatisticalSummary struct {
-	Count int
+	Start      uint64                `json:"start"`
+	End        uint64                `json:"end"`
+	Statistics *nodestore.Statistics `json:"statistics"`
 }
 
 func (tm *TreeManager) GetStatistics(
-	ctx context.Context, start, end uint64, producerID string,
-	topic string, version uint64) (StatisticalSummary, error) {
-	return StatisticalSummary{}, ErrNotImplemented
+	ctx context.Context,
+	start, end uint64,
+	producerID string,
+	topic string,
+	version uint64,
+	granularity uint64,
+) ([]tree.StatRange, error) {
+	rootID, err := tm.rootmap.Get(ctx, producerID, topic, version)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest root: %w", err)
+	}
+	ranges, err := tree.GetStatRange(ctx, tm.ns, rootID, start, end, granularity)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stat range: %w", err)
+	}
+	return ranges, nil
 }
 
 func (tm *TreeManager) GetMessagesLatest(
@@ -192,9 +207,21 @@ func (tm *TreeManager) GetMessagesLatest(
 }
 
 func (tm *TreeManager) GetStatisticsLatest(
-	ctx context.Context, start, end uint64,
-	producerID string, topic string) (StatisticalSummary, error) {
-	return StatisticalSummary{}, ErrNotImplemented
+	ctx context.Context,
+	start, end uint64,
+	producerID string,
+	topic string,
+	granularity uint64,
+) ([]tree.StatRange, error) {
+	rootID, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest root: %w", err)
+	}
+	ranges, err := tree.GetStatRange(ctx, tm.ns, rootID, start, end, granularity)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stat range: %w", err)
+	}
+	return ranges, nil
 }
 
 // Insert data into the tree and flush it to the WAL.

@@ -104,7 +104,6 @@ func TestTreeInsert(t *testing.T) {
 				require.NoError(t, err)
 
 				require.NoError(t, ns.WALFlush(ctx, "producer", "topic", version, path))
-				require.NoError(t, err)
 				roots[i] = rootID
 			}
 

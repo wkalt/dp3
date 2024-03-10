@@ -68,7 +68,7 @@ func TestWALMerge(t *testing.T) {
 			"single node into empty root",
 			[]string{},
 			[][]string{{"1970-01-03"}},
-			"[0-707788800:2 [0-11059200:2 (count=1) [172800-345600:1 (count=1) [leaf 1 msg]]]]",
+			"[0-707788800:2 [0-11059200:2 (count=1) [172800-345600:2 (count=1) [leaf 1 msg]]]]",
 		},
 		{
 			"single node into populated, nonoverlapping root",

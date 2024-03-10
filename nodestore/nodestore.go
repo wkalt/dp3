@@ -205,7 +205,6 @@ func (n *Nodestore) Flush(ctx context.Context, version uint64, ids ...NodeID) (n
 					}
 				}
 			}
-			node = inner
 		}
 		n, err := buf.Write(node.ToBytes())
 		if err != nil {
@@ -328,7 +327,6 @@ func (n *Nodestore) nodeMerge(
 	}
 	nodes := make([]Node, len(nodeIDs))
 	for i, id := range nodeIDs {
-		var node Node
 		node, err := n.getWALOrStorage(ctx, id)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse node: %w", err)
@@ -337,10 +335,20 @@ func (n *Nodestore) nodeMerge(
 	}
 	switch node := (nodes[0]).(type) {
 	case *InnerNode:
-		inner := make([]*InnerNode, len(nodes))
-		for i, node := range nodes {
-			inner[i] = node.(*InnerNode)
+		inner := make([]*InnerNode, 0, len(nodes)+1)
+
+		for _, node := range nodes {
+			inner = append(inner, node.(*InnerNode))
 		}
+
+		if len(nodes) == 1 {
+			// if there is just one node, add a fake, empty node to the list to
+			// represent the logical leaves in the root that don't exist yet.
+			// Seems to make the downstream code simpler but might be confusing
+			// in the future.
+			inner = append(inner, NewInnerNode(node.Depth, node.Start, node.End, len(node.Children)))
+		}
+
 		nodeIDs, err := n.mergeInnerNodes(ctx, version, inner)
 		if err != nil {
 			return nil, err
@@ -459,17 +467,7 @@ func (n *Nodestore) mergeLeaves(ctx context.Context, nodeIDs []NodeID) (NodeID, 
 func (n *Nodestore) Print(ctx context.Context, nodeID NodeID, version uint64, statistics *Statistics) (string, error) {
 	node, err := n.Get(ctx, nodeID)
 	if err != nil {
-		switch {
-		case errors.As(err, &NodeNotFoundError{}):
-			if value, err := n.wal.Get(ctx, nodeID); err == nil {
-				node, err = n.bytesToNode(value)
-				if err != nil {
-					return "", fmt.Errorf("failed to parse node: %w", err)
-				}
-			}
-		default:
-			return "", fmt.Errorf("failed to get node %d: %w", nodeID, err)
-		}
+		return "", fmt.Errorf("failed to get node %d: %w", nodeID, err)
 	}
 	switch node := node.(type) {
 	case *InnerNode:
@@ -500,17 +498,7 @@ func (n *Nodestore) printInnerNode(
 		}
 		childNode, err := n.Get(ctx, child.ID)
 		if err != nil {
-			switch {
-			case errors.As(err, &NodeNotFoundError{}):
-				if value, err := n.wal.Get(ctx, child.ID); err == nil {
-					childNode, err = n.bytesToNode(value)
-					if err != nil {
-						return "", fmt.Errorf("failed to parse node: %w", err)
-					}
-				}
-			default:
-				return "", fmt.Errorf("failed to get node %d: %w", child.ID, err)
-			}
+			return "", fmt.Errorf("failed to get node %d: %w", child.ID, err)
 		}
 		if cnode, ok := childNode.(*LeafNode); ok {
 			start := node.Start + uint64(i)*span/uint64(len(node.Children))
