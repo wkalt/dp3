@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"path"
+	"path/filepath"
 	"syscall"
 	"time"
 
@@ -32,19 +34,14 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error {
 	opts := DP3Options{
 		CacheSizeBytes: 1 * gigabyte,
 		Port:           8089,
+		DataDir:        "data",
 	}
 	for _, option := range options {
 		option(&opts)
 	}
-	store := storage.NewDirectoryStore("data")
+	store := storage.NewDirectoryStore(opts.DataDir)
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](opts.CacheSizeBytes)
-	go func() {
-		for range time.NewTicker(10 * time.Second).C {
-			count, size := cache.Size()
-			log.Infow(ctx, "cache stats", "count", count, "size", util.HumanBytes(size))
-		}
-	}()
-	db, err := sql.Open("sqlite3", "wal.db")
+	db, err := sql.Open("sqlite3", path.Join(opts.DataDir, "wal.db"))
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
@@ -72,9 +69,15 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error {
 			log.Errorf(ctx, "failed to start server: %s", err)
 		}
 	}()
+
+	datadir, err := filepath.Abs(opts.DataDir)
+	if err != nil {
+		return fmt.Errorf("failed to get absolute path of data dir: %w", err)
+	}
 	log.Infow(ctx, "Started server",
 		"port", opts.Port,
 		"cache", util.HumanBytes(opts.CacheSizeBytes),
+		"datadir", datadir,
 	)
 	<-done
 	log.Infof(ctx, "Allowing 10 seconds for existing connections to close")
