@@ -1,5 +1,7 @@
 package service
 
+import "log/slog"
+
 // DP3Option is a functional option for the DP3 service.
 type DP3Option func(*DP3Options)
 
@@ -8,6 +10,7 @@ type DP3Options struct {
 	CacheSizeBytes uint64
 	DataDir        string
 	Port           int
+	LogLevel       slog.Level
 }
 
 // WithCacheSizeMegabytes sets the cache size in megabytes.

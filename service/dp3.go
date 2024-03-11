@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -30,15 +31,22 @@ const (
 type DP3 struct {
 }
 
-func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error {
-	opts := DP3Options{
+func readOpts(opts ...DP3Option) DP3Options {
+	options := DP3Options{
 		CacheSizeBytes: 1 * gigabyte,
 		Port:           8089,
 		DataDir:        "data",
+		LogLevel:       slog.LevelInfo,
 	}
-	for _, option := range options {
-		option(&opts)
+	for _, opt := range opts {
+		opt(&options)
 	}
+	return options
+}
+
+func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error {
+	opts := readOpts(options...)
+	slog.SetLogLoggerLevel(opts.LogLevel)
 	store := storage.NewDirectoryStore(opts.DataDir)
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](opts.CacheSizeBytes)
 	db, err := sql.Open("sqlite3", path.Join(opts.DataDir, "wal.db"))
@@ -69,7 +77,6 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error {
 			log.Errorf(ctx, "failed to start server: %s", err)
 		}
 	}()
-
 	datadir, err := filepath.Abs(opts.DataDir)
 	if err != nil {
 		return fmt.Errorf("failed to get absolute path of data dir: %w", err)

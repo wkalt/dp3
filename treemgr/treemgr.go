@@ -375,7 +375,7 @@ func (tm *TreeManager) dimensions(
 	}
 	node, err := tm.ns.Get(ctx, root)
 	if err != nil {
-		return nil, fmt.Errorf("failed to look up node: %w", err)
+		return nil, fmt.Errorf("failed to look up node %s: %w", root, err)
 	}
 	inner := node.(*nodestore.InnerNode)
 	return &treeDimensions{
