@@ -20,7 +20,7 @@ func Execute() {
 }
 
 func bailf(format string, args ...interface{}) {
-	fmt.Fprintf(os.Stderr, format, args...)
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
 	os.Exit(1)
 }
 

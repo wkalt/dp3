@@ -49,13 +49,17 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error {
 	slog.SetLogLoggerLevel(opts.LogLevel)
 	store := storage.NewDirectoryStore(opts.DataDir)
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](opts.CacheSizeBytes)
-	db, err := sql.Open("sqlite3", path.Join(opts.DataDir, "wal.db"))
+	walpath := path.Join(opts.DataDir, "wal.db")
+	db, err := sql.Open("sqlite3", walpath)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
+	if err = db.Ping(); err != nil {
+		return fmt.Errorf("failed to ping database at %s: %w", walpath, err)
+	}
 	wal, err := nodestore.NewSQLWAL(ctx, db)
 	if err != nil {
-		return fmt.Errorf("failed to open wal: %w", err)
+		return fmt.Errorf("failed to open wal at %s: %w", walpath, err)
 	}
 	ns := nodestore.NewNodestore(store, cache, wal)
 	rm, err := rootmap.NewSQLRootmap(db)
