@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -16,6 +17,11 @@ func Execute() {
 	if err != nil {
 		os.Exit(1)
 	}
+}
+
+func bailf(format string, args ...interface{}) {
+	fmt.Fprintf(os.Stderr, format, args...)
+	os.Exit(1)
 }
 
 func init() {

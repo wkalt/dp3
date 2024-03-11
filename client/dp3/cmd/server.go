@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"log"
 
 	"github.com/spf13/cobra"
 	"github.com/wkalt/dp3/service"
@@ -25,7 +24,7 @@ var serverCmd = &cobra.Command{
 			service.WithCacheSizeMegabytes(uint64(serverCacheSizeMegabytes)),
 			service.WithDataDir(serverDataDir),
 		); err != nil {
-			log.Fatal("error starting server:", err)
+			bailf("error starting server: %s", err)
 		}
 	},
 }

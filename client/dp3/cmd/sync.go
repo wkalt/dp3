@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/spf13/cobra"
@@ -14,7 +13,7 @@ var syncCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		resp, err := http.Post("http://localhost:8089/sync", "application/json", nil)
 		if err != nil {
-			fmt.Println("error calling sync", err)
+			bailf("error calling sync: %s", err)
 		}
 		util.MustOK(resp)
 	},

@@ -24,7 +24,7 @@ func newExportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			httputil.BadRequest(ctx, w, "error decoding request: %s", err)
 			return
 		}
-		log.Infow(ctx, "messages request",
+		log.Infow(ctx, "export request",
 			"producer_id", req.ProducerID,
 			"topics", req.Topics,
 			"start", req.Start,

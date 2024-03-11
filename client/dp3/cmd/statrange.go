@@ -30,11 +30,11 @@ var statrangeCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		start, err := iso8601.Parse([]byte(statrangeStart))
 		if err != nil {
-			panic(err)
+			bailf("error parsing start date: %s", err)
 		}
 		end, err := iso8601.Parse([]byte(statrangeEnd))
 		if err != nil {
-			panic(err)
+			bailf("error parsing end date: %s", err)
 		}
 		req := &routes.StatRangeRequest{
 			ProducerID:  statrangeProducerID,
@@ -45,11 +45,11 @@ var statrangeCmd = &cobra.Command{
 		}
 		buf := &bytes.Buffer{}
 		if err = json.NewEncoder(buf).Encode(req); err != nil {
-			panic(err)
+			bailf("error encoding request: %s", err)
 		}
 		resp, err := http.Post("http://localhost:8089/statrange", "application/json", buf)
 		if err != nil {
-			panic(err)
+			bailf("error calling statrange: %s", err)
 		}
 		defer resp.Body.Close()
 
@@ -57,7 +57,7 @@ var statrangeCmd = &cobra.Command{
 
 		response := []tree.StatRange{}
 		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-			panic(err)
+			bailf("error decoding response: %s", err)
 		}
 		headers := []string{"Start", "End", "MessageCount"}
 		data := [][]string{}

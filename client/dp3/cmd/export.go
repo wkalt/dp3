@@ -17,6 +17,7 @@ var (
 	exportEndDate    string
 	exportStartDate  string
 	exportTopics     []string
+	exportJSON       bool
 )
 
 // exportCmd represents the export command
@@ -26,11 +27,11 @@ var exportCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		start, err := iso8601.Parse([]byte(exportStartDate))
 		if err != nil {
-			panic(err)
+			bailf("error parsing start date: %s", err)
 		}
 		end, err := iso8601.Parse([]byte(exportEndDate))
 		if err != nil {
-			panic(err)
+			bailf("error parsing end date: %s", err)
 		}
 		messageRequest := &routes.ExportRequest{
 			Start:      uint64(start.UnixNano()),
@@ -40,16 +41,23 @@ var exportCmd = &cobra.Command{
 		}
 		buf := &bytes.Buffer{}
 		if err := json.NewEncoder(buf).Encode(messageRequest); err != nil {
-			panic(err)
+			bailf("error encoding request: %s", err)
 		}
 		resp, err := http.Post("http://localhost:8089/export", "application/json", buf)
 		if err != nil {
-			panic(err)
+			bailf("error calling export: %s", err)
 		}
 		util.MustOK(resp)
-		_, err = os.Stdout.ReadFrom(resp.Body)
-		if err != nil {
-			panic(err)
+
+		if exportJSON {
+			if err := util.MCAPToJSON(os.Stdout, resp.Body); err != nil {
+				bailf("error converting to JSON: %s", err)
+			}
+			return
+		}
+
+		if _, err = os.Stdout.ReadFrom(resp.Body); err != nil {
+			bailf("error reading response: %s", err)
 		}
 	},
 }
@@ -61,6 +69,7 @@ func init() {
 	exportCmd.PersistentFlags().StringVarP(&exportStartDate, "start", "s", "", "Start date")
 	exportCmd.PersistentFlags().StringVarP(&exportEndDate, "end", "e", "", "End date")
 	exportCmd.PersistentFlags().StringArrayVarP(&exportTopics, "topics", "t", []string{}, "Topics to query")
+	exportCmd.PersistentFlags().BoolVarP(&exportJSON, "json", "", false, "Output in JSON format")
 
 	exportCmd.MarkFlagRequired("producer")
 	exportCmd.MarkFlagRequired("start")
