@@ -7,6 +7,8 @@ import (
 	"github.com/wkalt/dp3/service"
 )
 
+// This isn't the real entrypoint - it's just used to start the vscode debugger
+// til we figure a better way out. The real entrypoint is from the CLI binary.
 func main() {
 	ctx := context.Background()
 	dp3 := service.NewDP3Service()

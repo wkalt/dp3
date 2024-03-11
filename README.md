@@ -6,6 +6,10 @@ It is under development as a class project in Joe Hellerstein's CS286 class at
 UC Berkeley and is not suitable for production usage.
 
 ## Quickstart
+
+### Requirements
+* Go 1.22
+
 The following instructions will start dp3 with a data directory on local disk.
 
 1. Build the dp3 binary.
