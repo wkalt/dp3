@@ -65,11 +65,12 @@ See `dp3 -h` for an up to date listing of commands.
 
 ## Background
 Multimodal log data may be characterized by,
-* high frequencies
-* large volumes
-* highly variable message sizes and schemas
-* various different message encodings (protobuf, ros1msg, cdr, flatbuffers, ...)
-* timeseries oriented
+* High frequencies
+* Large volumes
+* Highly variable message sizes and schemas (images, pointclouds, text logs,
+  numeric measurements, compressed video, ...)
+* Various different message encodings (protobuf, ros1msg, cdr, flatbuffers, ...)
+* Timeseries oriented
 
 Common workloads on the data are,
 * Stream data in time order at a point in time, for a particular device or
@@ -81,11 +82,11 @@ Common workloads on the data are,
   hundreds, and infrequently in the thousands depending on the architecture of
   the producer.
 * Run heavy computational workloads on a "narrow" selection of topics. For
-  instance, run distributed spark jobs over hundreds of terabytes of images.
+  instance, run distributed Spark jobs over hundreds of terabytes of images.
   This workload may care less or not at all about ordering, but cares a lot
   about throughput, and that the available throughput, availability, and cost
-  scalability effectively matches that of the underlying storage and networking
-  - either on-premise or in the cloud.
+  scalability effectively matches that of the underlying storage and
+  networking, either on-premise or in the cloud.
 * Summarize individual message field values at multiple granularities, at
   low-enough latencies to drive responsive web applications. Consider for
   instance the plotting facilities available in datadog or cloud monitoring
@@ -104,12 +105,12 @@ drawing a slightly different contract with its consumers, based on "topics" and
 "producer IDs" rather than "stream IDs".
 
 ### Glossary
-* Producer ID: a unique identifier assigned by the user to the producer of some
+* *Producer ID*: a unique identifier assigned by the user to the producer of some
   data. For instance, a device identifier or a simulation run ID.
-* Topic: a string identifying a logical channel in the customer's data stream.
+* *Topic*: a string identifying a logical channel in the customer's data stream.
   For instance, "/images" or "/imu". See http://wiki.ros.org/Topics for more
   information on how topics relate to robot architecture.
-* MCAP: a heterogeneously-schematized binary log container format. See
+* *MCAP*: a heterogeneously-schematized binary log container format. See
   https://mcap.dev/.
 
 ### Multigranular summarization
