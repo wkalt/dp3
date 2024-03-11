@@ -30,6 +30,7 @@ require (
 	github.com/relvacode/iso8601 v1.4.0
 	github.com/wkalt/ros1utils v0.0.0-20240311041704-c47139f1a580
 	golang.org/x/exp v0.0.0-20240222234643-814bf88cf225
+	golang.org/x/sync v0.6.0
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 

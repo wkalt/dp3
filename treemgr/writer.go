@@ -118,7 +118,7 @@ func (w *writer) flush(ctx context.Context) error {
 	if err := w.w.Close(); err != nil {
 		return fmt.Errorf("failed to close mcap writer: %w", err)
 	}
-	if err := w.tmgr.Insert(ctx, w.producerID, w.topic, w.lower*1e9, w.buf.Bytes(), w.statistics); err != nil {
+	if err := w.tmgr.insert(ctx, w.producerID, w.topic, w.lower*1e9, w.buf.Bytes(), w.statistics); err != nil {
 		return fmt.Errorf("failed to insert %d bytes data for stream %s/%s at time %d: %w",
 			w.buf.Len(), w.producerID, w.topic, w.lower, err)
 	}

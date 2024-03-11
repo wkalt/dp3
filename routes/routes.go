@@ -11,7 +11,6 @@ func MakeRoutes(tmgr *treemgr.TreeManager) *mux.Router {
 	r.Use(mw.WithRequestID)
 	r.HandleFunc("/import", newImportHandler(tmgr)).Methods("POST")
 	r.HandleFunc("/export", newExportHandler(tmgr)).Methods("POST")
-	r.HandleFunc("/sync", newSyncHandler(tmgr)).Methods("POST")
 	r.HandleFunc("/statrange", newStatRangeHandler(tmgr)).Methods("POST")
 	return r
 }

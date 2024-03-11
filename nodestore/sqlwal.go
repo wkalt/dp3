@@ -5,16 +5,18 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/wkalt/dp3/util"
 )
 
 type sqlWAL struct {
-	db *sql.DB
+	db  *sql.DB
+	mtx *sync.Mutex
 }
 
 func NewSQLWAL(ctx context.Context, db *sql.DB) (WAL, error) {
-	wal := &sqlWAL{db: db}
+	wal := &sqlWAL{db: db, mtx: &sync.Mutex{}}
 	if err := wal.initialize(ctx); err != nil {
 		return nil, err
 	}
@@ -42,6 +44,8 @@ func (w *sqlWAL) initialize(ctx context.Context) error {
 }
 
 func (w *sqlWAL) Put(ctx context.Context, entry WALEntry) error {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
 	stmt := `insert into wal (producer_id, topic, node_id, version, data)
 	values
 	($1, $2, $3, $4, $5)`
@@ -54,6 +58,8 @@ func (w *sqlWAL) Put(ctx context.Context, entry WALEntry) error {
 }
 
 func (w *sqlWAL) Get(ctx context.Context, nodeID NodeID) (data []byte, err error) {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
 	stmt := `select data from wal where node_id = $1 and deleted is null`
 	err = w.db.QueryRowContext(ctx, stmt, nodeID).Scan(&data)
 	if err != nil {
@@ -66,6 +72,8 @@ func (w *sqlWAL) Get(ctx context.Context, nodeID NodeID) (data []byte, err error
 }
 
 func (w *sqlWAL) Delete(ctx context.Context, nodeID NodeID) error {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
 	stmt := `update wal set deleted = current_timestamp where node_id = $1`
 	_, err := w.db.ExecContext(ctx, stmt, nodeID)
 	if err != nil {
@@ -78,12 +86,13 @@ func (w *sqlWAL) Delete(ctx context.Context, nodeID NodeID) error {
 }
 
 func (w *sqlWAL) List(ctx context.Context) (paths []WALListing, err error) {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
 	stmt := `select producer_id, topic, version, node_id from wal where deleted is null order by id`
 	rows, err := w.db.QueryContext(ctx, stmt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list wal: %w", err)
 	}
-
 	streams := make(map[string]WALListing)
 	defer rows.Close()
 	for rows.Next() {

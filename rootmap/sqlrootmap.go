@@ -6,12 +6,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/wkalt/dp3/nodestore"
 )
 
 type sqlRootmap struct {
-	db *sql.DB
+	db  *sql.DB
+	mtx *sync.Mutex
 }
 
 func (rm *sqlRootmap) initialize() error {
@@ -49,6 +51,8 @@ func (rm *sqlRootmap) Put(
 	version uint64,
 	nodeID nodestore.NodeID,
 ) error {
+	rm.mtx.Lock()
+	defer rm.mtx.Unlock()
 	_, err := rm.db.ExecContext(ctx, `
 	insert into rootmap (producer_id, topic, version, node_id) values ($1, $2, $3, $4)`,
 		producerID, topic, version, hex.EncodeToString(nodeID[:]),
@@ -102,7 +106,8 @@ func (rm *sqlRootmap) Get(
 
 func NewSQLRootmap(db *sql.DB) (Rootmap, error) {
 	rm := &sqlRootmap{
-		db: db,
+		db:  db,
+		mtx: &sync.Mutex{},
 	}
 	err := rm.initialize()
 	if err != nil {

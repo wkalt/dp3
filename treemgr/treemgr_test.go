@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 
@@ -24,35 +23,6 @@ func TestGetMessages(t *testing.T) {
 }
 
 func TestGetStatistics(t *testing.T) {
-}
-
-func TestInsert(t *testing.T) {
-}
-
-func TestGetMessagesLatest(t *testing.T) {
-	ctx := context.Background()
-	f, err := os.Open("/home/wyatt/data/bags/demo.mcap")
-	require.NoError(t, err)
-	tmgr := testTreeManager(ctx, t)
-
-	require.NoError(t, tmgr.Receive(ctx, "my-device", f))
-	require.NoError(t, tmgr.SyncWAL(ctx))
-
-	buf := &bytes.Buffer{}
-	require.NoError(t, tmgr.GetMessagesLatest(
-		ctx,
-		buf,
-		util.DateSeconds("2015-01-01")*1e9,
-		util.DateSeconds("2020-01-01")*1e9,
-		"my-device",
-		[]string{"/diagnostics"},
-	))
-
-	reader, err := mcap.NewReader(bytes.NewReader(buf.Bytes()))
-	require.NoError(t, err)
-	info, err := reader.Info()
-	require.NoError(t, err)
-	require.Equal(t, 52, int(info.Statistics.MessageCount))
 }
 
 func TestGetStatisticsLatest(t *testing.T) {
@@ -140,90 +110,6 @@ func testTreeManager(ctx context.Context, t *testing.T) *treemgr.TreeManager {
 	ns := nodestore.NewNodestore(store, cache, wal)
 	vs := versionstore.NewMemVersionStore()
 	rm := rootmap.NewMemRootmap()
-	tmgr := treemgr.NewTreeManager(ns, vs, rm, 2)
+	tmgr := treemgr.NewTreeManager(ns, vs, rm, 2, 1)
 	return tmgr
 }
-
-// func TestStreamingAndIngestion(t *testing.T) {
-// 	ctx := context.Background()
-// 	store := storage.NewMemStore()
-// 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1000)
-// 	db, err := sql.Open("sqlite3", ":memory:")
-// 	require.NoError(t, err)
-// 	wal, err := nodestore.NewSQLWAL(ctx, db)
-// 	require.NoError(t, err)
-// 	ns := nodestore.NewNodestore(store, cache, wal)
-// 	vs := versionstore.NewMemVersionStore()
-// 	rm := rootmap.NewMemRootmap()
-// 	tmgr := treemgr.NewTreeManager(ns, vs, rm, 2)
-//
-// 	f, err := os.Open("/home/wyatt/data/bags/demo.mcap")
-// 	require.NoError(t, err)
-// 	defer f.Close()
-//
-// 	require.NoError(t, tmgr.Receive(ctx, "my-device", f))
-// 	require.NoError(t, tmgr.SyncWAL(ctx))
-//
-// 	// can I read
-// 	buf := &bytes.Buffer{}
-// 	streamID := util.ComputeStreamID("my-device", "/diagnostics")
-// 	require.NoError(t, tmgr.GetMessagesLatest(ctx, buf, 0, math.MaxUint64, []string{streamID}))
-// }
-//
-// func TestIngestion(t *testing.T) {
-// 	ctx := context.Background()
-// 	store := storage.NewMemStore()
-// 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1000)
-// 	db, err := sql.Open("sqlite3", ":memory:")
-// 	require.NoError(t, err)
-// 	wal, err := nodestore.NewSQLWAL(ctx, db)
-// 	require.NoError(t, err)
-// 	ns := nodestore.NewNodestore(store, cache, wal)
-// 	vs := versionstore.NewMemVersionStore()
-// 	rm := rootmap.NewMemRootmap()
-// 	tmgr := treemgr.NewTreeManager(ns, vs, rm, 2)
-//
-// 	f, err := os.Open("/home/wyatt/data/bags/demo.mcap")
-// 	require.NoError(t, err)
-// 	defer f.Close()
-//
-// 	require.NoError(t, tmgr.Receive(ctx, "my-device", f))
-// 	require.NoError(t, tmgr.SyncWAL(ctx))
-// }
-//
-// func TestTreeMgr(t *testing.T) {
-// 	ctx := context.Background()
-// 	store := storage.NewMemStore()
-// 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1000)
-// 	db, err := sql.Open("sqlite3", ":memory:")
-// 	require.NoError(t, err)
-// 	wal, err := nodestore.NewSQLWAL(ctx, db)
-// 	require.NoError(t, err)
-// 	ns := nodestore.NewNodestore(store, cache, wal)
-// 	vs := versionstore.NewMemVersionStore()
-// 	rm := rootmap.NewMemRootmap()
-// 	tmgr := treemgr.NewTreeManager(ns, vs, rm, 2)
-//
-// 	nodeID, err := ns.NewRoot(ctx, 0, 4096, 64, 64)
-// 	require.NoError(t, err)
-// 	version, err := vs.Next(ctx)
-// 	require.NoError(t, err)
-// 	require.NoError(t, rm.Put(ctx, "stream", version, nodeID))
-//
-// 	buf := &bytes.Buffer{}
-// 	mcap.WriteFile(t, buf, []uint64{10})
-// 	err = tmgr.Insert(ctx, "stream", 10, buf.Bytes())
-// 	require.NoError(t, err)
-//
-// 	err = tmgr.SyncWAL(ctx) // noop
-// 	require.NoError(t, err)
-//
-// 	buf2 := &bytes.Buffer{}
-// 	mcap.WriteFile(t, buf2, []uint64{90})
-// 	err = tmgr.Insert(ctx, "stream", 70, buf2.Bytes())
-// 	require.NoError(t, err)
-//
-// 	err = tmgr.SyncWAL(ctx) // noop
-// 	require.NoError(t, err, "failed to sync wal")
-// }
-//

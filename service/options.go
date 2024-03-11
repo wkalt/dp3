@@ -11,12 +11,20 @@ type DP3Options struct {
 	DataDir        string
 	Port           int
 	LogLevel       slog.Level
+	SyncWorkers    int
 }
 
 // WithCacheSizeMegabytes sets the cache size in megabytes.
 func WithCacheSizeMegabytes(size uint64) DP3Option {
 	return func(opts *DP3Options) {
 		opts.CacheSizeBytes = size * 1024 * 1024
+	}
+}
+
+// WithSyncWorkers sets the number of concurrent WAL sync workers.
+func WithSyncWorkers(workers int) DP3Option {
+	return func(opts *DP3Options) {
+		opts.SyncWorkers = workers
 	}
 }
 

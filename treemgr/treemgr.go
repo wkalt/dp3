@@ -18,6 +18,7 @@ import (
 	"github.com/wkalt/dp3/util/log"
 	"github.com/wkalt/dp3/versionstore"
 	"golang.org/x/exp/maps"
+	"golang.org/x/sync/errgroup"
 )
 
 var ErrNotImplemented = errors.New("not implemented")
@@ -36,13 +37,14 @@ func NewTreeManager(
 	vs versionstore.Versionstore,
 	rm rootmap.Rootmap,
 	batchsize int,
+	syncWorkers int,
 ) *TreeManager {
 	return &TreeManager{
 		ns:          ns,
 		vs:          vs,
 		rootmap:     rm,
 		batchsize:   batchsize,
-		syncWorkers: 10,
+		syncWorkers: syncWorkers,
 	}
 }
 
@@ -239,8 +241,8 @@ func (tm *TreeManager) GetStatisticsLatest(
 	return ranges, nil
 }
 
-// Insert data into the tree and flush it to the WAL.
-func (tm *TreeManager) Insert(
+// insert data into the tree and flush it to the WAL.
+func (tm *TreeManager) insert(
 	ctx context.Context,
 	producerID string,
 	topic string,
@@ -281,61 +283,76 @@ func (tm *TreeManager) StartWALSyncLoop(ctx context.Context) {
 	}
 }
 
+func (tm *TreeManager) syncWALListing(
+	ctx context.Context,
+	listing nodestore.WALListing,
+) error {
+	rootID, _, err := tm.rootmap.GetLatest(ctx, listing.ProducerID, listing.Topic)
+	if err != nil {
+		return fmt.Errorf("failed to get latest root: %w", err)
+	}
+	roots := []nodestore.NodeID{}
+	version, err := tm.vs.Next(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get next version: %w", err)
+	}
+	var newRootID nodestore.NodeID
+	versions := maps.Keys(listing.Versions)
+	slices.Sort(versions)
+	if len(versions) == 1 {
+		log.Infow(ctx, "flushing WAL entries",
+			"producerID", listing.ProducerID,
+			"topic", listing.Topic,
+			"count", len(listing.Versions),
+			"version", version,
+		)
+		value := maps.Values(listing.Versions)[0]
+		newRootID, err = tm.ns.FlushWALPath(ctx, version, value)
+		if err != nil {
+			return fmt.Errorf("failed to flush wal path: %w", err)
+		}
+	} else {
+		log.Infow(ctx, "merging WAL entries",
+			"producerID", listing.ProducerID,
+			"topic", listing.Topic,
+			"count", len(listing.Versions))
+		for _, version := range versions {
+			nodeIDs := listing.Versions[version]
+			roots = append(roots, nodeIDs[0])
+		}
+		newRootID, err = tm.ns.WALMerge(ctx, rootID, version, roots)
+		if err != nil {
+			return fmt.Errorf("failed to merge WAL into tree: %w", err)
+		}
+	}
+	for _, version := range versions {
+		nodeIDs := listing.Versions[version]
+		for _, nodeID := range nodeIDs {
+			if err = tm.ns.WALDelete(ctx, nodeID); err != nil { // todo transaction
+				return fmt.Errorf("failed to delete node %s from WAL: %w", nodeID, err)
+			}
+		}
+	}
+	if err := tm.rootmap.Put(ctx, listing.ProducerID, listing.Topic, version, newRootID); err != nil {
+		return fmt.Errorf("failed to update rootmap: %w", err)
+	}
+	return nil
+}
+
 func (tm *TreeManager) SyncWAL(ctx context.Context) error {
 	listings, err := tm.ns.ListWAL(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to list WAL: %w", err)
 	}
+	grp := errgroup.Group{}
+	grp.SetLimit(tm.syncWorkers)
 	for _, listing := range listings {
-		rootID, _, err := tm.rootmap.GetLatest(ctx, listing.ProducerID, listing.Topic)
-		if err != nil {
-			return fmt.Errorf("failed to get latest root: %w", err)
-		}
-		roots := []nodestore.NodeID{}
-		version, err := tm.vs.Next(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to get next version: %w", err)
-		}
-		var newRootID nodestore.NodeID
-		versions := maps.Keys(listing.Versions)
-		slices.Sort(versions)
-		if len(versions) == 1 {
-			log.Infow(ctx, "flushing WAL entries",
-				"producerID", listing.ProducerID,
-				"topic", listing.Topic,
-				"count", len(listing.Versions),
-				"version", version,
-			)
-			value := maps.Values(listing.Versions)[0]
-			newRootID, err = tm.ns.FlushWALPath(ctx, version, value)
-			if err != nil {
-				return fmt.Errorf("failed to flush wal path: %w", err)
-			}
-		} else {
-			log.Infow(ctx, "merging WAL entries",
-				"producerID", listing.ProducerID,
-				"topic", listing.Topic,
-				"count", len(listing.Versions))
-			for _, version := range versions {
-				nodeIDs := listing.Versions[version]
-				roots = append(roots, nodeIDs[0])
-			}
-			newRootID, err = tm.ns.WALMerge(ctx, rootID, version, roots)
-			if err != nil {
-				return fmt.Errorf("failed to merge WAL into tree: %w", err)
-			}
-		}
-		for _, version := range versions {
-			nodeIDs := listing.Versions[version]
-			for _, nodeID := range nodeIDs {
-				if err = tm.ns.WALDelete(ctx, nodeID); err != nil { // todo transaction
-					return fmt.Errorf("failed to delete node %s from WAL: %w", nodeID, err)
-				}
-			}
-		}
-		if err := tm.rootmap.Put(ctx, listing.ProducerID, listing.Topic, version, newRootID); err != nil {
-			return fmt.Errorf("failed to update rootmap: %w", err)
-		}
+		grp.Go(func() error {
+			return tm.syncWALListing(ctx, listing)
+		})
+	}
+	if err := grp.Wait(); err != nil {
+		return fmt.Errorf("failed to sync WAL: %w", err)
 	}
 	return nil
 }

@@ -37,6 +37,7 @@ func readOpts(opts ...DP3Option) DP3Options {
 		Port:           8089,
 		DataDir:        "data",
 		LogLevel:       slog.LevelInfo,
+		SyncWorkers:    10,
 	}
 	for _, opt := range opts {
 		opt(&options)
@@ -67,7 +68,7 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error {
 		return fmt.Errorf("failed to open rootmap: %w", err)
 	}
 	vs := versionstore.NewSQLVersionstore(db, 1e9)
-	tmgr := treemgr.NewTreeManager(ns, vs, rm, 2)
+	tmgr := treemgr.NewTreeManager(ns, vs, rm, 2, opts.SyncWorkers)
 	// go tmgr.StartWALSyncLoop(ctx)
 	r := routes.MakeRoutes(tmgr)
 	srv := &http.Server{

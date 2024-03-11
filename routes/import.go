@@ -36,6 +36,14 @@ func newImportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			httputil.BadRequest(ctx, w, "error receiving file: %s", err)
 			return
 		}
+
+		// todo: WAL syncing should be done in a background thread to enable
+		// bigger writes to final storage, as well as to decouple write size
+		// from input size. For now we just do it synchronously though.
+		if err := tmgr.SyncWAL(ctx); err != nil {
+			httputil.InternalServerError(ctx, w, "error syncing WAL: %s", err)
+			return
+		}
 		log.Infow(ctx, "imported", "location", req.Path, "producer_id", req.ProducerID)
 	}
 }
