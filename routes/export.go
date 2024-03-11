@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/wkalt/dp3/treemgr"
+	"github.com/wkalt/dp3/util/httputil"
 	"github.com/wkalt/dp3/util/log"
 )
 
@@ -20,8 +21,7 @@ func newExportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		ctx := r.Context()
 		req := ExportRequest{}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			log.Errorw(ctx, "error decoding request", "error", err)
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			httputil.BadRequest(ctx, w, "error decoding request: %s", err)
 			return
 		}
 		log.Infow(ctx, "messages request",
@@ -31,7 +31,7 @@ func newExportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			"end", req.End,
 		)
 		if err := tmgr.GetMessagesLatest(ctx, w, req.Start, req.End, req.ProducerID, req.Topics); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httputil.InternalServerError(ctx, w, "error getting messages: %s", err)
 			return
 		}
 	}

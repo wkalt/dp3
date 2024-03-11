@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/wkalt/dp3/treemgr"
+	"github.com/wkalt/dp3/util/httputil"
 )
 
 type StatRangeRequest struct {
@@ -20,7 +21,7 @@ func newStatRangeHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		ctx := r.Context()
 		req := StatRangeRequest{}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			httputil.BadRequest(ctx, w, "error decoding request: %s", err)
 			return
 		}
 		summary, err := tmgr.GetStatisticsLatest(
@@ -32,12 +33,12 @@ func newStatRangeHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			req.Granularity,
 		)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httputil.InternalServerError(ctx, w, "error getting statistics: %s", err)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(summary); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httputil.InternalServerError(ctx, w, "error encoding response: %s", err)
 		}
 	}
 }

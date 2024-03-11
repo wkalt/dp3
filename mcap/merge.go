@@ -14,8 +14,11 @@ import (
 
 const megabyte = 1024 * 1024
 
+var hashSeed = maphash.MakeSeed() // nolint:gochecknoglobals
+
 func hashBytes(b []byte) uint64 {
 	h := maphash.Hash{}
+	h.SetSeed(hashSeed)
 	_, _ = h.Write(b)
 	return h.Sum64()
 }
@@ -81,6 +84,7 @@ func (c *MergeCoordinator) Write(schema *mcap.Schema, channel *mcap.Channel, msg
 			if err := c.w.WriteSchema(newSchema); err != nil {
 				return fmt.Errorf("failed to write schema: %w", err)
 			}
+			c.schemaHashes[schemaHash] = schemaID
 			c.schemas[schema] = schemaID
 			c.nextSchemaID++
 		}
@@ -106,6 +110,7 @@ func (c *MergeCoordinator) Write(schema *mcap.Schema, channel *mcap.Channel, msg
 				return fmt.Errorf("failed to write channel: %w", err)
 			}
 			c.channels[channel] = c.nextChannelID
+			c.channelHashes[channelHash] = c.nextChannelID
 			chanID = c.nextChannelID
 			c.nextChannelID++
 		}

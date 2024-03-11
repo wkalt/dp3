@@ -36,14 +36,12 @@ var statrangeCmd = &cobra.Command{
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println(start, end)
-		fmt.Println(start.UnixNano(), end.UnixNano())
 		req := &routes.StatRangeRequest{
 			ProducerID:  statrangeProducerID,
 			Start:       uint64(start.UnixNano()),
 			End:         uint64(end.UnixNano()),
 			Topic:       statrangeTopic,
-			Granularity: statrangeGranularity,
+			Granularity: statrangeGranularity * 1e9,
 		}
 		buf := &bytes.Buffer{}
 		if err = json.NewEncoder(buf).Encode(req); err != nil {
@@ -54,6 +52,8 @@ var statrangeCmd = &cobra.Command{
 			panic(err)
 		}
 		defer resp.Body.Close()
+
+		util.MustOK(resp)
 
 		response := []tree.StatRange{}
 		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
@@ -82,5 +82,5 @@ func init() {
 	statrangeCmd.PersistentFlags().StringVarP(&statrangeEnd, "end", "e", "", "End time")
 	statrangeCmd.MarkPersistentFlagRequired("end")
 
-	statrangeCmd.PersistentFlags().Uint64VarP(&statrangeGranularity, "granularity", "g", 60*60*1e9, "Granularity")
+	statrangeCmd.PersistentFlags().Uint64VarP(&statrangeGranularity, "granularity", "g", 60*60, "Granularity in seconds")
 }

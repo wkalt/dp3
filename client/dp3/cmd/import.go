@@ -11,11 +11,11 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
+	"github.com/wkalt/dp3/client/dp3/util"
 	"github.com/wkalt/dp3/routes"
 )
 
 var (
-	importFilename   string
 	importProducerID string
 )
 
@@ -46,6 +46,8 @@ var importCmd = &cobra.Command{
 		if err != nil {
 			panic(err)
 		}
+		defer resp.Body.Close()
+		util.MustOK(resp)
 		_, err = os.Stdout.ReadFrom(resp.Body)
 		if err != nil {
 			panic(err)

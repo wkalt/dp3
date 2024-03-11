@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/wkalt/dp3/treemgr"
+	"github.com/wkalt/dp3/util/httputil"
 	"github.com/wkalt/dp3/util/log"
 )
 
@@ -19,20 +20,20 @@ func newImportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		ctx := r.Context()
 		req := ImportRequest{}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			httputil.BadRequest(ctx, w, "error decoding request: %s", err)
 			return
 		}
 		defer r.Body.Close()
 
 		f, err := os.Open(req.Path) // todo - get from storage provider
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			httputil.BadRequest(ctx, w, "error opening file: %s", err)
 			return
 		}
 		defer f.Close()
 
 		if err := tmgr.Receive(ctx, req.ProducerID, f); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			httputil.BadRequest(ctx, w, "error receiving file: %s", err)
 			return
 		}
 		log.Infow(ctx, "imported", "location", req.Path, "producer_id", req.ProducerID)
