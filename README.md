@@ -105,12 +105,12 @@ drawing a slightly different contract with its consumers, based on "topics" and
 "producer IDs" rather than "stream IDs".
 
 ### Glossary
-* *Producer ID*: a unique identifier assigned by the user to the producer of some
+* **Producer ID**: a unique identifier assigned by the user to the producer of some
   data. For instance, a device identifier or a simulation run ID.
-* *Topic*: a string identifying a logical channel in the customer's data stream.
+* **Topic**: a string identifying a logical channel in the customer's data stream.
   For instance, "/images" or "/imu". See http://wiki.ros.org/Topics for more
   information on how topics relate to robot architecture.
-* *MCAP*: a heterogeneously-schematized binary log container format. See
+* **MCAP**: a heterogeneously-schematized binary log container format. See
   https://mcap.dev/.
 
 ### Multigranular summarization
