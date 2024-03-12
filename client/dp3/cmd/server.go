@@ -35,14 +35,14 @@ var serverCmd = &cobra.Command{
 			default:
 				bailf("invalid log level: %s", serverLogLevel)
 			}
-			if err := svc.Start(ctx,
-				service.WithPort(serverPort),
-				service.WithCacheSizeMegabytes(uint64(serverCacheSizeMegabytes)),
-				service.WithDataDir(serverDataDir),
-				service.WithLogLevel(logLevel),
-			); err != nil {
-				bailf("error starting server: %s", err)
-			}
+		}
+		if err := svc.Start(ctx,
+			service.WithPort(serverPort),
+			service.WithCacheSizeMegabytes(uint64(serverCacheSizeMegabytes)),
+			service.WithDataDir(serverDataDir),
+			service.WithLogLevel(logLevel),
+		); err != nil {
+			bailf("error starting server: %s", err)
 		}
 	},
 }
