@@ -48,6 +48,7 @@ func readOpts(opts ...DP3Option) DP3Options {
 func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error {
 	opts := readOpts(options...)
 	slog.SetLogLoggerLevel(opts.LogLevel)
+	log.Debugf(ctx, "Debug logging enabled")
 	store := storage.NewDirectoryStore(opts.DataDir)
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](opts.CacheSizeBytes)
 	walpath := path.Join(opts.DataDir, "wal.db")

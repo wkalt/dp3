@@ -42,8 +42,11 @@ func levelf(ctx context.Context, level slog.Level, format string, args ...any) {
 	for i := 0; i < len(tags); i += 2 {
 		r.Add(tags[i].(string), tags[i+1])
 	}
-	if err := slog.Default().Handler().Handle(ctx, r); err != nil {
-		slog.ErrorContext(ctx, "error handling log record", "error", err)
+	handler := slog.Default().Handler()
+	if handler.Enabled(ctx, level) {
+		if err := slog.Default().Handler().Handle(ctx, r); err != nil {
+			slog.ErrorContext(ctx, "error handling log record", "error", err)
+		}
 	}
 }
 
@@ -74,8 +77,11 @@ func levelw(ctx context.Context, level slog.Level, msg string, keyvals ...any) {
 	for i := 0; i < len(tags); i += 2 {
 		r.Add(tags[i].(string), tags[i+1])
 	}
-	if err := slog.Default().Handler().Handle(ctx, r); err != nil {
-		slog.ErrorContext(ctx, "error handling log record", "error", err)
+	handler := slog.Default().Handler()
+	if handler.Enabled(ctx, level) {
+		if err := handler.Handle(ctx, r); err != nil {
+			slog.ErrorContext(ctx, "error handling log record", "error", err)
+		}
 	}
 }
 

@@ -41,3 +41,10 @@ func WithPort(port int) DP3Option {
 		opts.Port = port
 	}
 }
+
+// WithLogLevel sets the log level.
+func WithLogLevel(level slog.Level) DP3Option {
+	return func(opts *DP3Options) {
+		opts.LogLevel = level
+	}
+}

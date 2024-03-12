@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	glog "log"
+	"log/slog"
 	"os"
 	"testing"
 
@@ -51,6 +52,8 @@ func TestAddTags(t *testing.T) {
 }
 
 func TestLogf(t *testing.T) {
+	old := slog.SetLogLoggerLevel(slog.LevelDebug)
+	defer slog.SetLogLoggerLevel(old)
 	cases := []struct {
 		assertion string
 		f         func(context.Context, string, ...interface{})
@@ -88,7 +91,27 @@ func TestLogf(t *testing.T) {
 	}
 }
 
+func TestLogLeveling(t *testing.T) {
+	old := slog.SetLogLoggerLevel(slog.LevelDebug)
+	defer slog.SetLogLoggerLevel(old)
+	s := captureStdout(t, func() {
+		log.Debugf(context.Background(), "foo")
+		log.Debugw(context.Background(), "bar")
+	})
+	require.Contains(t, s, "DEBUG foo")
+	require.Contains(t, s, "DEBUG bar")
+
+	slog.SetLogLoggerLevel(slog.LevelInfo)
+	s = captureStdout(t, func() {
+		log.Debugf(context.Background(), "foo")
+		log.Debugw(context.Background(), "bar")
+	})
+	require.Equal(t, "", s)
+}
+
 func TestLogw(t *testing.T) {
+	old := slog.SetLogLoggerLevel(slog.LevelDebug)
+	defer slog.SetLogLoggerLevel(old)
 	cases := []struct {
 		assertion string
 		f         func(ctx context.Context, msg string, keyvals ...any)
