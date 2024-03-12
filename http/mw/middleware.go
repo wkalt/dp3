@@ -7,6 +7,14 @@ import (
 	"github.com/wkalt/dp3/util/log"
 )
 
+/*
+mw contains http middlewares.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
+// WithRequestID is a middleware that adds a request ID to the context of each
+// request.
 func WithRequestID(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()

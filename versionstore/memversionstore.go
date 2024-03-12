@@ -5,6 +5,12 @@ import (
 	"sync"
 )
 
+/*
+memVersionStore is a simple in-memory version store that returns a monotonically
+increasing version number. It is useful for testing and development. It is not
+suitable for production use.
+*/
+
 type memVersionStore struct {
 	next uint64
 	mtx  *sync.Mutex

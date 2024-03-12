@@ -6,6 +6,16 @@ import (
 	"github.com/wkalt/dp3/treemgr"
 )
 
+/*
+The routes module contains the HTTP routes for the DP3 service. These are
+currently very loose and uncommitted APIs, that just exist to demonstrate the
+functionality of the database. Eventually we will formalize the design and
+decide whether to stick with REST or switch to gRPC.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
+// MakeRoutes creates a new router with all the routes for the DP3 service.
 func MakeRoutes(tmgr *treemgr.TreeManager) *mux.Router {
 	r := mux.NewRouter()
 	r.Use(mw.WithRequestID)

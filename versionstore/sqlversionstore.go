@@ -10,6 +10,11 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+/*
+sqlversionstore is a version store backed by an SQL database. The only database
+that has been used or tested is sqlite.
+*/
+
 type sqlversionstore struct {
 	db          *sql.DB
 	cachesize   int

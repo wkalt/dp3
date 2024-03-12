@@ -24,6 +24,12 @@ import (
 	"github.com/wkalt/dp3/versionstore"
 )
 
+/*
+This file is the main entrypoint for DP3 server startup.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
 const (
 	gigabyte = 1024 * 1024 * 1024
 )
@@ -31,20 +37,12 @@ const (
 type DP3 struct {
 }
 
-func readOpts(opts ...DP3Option) DP3Options {
-	options := DP3Options{
-		CacheSizeBytes: 1 * gigabyte,
-		Port:           8089,
-		DataDir:        "data",
-		LogLevel:       slog.LevelInfo,
-		SyncWorkers:    10,
-	}
-	for _, opt := range opts {
-		opt(&options)
-	}
-	return options
+// NewDP3Service creates a new DP3 service.
+func NewDP3Service() *DP3 {
+	return &DP3{}
 }
 
+// Start starts the DP3 service.
 func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error {
 	opts := readOpts(options...)
 	slog.SetLogLoggerLevel(opts.LogLevel)
@@ -105,6 +103,16 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error {
 	return nil
 }
 
-func NewDP3Service() *DP3 {
-	return &DP3{}
+func readOpts(opts ...DP3Option) DP3Options {
+	options := DP3Options{
+		CacheSizeBytes: 1 * gigabyte,
+		Port:           8089,
+		DataDir:        "data",
+		LogLevel:       slog.LevelInfo,
+		SyncWorkers:    10,
+	}
+	for _, opt := range opts {
+		opt(&options)
+	}
+	return options
 }

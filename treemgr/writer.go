@@ -12,6 +12,24 @@ import (
 	"github.com/wkalt/dp3/util/log"
 )
 
+/*
+The tree writer is responsible for transforming input MCAP data streams into
+properly-portioned leaf nodes, according to the timestamps of the messages, and
+then inserting them with tmgr.insert.
+
+Messages coming into the writer are mostly-ordered. Probably a good guess is
+99.999% ordered, within a single import task. If we do get an out of order
+message, we can end up in a situation where we write to the WAL, [1 5], [6 10],
+[3 5], with the first and third writes destined for the same leaf (and the first
+is out the door already - in the WAL).
+
+Writes to tmgr go to the WAL, not to permanent storage. When the ultimate flush
+to permanent storage occurs, the two leaves with data for the same range in this
+scenario will be merged into one.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
 type writer struct {
 	tmgr *TreeManager
 

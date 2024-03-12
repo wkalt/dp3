@@ -2,6 +2,12 @@ package service
 
 import "log/slog"
 
+/*
+Functional options for the dp3 service.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
 // DP3Option is a functional option for the DP3 service.
 type DP3Option func(*DP3Options)
 

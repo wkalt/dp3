@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -18,9 +17,32 @@ import (
 	"github.com/wkalt/dp3/util"
 )
 
-func (n *Nodestore) String() string {
-	return n.cache.String()
-}
+/*
+dp3 is based on a copy-on-write time-partitioned tree structure. The tree
+contains inner nodes and leaf nodes. Leaf nodes hold the data, and inner nodes
+hold aggregate statistics and pointers to children. Trees are fixed-depth and a
+typical depth is 5 (just an example).
+
+The Nodestore is responsible for providing access to nodes by node ID. It does
+this using a heirarchical storage scheme:
+* Nodes are initially written to a WAL. After a period of time, they are flushed
+  from WAL to permanent storage. This allows for write batching to counteract
+  variations in input file sizes.
+* Permanent storage is "store", a storage.Provider. In production
+  contexts this will be S3-compatible object storage.
+* Nodes are cached on read in a byte capacity-limited LRU cache. If future reads
+  reference the same node, it will be served from cache. Nodes are never modified.
+  In ideal operation, all inner nodes of the tree are cached in "cache".
+* During the course of insert and WAL flush operations, nodes are staged in an
+  in-memory map ("staging") to support temporary manipulations prior to final
+  persistence.
+
+The nodestore is also responsible for orchestrating tree merge operations across
+the levels of its hierarchy, such as flushing staged nodes to WAL, or WAL nodes
+to storage.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
 
 type Nodestore struct {
 	store      storage.Provider
@@ -34,53 +56,26 @@ type Nodestore struct {
 	wal WAL
 }
 
-func (n *Nodestore) WALDelete(ctx context.Context, id NodeID) error {
-	if err := n.wal.Delete(ctx, id); err != nil {
-		return fmt.Errorf("failed to delete node: %w", err)
+// NewNodestore creates a new nodestore.
+func NewNodestore(
+	store storage.Provider,
+	cache *util.LRU[NodeID, Node],
+	wal WAL,
+) *Nodestore {
+	return &Nodestore{
+		store:      store,
+		cache:      cache,
+		nextNodeID: 1,
+		maxNodeID:  1e6, // todo: grab this from persistent storage on startup
+		mtx:        &sync.RWMutex{},
+		staging:    make(map[NodeID]Node),
+		wal:        wal,
 	}
-	return nil
 }
 
-// generateStagingID generates a temporary ID that will not collide with "real"
-// node IDs.
-func (n *Nodestore) generateStagingID() NodeID {
-	var id NodeID
-	_, _ = rand.Read(id[:])
-	return id
-}
-
-type objectID uint64
-
-func (id objectID) String() string {
-	return strconv.FormatUint(uint64(id), 10)
-}
-
-func (n *Nodestore) generateObjectID() objectID {
-	id := n.nextNodeID
-	n.nextNodeID++
-	return objectID(id)
-}
-
-func isLeaf(data []byte) bool {
-	return data[0] > 128
-}
-
-func (n *Nodestore) bytesToNode(value []byte) (Node, error) {
-	if isLeaf(value) {
-		node := NewLeafNode(nil)
-		if err := node.FromBytes(value); err != nil {
-			return nil, fmt.Errorf("failed to parse leaf node: %w", err)
-		}
-		return node, nil
-	}
-	node := NewInnerNode(0, 0, 0, 0)
-	if err := node.FromBytes(value); err != nil {
-		return nil, fmt.Errorf("failed to parse inner node: %w", err)
-	}
-	return node, nil
-}
-
-// Get retrieves a node from the store. If the node is not in the cache, it will be loaded from the store.
+// Get retrieves a node from the nodestore. It will check the cache and staging
+// areas prior to storage. Staging node IDs and "real" node IDs will never
+// conflict.
 func (n *Nodestore) Get(ctx context.Context, id NodeID) (Node, error) {
 	if value, ok := n.cache.Get(id); ok {
 		return value, nil
@@ -103,6 +98,15 @@ func (n *Nodestore) Get(ctx context.Context, id NodeID) (Node, error) {
 	return node, nil
 }
 
+// WALDelete deletes a node from the WAL.
+func (n *Nodestore) WALDelete(ctx context.Context, id NodeID) error {
+	if err := n.wal.Delete(ctx, id); err != nil {
+		return fmt.Errorf("failed to delete node: %w", err)
+	}
+	return nil
+}
+
+// ListWAL returns a list of WAL entries.
 func (n *Nodestore) ListWAL(ctx context.Context) ([]WALListing, error) {
 	wal, err := n.wal.List(ctx)
 	if err != nil {
@@ -111,6 +115,7 @@ func (n *Nodestore) ListWAL(ctx context.Context) ([]WALListing, error) {
 	return wal, nil
 }
 
+// WALFlush flushes a list of nodes from staging to the WAL.
 func (n *Nodestore) WALFlush(
 	ctx context.Context,
 	producerID string,
@@ -139,15 +144,7 @@ func (n *Nodestore) WALFlush(
 	return nil
 }
 
-// Stage a node in the staging map, returning an ID that can be used later.
-func (n *Nodestore) Stage(node Node) NodeID {
-	id := n.generateStagingID()
-	n.mtx.Lock()
-	defer n.mtx.Unlock()
-	n.staging[id] = node
-	return id
-}
-
+// StageWithID stages a node in the staging map with a specific ID.
 func (n *Nodestore) StageWithID(id NodeID, node Node) error {
 	n.mtx.Lock()
 	defer n.mtx.Unlock()
@@ -155,18 +152,20 @@ func (n *Nodestore) StageWithID(id NodeID, node Node) error {
 	return nil
 }
 
-func (n *Nodestore) getStagedNode(id NodeID) (Node, bool) {
-	n.mtx.RLock()
-	defer n.mtx.RUnlock()
-	node, ok := n.staging[id]
-	return node, ok
+// generateStagingID generates a temporary ID that will not collide with "real"
+// node IDs.
+func (n *Nodestore) generateStagingID() NodeID {
+	var id NodeID
+	_, _ = rand.Read(id[:])
+	return id
 }
 
-func generateNodeID(oid objectID, offset int, length int) NodeID {
-	var id NodeID
-	binary.LittleEndian.PutUint64(id[:], uint64(oid))
-	binary.LittleEndian.PutUint32(id[8:], uint32(offset))
-	binary.LittleEndian.PutUint32(id[12:], uint32(length))
+// Stage a node in the staging map, returning an ID that can be used later.
+func (n *Nodestore) Stage(node Node) NodeID {
+	id := n.generateStagingID()
+	n.mtx.Lock()
+	defer n.mtx.Unlock()
+	n.staging[id] = node
 	return id
 }
 
@@ -221,23 +220,6 @@ func (n *Nodestore) Flush(ctx context.Context, version uint64, ids ...NodeID) (n
 	return newIDs[len(newIDs)-1], nil
 }
 
-// NewNodestore creates a new nodestore.
-func NewNodestore(
-	store storage.Provider,
-	cache *util.LRU[NodeID, Node],
-	wal WAL,
-) *Nodestore {
-	return &Nodestore{
-		store:      store,
-		cache:      cache,
-		nextNodeID: 1,
-		maxNodeID:  1e6, // todo: grab this from persistent storage on startup
-		mtx:        &sync.RWMutex{},
-		staging:    make(map[NodeID]Node),
-		wal:        wal,
-	}
-}
-
 // NewRoot creates a new root node with the given depth and range, and persists
 // it to storage, returning the ID.
 func (n *Nodestore) NewRoot(
@@ -263,6 +245,8 @@ func (n *Nodestore) NewRoot(
 	return id, nil
 }
 
+// FlushWALPath flushes a list of node IDs from the WAL to permanent storage.
+// The path of node IDs is expected to be in root to leaf order.
 func (n *Nodestore) FlushWALPath(ctx context.Context, version uint64, path []NodeID) (nodeID NodeID, err error) {
 	result := []NodeID{}
 	for _, nodeID := range path {
@@ -312,6 +296,57 @@ func (n *Nodestore) WALMerge(
 		return nodeID, fmt.Errorf("failed to flush root: %w", err)
 	}
 	return flushedRoot, nil
+}
+
+// Print returns a string representation of the tree rooted at the provided node
+// ID. Top-level calls should pass a nil statistics parameter.
+func (n *Nodestore) Print(ctx context.Context, nodeID NodeID, version uint64, statistics *Statistics) (string, error) {
+	node, err := n.Get(ctx, nodeID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get node %d: %w", nodeID, err)
+	}
+	switch node := node.(type) {
+	case *InnerNode:
+		return n.printInnerNode(ctx, node, version, statistics)
+	case *LeafNode:
+		return node.String(), nil
+	default:
+		return "", fmt.Errorf("unexpected node type: %+v", node)
+	}
+}
+
+func isLeaf(data []byte) bool {
+	return data[0] > 128
+}
+
+func (n *Nodestore) bytesToNode(value []byte) (Node, error) {
+	if isLeaf(value) {
+		node := NewLeafNode(nil)
+		if err := node.FromBytes(value); err != nil {
+			return nil, fmt.Errorf("failed to parse leaf node: %w", err)
+		}
+		return node, nil
+	}
+	node := NewInnerNode(0, 0, 0, 0)
+	if err := node.FromBytes(value); err != nil {
+		return nil, fmt.Errorf("failed to parse inner node: %w", err)
+	}
+	return node, nil
+}
+
+func (n *Nodestore) getStagedNode(id NodeID) (Node, bool) {
+	n.mtx.RLock()
+	defer n.mtx.RUnlock()
+	node, ok := n.staging[id]
+	return node, ok
+}
+
+func generateNodeID(oid objectID, offset int, length int) NodeID {
+	var id NodeID
+	binary.LittleEndian.PutUint64(id[:], uint64(oid))
+	binary.LittleEndian.PutUint32(id[8:], uint32(offset))
+	binary.LittleEndian.PutUint32(id[12:], uint32(length))
+	return id
 }
 
 // nodeMerge does an N-way tree merge, returning a "path" from the root to leaf
@@ -464,21 +499,6 @@ func (n *Nodestore) mergeLeaves(ctx context.Context, nodeIDs []NodeID) (NodeID, 
 	}
 	newLeaf := NewLeafNode(buf.Bytes())
 	return n.Stage(newLeaf), nil
-}
-
-func (n *Nodestore) Print(ctx context.Context, nodeID NodeID, version uint64, statistics *Statistics) (string, error) {
-	node, err := n.Get(ctx, nodeID)
-	if err != nil {
-		return "", fmt.Errorf("failed to get node %d: %w", nodeID, err)
-	}
-	switch node := node.(type) {
-	case *InnerNode:
-		return n.printInnerNode(ctx, node, version, statistics)
-	case *LeafNode:
-		return node.String(), nil
-	default:
-		return "", fmt.Errorf("unexpected node type: %+v", node)
-	}
 }
 
 func (n *Nodestore) printInnerNode(

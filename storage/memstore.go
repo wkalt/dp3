@@ -5,6 +5,12 @@ import (
 	"sync"
 )
 
+/*
+Memstore is an in-memory storage provider backed by a map. It is only suitable for tests.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
 // MemStore is an in-memory store.
 type MemStore struct {
 	data map[string][]byte

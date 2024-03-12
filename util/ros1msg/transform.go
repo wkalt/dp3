@@ -6,7 +6,13 @@ import (
 	"github.com/wkalt/dp3/util/schema"
 )
 
-// Convert a ROS1 message definition AST to a schema.Schema.
+/*
+Converts the participle AST into our schema.Schema representation, which will be
+nicer to work with.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
 var (
 	primitiveTypes = map[string]schema.PrimitiveType{ // nolint:gochecknoglobals
 		"int8":     schema.INT8,

@@ -11,6 +11,11 @@ import (
 	"github.com/wkalt/dp3/nodestore"
 )
 
+/*
+SQLRootmap is a rootmap implementation backed by a sql.DB. The only database
+that has been used or tested is sqlite.
+*/
+
 type sqlRootmap struct {
 	db  *sql.DB
 	mtx *sync.Mutex

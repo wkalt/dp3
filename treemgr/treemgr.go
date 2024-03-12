@@ -21,8 +21,18 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+/*
+The tree manager oversees the set of trees involved in data storage. One tree is
+associated with each (producer, topic) pair, so the total number of trees under
+management can grow very large.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
+// ErrNotImplemented is returned when a method is not implemented.
 var ErrNotImplemented = errors.New("not implemented")
 
+// TreeManager is the main interface to the treemgr package.
 type TreeManager struct {
 	ns      *nodestore.Nodestore
 	vs      versionstore.Versionstore
@@ -32,6 +42,7 @@ type TreeManager struct {
 	syncWorkers int
 }
 
+// NewTreeManager returns a new TreeManager.
 func NewTreeManager(
 	ns *nodestore.Nodestore,
 	vs versionstore.Versionstore,
@@ -115,12 +126,14 @@ func (tm *TreeManager) Receive(ctx context.Context, producerID string, data io.R
 	return nil
 }
 
+// StatisticalSummary is a summary of statistics for a given time range.
 type StatisticalSummary struct {
 	Start      uint64                `json:"start"`
 	End        uint64                `json:"end"`
 	Statistics *nodestore.Statistics `json:"statistics"`
 }
 
+// GetStatistics returns a summary of statistics for the given time range.
 func (tm *TreeManager) GetStatistics(
 	ctx context.Context,
 	start, end uint64,
@@ -202,6 +215,7 @@ func (tm *TreeManager) getMessages(
 	return nil
 }
 
+// GetMessagesLatest returns a stream of messages for the given time range.
 func (tm *TreeManager) GetMessagesLatest(
 	ctx context.Context,
 	w io.Writer,
@@ -223,6 +237,7 @@ func (tm *TreeManager) GetMessagesLatest(
 	return nil
 }
 
+// GetStatisticsLatest returns a summary of statistics for the given time range.
 func (tm *TreeManager) GetStatisticsLatest(
 	ctx context.Context,
 	start, end uint64,
@@ -268,6 +283,7 @@ func (tm *TreeManager) insert(
 	return nil
 }
 
+// StartWALSyncLoop starts a loop that periodically syncs the WAL to the tree.
 func (tm *TreeManager) StartWALSyncLoop(ctx context.Context) {
 	ticker := time.NewTicker(120 * time.Second)
 	for {
@@ -281,6 +297,25 @@ func (tm *TreeManager) StartWALSyncLoop(ctx context.Context) {
 			return
 		}
 	}
+}
+
+// SyncWAL syncs the WAL to persistent storage.
+func (tm *TreeManager) SyncWAL(ctx context.Context) error {
+	listings, err := tm.ns.ListWAL(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list WAL: %w", err)
+	}
+	grp := errgroup.Group{}
+	grp.SetLimit(tm.syncWorkers)
+	for _, listing := range listings {
+		grp.Go(func() error {
+			return tm.syncWALListing(ctx, listing)
+		})
+	}
+	if err := grp.Wait(); err != nil {
+		return fmt.Errorf("failed to sync WAL: %w", err)
+	}
+	return nil
 }
 
 func (tm *TreeManager) syncWALListing(
@@ -335,24 +370,6 @@ func (tm *TreeManager) syncWALListing(
 	}
 	if err := tm.rootmap.Put(ctx, listing.ProducerID, listing.Topic, version, newRootID); err != nil {
 		return fmt.Errorf("failed to update rootmap: %w", err)
-	}
-	return nil
-}
-
-func (tm *TreeManager) SyncWAL(ctx context.Context) error {
-	listings, err := tm.ns.ListWAL(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to list WAL: %w", err)
-	}
-	grp := errgroup.Group{}
-	grp.SetLimit(tm.syncWorkers)
-	for _, listing := range listings {
-		grp.Go(func() error {
-			return tm.syncWALListing(ctx, listing)
-		})
-	}
-	if err := grp.Wait(); err != nil {
-		return fmt.Errorf("failed to sync WAL: %w", err)
 	}
 	return nil
 }
@@ -418,6 +435,7 @@ func (tm *TreeManager) newRoot(ctx context.Context, producerID string, topic str
 	return nil
 }
 
+// PrintStream returns a string representation of the tree for the given stream.
 func (tm *TreeManager) PrintStream(ctx context.Context, producerID string, topic string) string {
 	root, version, err := tm.rootmap.GetLatest(ctx, producerID, topic)
 	if err != nil {

@@ -8,12 +8,27 @@ import (
 	"time"
 )
 
+/*
+log implements context-based logging using the slog structured logging package.
+All logging in dp3 should use these functions. This is for ergonomics and also
+for the "AddTags" functionality, which adds a log key to the context that is
+then propagated in all descendent logging calls. We use this for instance, to
+ensure that all logging related to a request is tagged with the request ID.
+
+There are "f" and "w" versions of each function. The "f" version takes a format
+string and parameters, and the "w" version takes an even-length list of
+key-value pairs.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
 type contextKey int
 
 const (
 	logTagKey contextKey = iota
 )
 
+// AddTags adds key-value pairs to the log context.
 func AddTags(ctx context.Context, kvs ...any) context.Context {
 	if len(kvs)%2 != 0 {
 		panic("log: AddTags requires an even number of arguments")
@@ -50,18 +65,22 @@ func levelf(ctx context.Context, level slog.Level, format string, args ...any) {
 	}
 }
 
+// Infof logs a message with some additional context.
 func Infof(ctx context.Context, format string, args ...any) {
 	levelf(ctx, slog.LevelInfo, format, args...)
 }
 
+// Errorf logs an error message with some additional context.
 func Errorf(ctx context.Context, format string, args ...any) {
 	levelf(ctx, slog.LevelError, format, args...)
 }
 
+// Debugf logs a debug message with some additional context.
 func Debugf(ctx context.Context, format string, args ...any) {
 	levelf(ctx, slog.LevelDebug, format, args...)
 }
 
+// Warnf logs a warning message with some additional context.
 func Warnf(ctx context.Context, format string, args ...any) {
 	levelf(ctx, slog.LevelWarn, format, args...)
 }
@@ -85,18 +104,22 @@ func levelw(ctx context.Context, level slog.Level, msg string, keyvals ...any) {
 	}
 }
 
+// Infow logs a message with some additional context.
 func Infow(ctx context.Context, msg string, keyvals ...any) {
 	levelw(ctx, slog.LevelInfo, msg, keyvals...)
 }
 
+// Errorw logs an error message with some additional context.
 func Errorw(ctx context.Context, msg string, keyvals ...any) {
 	levelw(ctx, slog.LevelError, msg, keyvals...)
 }
 
+// Debugw logs a debug message with some additional context.
 func Debugw(ctx context.Context, msg string, keyvals ...any) {
 	levelw(ctx, slog.LevelDebug, msg, keyvals...)
 }
 
+// Warnw logs a warning message with some additional context.
 func Warnw(ctx context.Context, msg string, keyvals ...any) {
 	levelw(ctx, slog.LevelWarn, msg, keyvals...)
 }
