@@ -108,6 +108,11 @@ It differs in support for multimodal data and multiplexed playback, and in
 drawing a slightly different contract with its consumers, based on "topics" and
 "producer IDs" rather than "stream IDs".
 
+In large deployments, dp3 is envisioned as a component within a greater
+domain-specific data infrastructure. However, in smaller deployments the hope
+of dp3 is that incorporation of topics and producers in the core data model
+will enable orgs to make use of dp3 "off the bat" without secondary indicies.
+
 ### Glossary
 * **Producer ID**: a unique identifier assigned by the user to the producer of some
   data. For instance, a device identifier or a simulation run ID.
