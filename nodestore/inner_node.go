@@ -6,44 +6,57 @@ import (
 	"fmt"
 )
 
+/*
+Inner nodes are the interior nodes of the tree. They contain lists of children
+containing child node IDs and statistics. Inner nodes are expected to be in
+cache, so traversing them will generally be fast and not require disk.
+
+Currently we just serialize the inner nodes as JSON. Once we have field-level
+statistics on the messages, the dimensions of the inner node will significantly
+change, and we will be in a better position to design a compact format.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
+// innerNodeVersion is the physical version of the node. Each node's physical
+// serialization starts with an unsigned byte indicating version, and also
+// allowing us to distinguish between leaf and inner nodes. Inner nodes get
+// bytes 0-128 and leaf nodes get 129-256.
 const innerNodeVersion = uint8(1)
 
-// todo: compact format
-// * child list may compress well if we number the tree sequentially.
-// * otoh we may need to think about the scheme, to allow a sequential numbering
-//   of ids that is also shared across trees that don't exist yet.
-// * version should be out of the node body and into the children array.
-
-// innerNode represents an interior node in the tree, with slots for 64
+// InnerNode represents an interior node in the tree, with slots for 64
 // children.
 type InnerNode struct {
 	Start    uint64   `json:"start"`
 	End      uint64   `json:"end"`
-	Depth    uint8    `json:"depth"`
+	Depth    uint8    `json:"depth"` // distance from leaf
 	Children []*Child `json:"children"`
 
 	version uint8
 }
 
+// Child represents a child of an inner node.
 type Child struct {
 	ID         NodeID      `json:"id"`
 	Version    uint64      `json:"version"`
 	Statistics *Statistics `json:"statistics"`
 }
 
+// Size returns the size of the node in bytes.
 func (n *InnerNode) Size() uint64 {
 	return 8 + 8 + 1 + uint64(len(n.Children)*24)
 }
 
-// toBytes serializes the node to a byte array.
+// ToBytes serializes the node to a byte array.
 func (n *InnerNode) ToBytes() []byte {
-	bytes, _ := json.Marshal(n) // nolint temporary
+	bytes, _ := json.Marshal(n) // nolint swallowing the error; once we have a compact format there won't be errors.
 	buf := make([]byte, len(bytes)+1)
 	buf[0] = n.version
 	copy(buf[1:], bytes)
 	return buf
 }
 
+// FromBytes deserializes the node from a byte array.
 func (n *InnerNode) FromBytes(data []byte) error {
 	version := data[0]
 	if version >= 128 {
@@ -57,6 +70,7 @@ func (n *InnerNode) FromBytes(data []byte) error {
 	return nil
 }
 
+// PlaceChild sets the child at the given index to the given ID and version.
 func (n *InnerNode) PlaceChild(index uint64, id NodeID, version uint64, statistics *Statistics) {
 	n.Children[index] = &Child{
 		ID:         id,
@@ -65,10 +79,12 @@ func (n *InnerNode) PlaceChild(index uint64, id NodeID, version uint64, statisti
 	}
 }
 
+// Type returns the type of the node.
 func (n *InnerNode) Type() NodeType {
 	return Inner
 }
 
+// NewInnerNode creates a new inner node with the given depth and range.
 func NewInnerNode(depth uint8, start, end uint64, branchingFactor int) *InnerNode {
 	return &InnerNode{
 		Start:    start,

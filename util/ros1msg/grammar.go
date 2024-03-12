@@ -5,6 +5,16 @@ import (
 	"github.com/alecthomas/participle/v2/lexer"
 )
 
+/*
+This is a grammar for the ROS msg format: http://wiki.ros.org/msg.
+
+We call this ros1msg in the project because ros2 uses a subtlely different scheme.
+
+ros1msg is a schema description for messages on a ROS connection (which is
+mapped to an MCAP channel). In ROS serialization it plays an analgous role to
+.proto files or Avro schemas.
+*/
+
 // nolint:gochecknoglobals
 var (
 	Lexer = lexer.MustSimple([]lexer.SimpleRule{

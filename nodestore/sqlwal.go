@@ -10,6 +10,13 @@ import (
 	"github.com/wkalt/dp3/util"
 )
 
+/*
+SQLWAL is a write-ahead log for the nodestore backed by an SQL database. The
+only database that has been used or tested is sqlite.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
 type sqlWAL struct {
 	db  *sql.DB
 	mtx *sync.Mutex

@@ -7,6 +7,27 @@ import (
 	"github.com/wkalt/dp3/nodestore"
 )
 
+/*
+The tree package concerns maintenance of individual copy-on-write trees. Trees
+are identified with a node ID and have no additional state. Operations on trees
+return new root IDs.
+
+The storage of dp3 consists of many trees, which are coordinated by the treemgr
+module.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Insert stages leaf data into the tree rooted at nodeID, in the leaf location
+// appropriate for the supplied timestamp.
+//
+// All new nodes down to the leaf are assigned the version parameter as the
+// version, and associated with the provided statistics record.
+// new leaf are assigned the version parameter.
+//
+// A new root node ID is returned, corresponding to the root of the new tree. At
+// the time it is returned, the new node exists only in the nodestore's staging
+// map. The caller is responsible for flushing the ID to WAL.
 func Insert(
 	ctx context.Context,
 	ns *nodestore.Nodestore,
@@ -34,7 +55,7 @@ func Insert(
 	}
 	bucket := bucket(start, current)
 	node := nodestore.NewLeafNode(data)
-	stagedID := ns.Stage(node)
+	stagedID := ns.Stage(node) // todo: should insert flush to WAL?
 	nodes = append(nodes, stagedID)
 	current.PlaceChild(bucket, stagedID, version, statistics)
 	return nodes[0], nodes, nil

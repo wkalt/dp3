@@ -8,6 +8,7 @@ import (
 	"github.com/wkalt/dp3/util/httputil"
 )
 
+// StatRangeRequest is the request body for the statrange endpoint.
 type StatRangeRequest struct {
 	ProducerID  string `json:"producerId"`
 	Start       uint64 `json:"start"`

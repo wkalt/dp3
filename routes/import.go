@@ -10,6 +10,7 @@ import (
 	"github.com/wkalt/dp3/util/log"
 )
 
+// ImportRequest is the request body for the import endpoint.
 type ImportRequest struct {
 	ProducerID string `json:"producerId"`
 	Path       string `json:"path"`

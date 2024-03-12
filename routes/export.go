@@ -9,6 +9,7 @@ import (
 	"github.com/wkalt/dp3/util/log"
 )
 
+// ExportRequest is the request body for the export endpoint.
 type ExportRequest struct {
 	ProducerID string   `json:"producerId"`
 	Topics     []string `json:"topics"`

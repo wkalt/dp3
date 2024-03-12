@@ -6,6 +6,13 @@ import (
 	"github.com/wkalt/dp3/nodestore"
 )
 
+/*
+memrootmap is an in-memory implementation of the rootmap interface. It is only
+suitable for usage in testing.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
 type root struct {
 	producerID string
 	topic      string

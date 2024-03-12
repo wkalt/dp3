@@ -10,6 +10,13 @@ import (
 	"github.com/wkalt/dp3/nodestore"
 )
 
+/*
+The tree iterator holds the state of an active scan over leaves of a tree,
+primarily related to opening and closing leaf MCAP data.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
 // Iterator is an iterator over a tree.
 type Iterator struct {
 	start uint64
@@ -22,6 +29,52 @@ type Iterator struct {
 	ns          *nodestore.Nodestore
 }
 
+// NewTreeIterator returns a new iterator over the given tree.
+func NewTreeIterator(
+	ctx context.Context,
+	ns *nodestore.Nodestore,
+	rootID nodestore.NodeID,
+	start uint64,
+	end uint64,
+) (*Iterator, error) {
+	it := &Iterator{start: start, end: end, ns: ns}
+	if err := it.initialize(ctx, rootID); err != nil {
+		return nil, err
+	}
+	return it, nil
+}
+
+// More returns true if there are more elements in the iteration.
+func (ti *Iterator) More() bool {
+	return ti.nextLeaf < len(ti.leafIDs)
+}
+
+// Next returns the next element in the iteration.
+func (ti *Iterator) Next(ctx context.Context) (*mcap.Schema, *mcap.Channel, *mcap.Message, error) {
+	for ti.nextLeaf < len(ti.leafIDs) {
+		if ti.msgIterator == nil {
+			if err := ti.openNextLeaf(ctx); err != nil {
+				return nil, nil, nil, err
+			}
+		}
+		schema, channel, message, err := ti.msgIterator.Next(nil)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				ti.reader.Close()
+				ti.reader = nil
+				ti.msgIterator = nil
+				ti.nextLeaf++
+				continue
+			}
+			return nil, nil, nil, fmt.Errorf("failed to read message: %w", err)
+		}
+		return schema, channel, message, nil
+	}
+	return nil, nil, nil, io.EOF
+}
+
+// Initializing an iterator at a root ID will populate the iterator's list of
+// leaf IDs with those that overlap with the configured request parameters.
 func (ti *Iterator) initialize(ctx context.Context, rootID nodestore.NodeID) error {
 	stack := []nodestore.NodeID{rootID}
 	for len(stack) > 0 {
@@ -55,6 +108,7 @@ func (ti *Iterator) initialize(ctx context.Context, rootID nodestore.NodeID) err
 	return nil
 }
 
+// openNextLeaf opens the next leaf in the iterator.
 func (ti *Iterator) openNextLeaf(ctx context.Context) error {
 	leafID := ti.leafIDs[ti.nextLeaf]
 	node, err := ti.ns.Get(ctx, leafID)
@@ -76,47 +130,4 @@ func (ti *Iterator) openNextLeaf(ctx context.Context) error {
 	ti.msgIterator = it
 	ti.reader = reader
 	return nil
-}
-
-func (ti *Iterator) More() bool {
-	return ti.nextLeaf < len(ti.leafIDs)
-}
-
-// Next returns the next element in the iteration.
-func (ti *Iterator) Next(ctx context.Context) (*mcap.Schema, *mcap.Channel, *mcap.Message, error) {
-	for ti.nextLeaf < len(ti.leafIDs) {
-		if ti.msgIterator == nil {
-			if err := ti.openNextLeaf(ctx); err != nil {
-				return nil, nil, nil, err
-			}
-		}
-		schema, channel, message, err := ti.msgIterator.Next(nil)
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				ti.reader.Close()
-				ti.reader = nil
-				ti.msgIterator = nil
-				ti.nextLeaf++
-				continue
-			}
-			return nil, nil, nil, fmt.Errorf("failed to read message: %w", err)
-		}
-		return schema, channel, message, nil
-	}
-	return nil, nil, nil, io.EOF
-}
-
-// NewTreeIterator returns a new iterator over the given tree.
-func NewTreeIterator(
-	ctx context.Context,
-	ns *nodestore.Nodestore,
-	rootID nodestore.NodeID,
-	start uint64,
-	end uint64,
-) (*Iterator, error) {
-	it := &Iterator{start: start, end: end, ns: ns}
-	if err := it.initialize(ctx, rootID); err != nil {
-		return nil, err
-	}
-	return it, nil
 }

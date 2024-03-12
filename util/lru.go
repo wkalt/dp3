@@ -7,6 +7,12 @@ import (
 	"sync"
 )
 
+/*
+LRU is a simple byte-capacity limited LRU cache. We use it for the cache of nodes in the node store.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
 var ErrValueTooLarge = errors.New("value is too large")
 
 // LRU is a simple LRU cache.

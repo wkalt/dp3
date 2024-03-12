@@ -9,6 +9,14 @@ import (
 	"github.com/wkalt/dp3/util/log"
 )
 
+/*
+httputil contains utility functions for HTTP error responses. Any error
+generated in a handler should go through one of these, to ensure we are logging
+and responding to the client in a consistent way.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
@@ -29,5 +37,5 @@ func BadRequest(ctx context.Context, w http.ResponseWriter, msg string, args ...
 
 func InternalServerError(ctx context.Context, w http.ResponseWriter, msg string, args ...any) {
 	log.Errorw(ctx, "Internal server error", "msg", fmt.Sprintf(msg, args...))
-	writeErrorResponse(ctx, w, http.StatusInternalServerError, fmt.Sprintf(msg, args...))
+	writeErrorResponse(ctx, w, http.StatusInternalServerError, "Internal server error")
 }

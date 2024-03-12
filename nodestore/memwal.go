@@ -6,6 +6,13 @@ import (
 	"golang.org/x/exp/maps"
 )
 
+/*
+memwal is an in-memory implementation of the WAL interface. It is only suitable
+for usage in testing.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
 type memwal struct {
 	entries []*WALEntry
 }

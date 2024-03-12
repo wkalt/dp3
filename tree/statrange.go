@@ -8,12 +8,26 @@ import (
 	"github.com/wkalt/dp3/nodestore"
 )
 
+/*
+Statrange refers to our multigranular statistics computed on inner nodes. This
+file contains methods relating to those. It's possible we should just dump these
+into tree.go.
+*/
+
+//////////////////////////////////////////////////////////////////////////////
+
+// StatRange is a range of statistics.
 type StatRange struct {
 	Start      uint64                `json:"start"`
 	End        uint64                `json:"end"`
 	Statistics *nodestore.Statistics `json:"statistics"`
 }
 
+// GetStatRange returns the statistics for the given range of time, for the tree
+// rooted at rootID. The granularity parameter is interpreted as a "maximum
+// granularity". The returned granularity is guaranteed to be at least as fine
+// as the one requested, and in practice can be considerably finer. This can
+// lead to confusing results so clients must be prepared to handle it.
 func GetStatRange(
 	ctx context.Context,
 	ns *nodestore.Nodestore,

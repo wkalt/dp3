@@ -9,6 +9,13 @@ import (
 	"time"
 )
 
+/*
+Utility functions.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
+// Pow returns x raised to the power of y.
 func Pow[V int | int64 | float64 | uint64 | float32](x V, y int) V {
 	if y == 0 {
 		return 1
@@ -23,6 +30,7 @@ func Pow[V int | int64 | float64 | uint64 | float32](x V, y int) V {
 	return result
 }
 
+// GroupBy groups records by the result of f.
 func GroupBy[T any, K comparable](records []T, f func(T) K) map[K][]T {
 	groups := make(map[K][]T)
 	for _, record := range records {
@@ -32,20 +40,24 @@ func GroupBy[T any, K comparable](records []T, f func(T) K) map[K][]T {
 	return groups
 }
 
+// ParseNanos returns a time.Time from a nanosecond timestamp.
 func ParseNanos(x uint64) time.Time {
 	return time.Unix(int64(x/1e9), int64(x%1e9))
 }
 
+// DateSeconds returns a Unix timestamp from a date string.
 func DateSeconds(date string) uint64 {
 	t, _ := time.Parse("2006-01-02", date)
 	return uint64(t.Unix())
 }
 
+// ComputeStreamID returns a unique stream ID from a hashid and a topic.
 func ComputeStreamID(hashid string, topic string) string {
 	sum := md5.Sum([]byte(hashid + topic))
 	return hex.EncodeToString(sum[:])
 }
 
+// Okeys returns the keys of a map in sorted order.
 func Okeys[T cmp.Ordered, K any](m map[T]K) []T {
 	keys := make([]T, 0, len(m))
 	for k := range m {

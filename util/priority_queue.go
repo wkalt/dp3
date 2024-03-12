@@ -2,6 +2,13 @@ package util
 
 import "cmp"
 
+/*
+PriorityQueue is a simple heap-based priority queue. We use it to execute
+streaming merges over tree iterators.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
 type Item[K comparable, P cmp.Ordered] struct {
 	Value    K
 	Priority P

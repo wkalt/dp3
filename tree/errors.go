@@ -6,15 +6,19 @@ import (
 	"github.com/wkalt/dp3/nodestore"
 )
 
+// UnexpectedNodeError is returned when a node of the wrong type is found in the
+// nodestore.
 type UnexpectedNodeError struct {
 	expected nodestore.NodeType
 	found    nodestore.Node
 }
 
+// Error returns a string representation of the error.
 func (e UnexpectedNodeError) Error() string {
 	return fmt.Sprintf("expected %s but found %T - database is corrupt", e.expected, e.found)
 }
 
+// Is returns true if the target error is an UnexpectedNodeError.
 func (e UnexpectedNodeError) Is(target error) bool {
 	_, ok := target.(UnexpectedNodeError)
 	return ok
@@ -27,16 +31,19 @@ func newUnexpectedNodeError(expected nodestore.NodeType, found nodestore.Node) e
 	}
 }
 
+// OutOfBoundsError is returned when a timestamp is out of range for a node.
 type OutOfBoundsError struct {
 	t     uint64
 	start uint64
 	end   uint64
 }
 
+// Error returns a string representation of the error.
 func (e OutOfBoundsError) Error() string {
 	return fmt.Sprintf("timestamp %d out of range [%d, %d)", e.t, e.start, e.end)
 }
 
+// Is returns true if the target error is an OutOfBoundsError.
 func (e OutOfBoundsError) Is(target error) bool {
 	_, ok := target.(OutOfBoundsError)
 	return ok

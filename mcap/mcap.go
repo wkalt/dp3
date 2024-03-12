@@ -7,6 +7,7 @@ import (
 	"github.com/foxglove/mcap/go/mcap"
 )
 
+// NewWriter returns a new mcap writer with sensible defaults.
 func NewWriter(w io.Writer) (*mcap.Writer, error) {
 	writer, err := mcap.NewWriter(w, &mcap.WriterOptions{
 		IncludeCRC:  true,
@@ -20,6 +21,7 @@ func NewWriter(w io.Writer) (*mcap.Writer, error) {
 	return writer, nil
 }
 
+// NewReader returns a new mcap reader with sensible defaults.
 func NewReader(r io.Reader) (*mcap.Reader, error) {
 	reader, err := mcap.NewReader(r)
 	if err != nil {
