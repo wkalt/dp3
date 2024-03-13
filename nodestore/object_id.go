@@ -19,9 +19,3 @@ type objectID uint64
 func (id objectID) String() string {
 	return strconv.FormatUint(uint64(id), 10)
 }
-
-func (n *Nodestore) generateObjectID() objectID {
-	id := n.nextNodeID
-	n.nextNodeID++
-	return objectID(id)
-}

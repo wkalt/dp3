@@ -45,10 +45,8 @@ to storage.
 ////////////////////////////////////////////////////////////////////////////////
 
 type Nodestore struct {
-	store      storage.Provider
-	cache      *util.LRU[NodeID, Node]
-	nextNodeID uint64
-	maxNodeID  uint64
+	store storage.Provider
+	cache *util.LRU[NodeID, Node]
 
 	staging map[NodeID]Node
 	mtx     *sync.RWMutex
@@ -63,13 +61,11 @@ func NewNodestore(
 	wal WAL,
 ) *Nodestore {
 	return &Nodestore{
-		store:      store,
-		cache:      cache,
-		nextNodeID: 1,
-		maxNodeID:  1e6, // todo: grab this from persistent storage on startup
-		mtx:        &sync.RWMutex{},
-		staging:    make(map[NodeID]Node),
-		wal:        wal,
+		store:   store,
+		cache:   cache,
+		mtx:     &sync.RWMutex{},
+		staging: make(map[NodeID]Node),
+		wal:     wal,
 	}
 }
 
@@ -187,8 +183,7 @@ func (n *Nodestore) Flush(ctx context.Context, version uint64, ids ...NodeID) (n
 	offset := 0
 	slices.Reverse(ids)
 	processed := make(map[NodeID]NodeID)
-	oid := n.generateObjectID()
-
+	oid := objectID(version)
 	for i, id := range ids {
 		node, ok := n.getStagedNode(id)
 		if !ok {
