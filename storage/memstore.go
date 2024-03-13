@@ -1,8 +1,12 @@
 package storage
 
 import (
+	"bytes"
 	"context"
+	"io"
 	"sync"
+
+	"github.com/wkalt/dp3/util"
 )
 
 /*
@@ -26,14 +30,15 @@ func (m *MemStore) Put(_ context.Context, id string, data []byte) error {
 }
 
 // Get retrieves an object from the store.
-func (m *MemStore) GetRange(_ context.Context, id string, offset int, length int) ([]byte, error) {
+func (m *MemStore) GetRange(_ context.Context, id string, offset int, length int) (io.ReadSeekCloser, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 	data, ok := m.data[id]
 	if !ok {
 		return nil, ErrObjectNotFound
 	}
-	return data[offset : offset+length], nil
+
+	return util.NewReadSeekNopCloser(bytes.NewReader(data[offset : offset+length])), nil
 }
 
 // Delete removes an object from the store.

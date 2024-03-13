@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"io"
 )
 
 /*
@@ -19,6 +20,6 @@ var ErrObjectNotFound = errors.New("object not found")
 // Provider is the interface for a storage provider.
 type Provider interface {
 	Put(ctx context.Context, id string, data []byte) error
-	GetRange(ctx context.Context, id string, offset int, length int) ([]byte, error)
+	GetRange(ctx context.Context, id string, offset int, length int) (io.ReadSeekCloser, error)
 	Delete(ctx context.Context, id string) error
 }

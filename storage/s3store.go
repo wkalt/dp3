@@ -50,7 +50,7 @@ func (s *s3store) Put(ctx context.Context, id string, data []byte) error {
 }
 
 // GetRange retrieves a range of bytes from the object store.
-func (s *s3store) GetRange(ctx context.Context, id string, offset int, length int) ([]byte, error) {
+func (s *s3store) GetRange(ctx context.Context, id string, offset int, length int) (io.ReadSeekCloser, error) {
 	req := minio.GetObjectOptions{}
 	if err := req.SetRange(int64(offset), int64(offset+length)); err != nil {
 		return nil, fmt.Errorf("failed to set range: %w", err)
@@ -59,18 +59,13 @@ func (s *s3store) GetRange(ctx context.Context, id string, offset int, length in
 	if err != nil {
 		return nil, fmt.Errorf("failed to get object: %w", err)
 	}
-	defer obj.Close()
 	if _, err := obj.Seek(int64(offset), io.SeekStart); err != nil {
 		if err.Error() == minioErrObjectNotExist {
 			return nil, ErrObjectNotFound
 		}
 		return nil, fmt.Errorf("failed to seek: %w", err)
 	}
-	data := make([]byte, length)
-	if _, err := io.ReadFull(obj, data); err != nil {
-		return nil, fmt.Errorf("failed to read: %w", err)
-	}
-	return data, nil
+	return obj, nil
 }
 
 // Delete removes an object from the object store.
