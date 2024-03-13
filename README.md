@@ -167,3 +167,16 @@ message bytes logged by the device are exactly the ones stored in the database.
 
 Users of ROS 1 bag files can try dp3 by converting their bags to mcap with the
 [mcap CLI tool](https://github.com/foxglove/mcap?tab=readme-ov-file#cli-tool).
+
+## Developers
+We use golangci-lint for linting.  To install it it follow the directions here: https://golangci-lint.run/usage/install.
+
+To run the tests:
+```
+    make test
+```
+
+To run the linter:
+```
+    make lint
+```
