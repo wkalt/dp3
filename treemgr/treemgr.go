@@ -153,6 +153,20 @@ func (tm *TreeManager) GetStatistics(
 	return ranges, nil
 }
 
+func closeAll(ctx context.Context, closers ...*tree.Iterator) {
+	var errs []error
+	for _, closer := range closers {
+		if err := closer.Close(); err != nil {
+			errs = append(errs, closer.Close())
+		}
+	}
+	for _, err := range errs {
+		if err != nil {
+			log.Errorf(ctx, "failed to close iterator: %v", err)
+		}
+	}
+}
+
 func (tm *TreeManager) getMessages(
 	ctx context.Context,
 	w io.Writer,
@@ -167,7 +181,7 @@ func (tm *TreeManager) getMessages(
 		}
 		iterators = append(iterators, it)
 	}
-
+	defer closeAll(ctx, iterators...)
 	pq := util.NewPriorityQueue[record, uint64]()
 	heap.Init(pq)
 
