@@ -44,6 +44,10 @@ func (m *MemStore) Delete(_ context.Context, id string) error {
 	return nil
 }
 
+func (m *MemStore) String() string {
+	return "memory"
+}
+
 // NewMemStore returns a new in-memory store.
 func NewMemStore() *MemStore {
 	return &MemStore{

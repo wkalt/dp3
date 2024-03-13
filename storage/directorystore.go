@@ -63,3 +63,7 @@ func (d *DirectoryStore) Delete(_ context.Context, id string) error {
 	}
 	return nil
 }
+
+func (d *DirectoryStore) String() string {
+	return fmt.Sprintf("directory(%s)", d.root)
+}

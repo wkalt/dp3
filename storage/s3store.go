@@ -83,3 +83,7 @@ func (s *s3store) Delete(ctx context.Context, id string) error {
 	}
 	return nil
 }
+
+func (s *s3store) String() string {
+	return fmt.Sprintf("s3(%s)", s.bucket)
+}

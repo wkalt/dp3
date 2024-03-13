@@ -9,15 +9,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"path"
-	"path/filepath"
 	"syscall"
 	"time"
 
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/rootmap"
 	"github.com/wkalt/dp3/routes"
-	"github.com/wkalt/dp3/storage"
 	"github.com/wkalt/dp3/treemgr"
 	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/log"
@@ -50,9 +47,9 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 	}
 	slog.SetLogLoggerLevel(opts.LogLevel)
 	log.Debugf(ctx, "Debug logging enabled")
-	store := storage.NewDirectoryStore(opts.DataDir)
+	store := opts.StorageProvider
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](opts.CacheSizeBytes)
-	walpath := path.Join(opts.DataDir, "wal.db")
+	walpath := "wal.db"
 	db, err := sql.Open("sqlite3", walpath)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
@@ -84,14 +81,10 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 			log.Errorf(ctx, "failed to start server: %s", err)
 		}
 	}()
-	datadir, err := filepath.Abs(opts.DataDir)
-	if err != nil {
-		return fmt.Errorf("failed to get absolute path of data dir: %w", err)
-	}
 	log.Infow(ctx, "Started server",
 		"port", opts.Port,
 		"cache", util.HumanBytes(opts.CacheSizeBytes),
-		"datadir", datadir,
+		"storage", store,
 	)
 	<-done
 	log.Infof(ctx, "Allowing 10 seconds for existing connections to close")
@@ -110,15 +103,14 @@ func readOpts(opts ...DP3Option) (*DP3Options, error) {
 	options := DP3Options{
 		CacheSizeBytes: 1 * gigabyte,
 		Port:           8089,
-		DataDir:        "",
 		LogLevel:       slog.LevelInfo,
 		SyncWorkers:    10,
 	}
 	for _, opt := range opts {
 		opt(&options)
 	}
-	if options.DataDir == "" {
-		return nil, errors.New("data dir is required")
+	if options.StorageProvider == nil {
+		return nil, errors.New("storage provider is required")
 	}
 
 	return &options, nil
