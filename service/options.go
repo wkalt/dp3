@@ -1,6 +1,10 @@
 package service
 
-import "log/slog"
+import (
+	"log/slog"
+
+	"github.com/wkalt/dp3/storage"
+)
 
 /*
 Functional options for the dp3 service.
@@ -13,11 +17,11 @@ type DP3Option func(*DP3Options)
 
 // DP3Options contains options for the DP3 service.
 type DP3Options struct {
-	CacheSizeBytes uint64
-	DataDir        string
-	Port           int
-	LogLevel       slog.Level
-	SyncWorkers    int
+	CacheSizeBytes  uint64
+	Port            int
+	LogLevel        slog.Level
+	SyncWorkers     int
+	StorageProvider storage.Provider
 }
 
 // WithCacheSizeMegabytes sets the cache size in megabytes.
@@ -34,13 +38,6 @@ func WithSyncWorkers(workers int) DP3Option {
 	}
 }
 
-// WithDataDir sets the data directory.
-func WithDataDir(dir string) DP3Option {
-	return func(opts *DP3Options) {
-		opts.DataDir = dir
-	}
-}
-
 // WithPort sets the port to listen on.
 func WithPort(port int) DP3Option {
 	return func(opts *DP3Options) {
@@ -52,5 +49,12 @@ func WithPort(port int) DP3Option {
 func WithLogLevel(level slog.Level) DP3Option {
 	return func(opts *DP3Options) {
 		opts.LogLevel = level
+	}
+}
+
+// WithStorageProvider sets the storage provider for primary storage.
+func WithStorageProvider(store storage.Provider) DP3Option {
+	return func(opts *DP3Options) {
+		opts.StorageProvider = store
 	}
 }
