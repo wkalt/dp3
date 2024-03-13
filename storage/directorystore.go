@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -55,6 +56,9 @@ func (d *DirectoryStore) GetRange(_ context.Context, id string, offset int, leng
 func (d *DirectoryStore) Delete(_ context.Context, id string) error {
 	err := os.Remove(d.root + "/" + id)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) { // For conformance to S3 API
+			return nil
+		}
 		return fmt.Errorf("deletion failure: %w", err)
 	}
 	return nil
