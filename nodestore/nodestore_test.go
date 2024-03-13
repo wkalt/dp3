@@ -150,12 +150,12 @@ func TestWALMerge(t *testing.T) {
 				newRootID, nodeIDs, err := tree.Insert(
 					ctx, ns, rootID, version, times[0], buf.Bytes(), stats) // into staging
 				require.NoError(t, err)
-				require.NoError(t, ns.WALFlush(ctx, producer, topic, version, nodeIDs)) // staging -> wal
+				require.NoError(t, ns.FlushStagingToWAL(ctx, producer, topic, version, nodeIDs)) // staging -> wal
 				version++
 				roots[i] = newRootID
 			}
 
-			rootID, err = ns.WALMerge(ctx, rootID, version, roots)
+			rootID, err = ns.MergeWALToStorage(ctx, rootID, version, roots)
 			require.NoError(t, err)
 
 			str, err := ns.Print(ctx, rootID, version, nil)

@@ -291,7 +291,7 @@ func (tm *TreeManager) insert(
 	if err != nil {
 		return fmt.Errorf("insertion failure: %w", err)
 	}
-	if err := tm.ns.WALFlush(ctx, producerID, topic, version, nodeIDs); err != nil {
+	if err := tm.ns.FlushStagingToWAL(ctx, producerID, topic, version, nodeIDs); err != nil {
 		return fmt.Errorf("failed to flush to WAL: %w", err)
 	}
 	return nil
@@ -369,7 +369,7 @@ func (tm *TreeManager) syncWALListing(
 			nodeIDs := listing.Versions[version]
 			roots = append(roots, nodeIDs[0])
 		}
-		newRootID, err = tm.ns.WALMerge(ctx, rootID, version, roots)
+		newRootID, err = tm.ns.MergeWALToStorage(ctx, rootID, version, roots)
 		if err != nil {
 			return fmt.Errorf("failed to merge WAL into tree: %w", err)
 		}

@@ -103,12 +103,13 @@ func TestTreeInsert(t *testing.T) {
 				)
 				require.NoError(t, err)
 
-				require.NoError(t, ns.WALFlush(ctx, "producer", "topic", version, path))
+				require.NoError(t, ns.FlushStagingToWAL(ctx, "producer", "topic", version, path))
 				roots[i] = rootID
 			}
 
-			rootID, err = ns.WALMerge(ctx, rootID, version, roots)
+			rootID, err = ns.MergeWALToStorage(ctx, rootID, version, roots)
 			require.NoError(t, err)
+
 			repr, err := ns.Print(ctx, rootID, version, nil)
 			require.NoError(t, err)
 			assertEqualTrees(t, c.repr, repr)
