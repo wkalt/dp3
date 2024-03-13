@@ -38,6 +38,12 @@ this using a heirarchical storage scheme:
   in-memory map ("staging") to support temporary manipulations prior to final
   persistence.
 
+I think the staging map can and should probably go away, if the tree can
+communicate to the nodestore about the association between temporary node IDs
+and the in-memory nodes. Currently Insert returns a path of node IDs and the
+order is significant, so a bit of refactoring will be required beyond just
+changing the return type to a map.
+
 The nodestore is also responsible for orchestrating tree merge operations across
 the levels of its hierarchy, such as flushing staged nodes to WAL, or WAL nodes
 to storage.
@@ -70,6 +76,14 @@ func NewNodestore(
 	}
 }
 
+func (n *Nodestore) GetStaged(ctx context.Context, id NodeID) (Node, error) {
+	node, ok := n.getStagedNode(id)
+	if !ok {
+		return nil, NodeNotFoundError{id}
+	}
+	return node, nil
+}
+
 // Get retrieves a node from the nodestore. It will check the cache and staging
 // areas prior to storage. Staging node IDs and "real" node IDs will never
 // conflict.
@@ -77,15 +91,12 @@ func (n *Nodestore) Get(ctx context.Context, id NodeID) (Node, error) {
 	if value, ok := n.cache.Get(id); ok {
 		return value, nil
 	}
-	if value, ok := n.staging[id]; ok {
-		return value, nil
-	}
 	reader, err := n.store.GetRange(ctx, id.OID(), id.Offset(), id.Length())
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotFound) {
 			return nil, NodeNotFoundError{id}
 		}
-		return nil, fmt.Errorf("failed to get node: %w", err)
+		return nil, fmt.Errorf("failed to get node %s: %w", id, err)
 	}
 	defer reader.Close()
 	data, err := io.ReadAll(reader)
@@ -110,7 +121,7 @@ func (n *Nodestore) GetLeaf(ctx context.Context, id NodeID) (io.ReadSeekCloser, 
 		if errors.Is(err, storage.ErrObjectNotFound) {
 			return nil, NodeNotFoundError{id}
 		}
-		return nil, fmt.Errorf("failed to get node: %w", err)
+		return nil, fmt.Errorf("failed to get node %s: %w", id, err)
 	}
 	return reader, nil
 }
@@ -132,8 +143,8 @@ func (n *Nodestore) ListWAL(ctx context.Context) ([]WALListing, error) {
 	return wal, nil
 }
 
-// WALFlush flushes a list of nodes from staging to the WAL.
-func (n *Nodestore) WALFlush(
+// FlushStagingToWAL flushes a list of nodes from staging to the WAL.
+func (n *Nodestore) FlushStagingToWAL(
 	ctx context.Context,
 	producerID string,
 	topic string,
@@ -141,9 +152,9 @@ func (n *Nodestore) WALFlush(
 	ids []NodeID,
 ) error {
 	for _, id := range ids {
-		node, err := n.Get(ctx, id)
-		if err != nil {
-			return fmt.Errorf("failed to get node %s: %w", id, err)
+		node, ok := n.getStagedNode(id)
+		if !ok {
+			return fmt.Errorf("node %s not found in staging", id)
 		}
 		bytes := node.ToBytes()
 		entry := WALEntry{
@@ -156,7 +167,7 @@ func (n *Nodestore) WALFlush(
 		if err := n.wal.Put(ctx, entry); err != nil {
 			return fmt.Errorf("failed to write WAL: %w", err)
 		} // todo: make transactional
-		delete(n.staging, id)
+		n.deleteStagedNode(id)
 	}
 	return nil
 }
@@ -193,11 +204,9 @@ func (n *Nodestore) Stage(node Node) NodeID {
 // into the final output tree.
 func (n *Nodestore) Flush(ctx context.Context, version uint64, ids ...NodeID) (newRootID NodeID, err error) {
 	defer func() {
-		n.mtx.Lock()
 		for _, id := range ids {
-			delete(n.staging, id)
+			n.deleteStagedNode(id)
 		}
-		n.mtx.Unlock()
 	}()
 	newIDs := make([]NodeID, len(ids))
 	buf := &bytes.Buffer{}
@@ -291,10 +300,10 @@ func (n *Nodestore) FlushWALPath(ctx context.Context, version uint64, path []Nod
 	return flushedRoot, nil
 }
 
-// WALMerge merges a list of root node IDs that exist in WAL into a single
+// MergeWALToStorage merges a list of root node IDs that exist in WAL into a single
 // partial tree in the staging area, and then merges that tree into persistent
 // storage.
-func (n *Nodestore) WALMerge(
+func (n *Nodestore) MergeWALToStorage(
 	ctx context.Context,
 	rootID NodeID,
 	version uint64,
@@ -348,6 +357,12 @@ func (n *Nodestore) bytesToNode(value []byte) (Node, error) {
 		return nil, fmt.Errorf("failed to parse inner node: %w", err)
 	}
 	return node, nil
+}
+
+func (n *Nodestore) deleteStagedNode(id NodeID) {
+	n.mtx.Lock()
+	defer n.mtx.Unlock()
+	delete(n.staging, id)
 }
 
 func (n *Nodestore) getStagedNode(id NodeID) (Node, bool) {
@@ -469,7 +484,7 @@ func (n *Nodestore) getWALOrStorage(ctx context.Context, nodeID NodeID) (Node, e
 		if errors.Is(err, NodeNotFoundError{}) {
 			node, err := n.Get(ctx, nodeID)
 			if err != nil {
-				return nil, fmt.Errorf("failed to get node %d: %w", nodeID, err)
+				return nil, fmt.Errorf("failed to get node %s: %w", nodeID, err)
 			}
 			return node, nil
 		}

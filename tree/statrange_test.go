@@ -86,10 +86,10 @@ func TestStatRange(t *testing.T) {
 					},
 				)
 				require.NoError(t, err)
-				require.NoError(t, ns.WALFlush(ctx, "producer", "topic", version, path))
+				require.NoError(t, ns.FlushStagingToWAL(ctx, "producer", "topic", version, path))
 				roots[i] = rootID
 			}
-			rootID, err = ns.WALMerge(ctx, rootID, version, roots)
+			rootID, err = ns.MergeWALToStorage(ctx, rootID, version, roots)
 			require.NoError(t, err)
 
 			statrange, err := tree.GetStatRange(ctx, ns, rootID, c.start, c.end, c.granularity)
