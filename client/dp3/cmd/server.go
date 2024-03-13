@@ -52,6 +52,8 @@ func init() {
 
 	serverCmd.PersistentFlags().IntVarP(&serverPort, "port", "p", 8089, "Port to listen on")
 	serverCmd.PersistentFlags().IntVarP(&serverCacheSizeMegabytes, "cache-size", "c", 1024, "Cache size in megabytes")
-	serverCmd.PersistentFlags().StringVarP(&serverDataDir, "data-dir", "d", "data", "Data directory")
+	serverCmd.PersistentFlags().StringVarP(&serverDataDir, "data-dir", "d", "", "Data directory")
 	serverCmd.PersistentFlags().StringVarP(&serverLogLevel, "log-level", "l", "info", "Log level")
+
+	serverCmd.MarkPersistentFlagRequired("data-dir")
 }
