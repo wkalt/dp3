@@ -335,7 +335,7 @@ func (tm *TreeManager) syncWALListing(
 	versions := maps.Keys(listing.Versions)
 	slices.Sort(versions)
 	if len(versions) == 1 {
-		log.Infow(ctx, "flushing WAL entries",
+		log.Debugw(ctx, "flushing WAL entries",
 			"producerID", listing.ProducerID,
 			"topic", listing.Topic,
 			"count", len(listing.Versions),
@@ -347,7 +347,7 @@ func (tm *TreeManager) syncWALListing(
 			return fmt.Errorf("failed to flush wal path: %w", err)
 		}
 	} else {
-		log.Infow(ctx, "merging WAL entries",
+		log.Debugw(ctx, "merging WAL entries",
 			"producerID", listing.ProducerID,
 			"topic", listing.Topic,
 			"count", len(listing.Versions))
