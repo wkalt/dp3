@@ -100,6 +100,21 @@ func (n *Nodestore) Get(ctx context.Context, id NodeID) (Node, error) {
 	return node, nil
 }
 
+// GetLeaf retrieves a leaf node from the nodestore. It returns a ReadSeekCloser
+// over the leaf data, the closing of which is the caller's responsibility. It
+// does not cache data.
+func (n *Nodestore) GetLeaf(ctx context.Context, id NodeID) (io.ReadSeekCloser, error) {
+	// NB: Add one to the offset to skip the type byte.
+	reader, err := n.store.GetRange(ctx, id.OID(), id.Offset()+1, id.Length()-1)
+	if err != nil {
+		if errors.Is(err, storage.ErrObjectNotFound) {
+			return nil, NodeNotFoundError{id}
+		}
+		return nil, fmt.Errorf("failed to get node: %w", err)
+	}
+	return reader, nil
+}
+
 // WALDelete deletes a node from the WAL.
 func (n *Nodestore) WALDelete(ctx context.Context, id NodeID) error {
 	if err := n.wal.Delete(ctx, id); err != nil {

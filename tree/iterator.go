@@ -25,6 +25,7 @@ type Iterator struct {
 	leafIDs     []nodestore.NodeID
 	nextLeaf    int
 	reader      *mcap.Reader
+	rsc         io.ReadSeekCloser
 	msgIterator mcap.MessageIterator
 	ns          *nodestore.Nodestore
 }
@@ -44,6 +45,19 @@ func NewTreeIterator(
 	return it, nil
 }
 
+// Close closes the iterator if it has not already been exhausted.
+func (ti *Iterator) Close() error {
+	if ti.reader != nil {
+		ti.reader.Close()
+	}
+	if ti.rsc != nil {
+		if err := ti.rsc.Close(); err != nil {
+			return fmt.Errorf("failed to close reader: %w", err)
+		}
+	}
+	return nil
+}
+
 // More returns true if there are more elements in the iteration.
 func (ti *Iterator) More() bool {
 	return ti.nextLeaf < len(ti.leafIDs)
@@ -61,7 +75,11 @@ func (ti *Iterator) Next(ctx context.Context) (*mcap.Schema, *mcap.Channel, *mca
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				ti.reader.Close()
+				if err := ti.rsc.Close(); err != nil {
+					return nil, nil, nil, fmt.Errorf("failed to close leaf reader: %w", err)
+				}
 				ti.reader = nil
+				ti.rsc = nil
 				ti.msgIterator = nil
 				ti.nextLeaf++
 				continue
@@ -111,15 +129,11 @@ func (ti *Iterator) initialize(ctx context.Context, rootID nodestore.NodeID) err
 // openNextLeaf opens the next leaf in the iterator.
 func (ti *Iterator) openNextLeaf(ctx context.Context) error {
 	leafID := ti.leafIDs[ti.nextLeaf]
-	node, err := ti.ns.Get(ctx, leafID)
+	rsc, err := ti.ns.GetLeaf(ctx, leafID)
 	if err != nil {
 		return fmt.Errorf("failed to get node: %w", err)
 	}
-	leaf, ok := node.(*nodestore.LeafNode)
-	if !ok {
-		return errors.New("expected leaf node - tree is corrupt")
-	}
-	reader, err := mcap.NewReader(leaf.Data())
+	reader, err := mcap.NewReader(rsc)
 	if err != nil {
 		return fmt.Errorf("failed to create reader: %w", err)
 	}
@@ -129,5 +143,6 @@ func (ti *Iterator) openNextLeaf(ctx context.Context) error {
 	}
 	ti.msgIterator = it
 	ti.reader = reader
+	ti.rsc = rsc
 	return nil
 }

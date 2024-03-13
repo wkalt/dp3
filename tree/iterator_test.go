@@ -55,14 +55,13 @@ func TestTreeIterator(t *testing.T) {
 		MessageCount: 10,
 	}
 	version := uint64(1)
-	rootID, _, err = tree.Insert(ctx, ns, rootID, version, 0, buf1.Bytes(), stats)
-	require.NoError(t, err)
+	rootID = insertLeaf(t, ctx, ns, rootID, version, 0, buf1.Bytes(), stats)
 	version++
-	rootID, _, err = tree.Insert(ctx, ns, rootID, version, 64*1e9, buf2.Bytes(), stats)
-	require.NoError(t, err)
+	rootID = insertLeaf(t, ctx, ns, rootID, version, 64*1e9, buf2.Bytes(), stats)
 
 	it, err := tree.NewTreeIterator(ctx, ns, rootID, 0, 128*1e9)
 	require.NoError(t, err)
+	defer require.NoError(t, it.Close())
 	count := 0
 	for it.More() {
 		schema, channel, message, err := it.Next(ctx)
@@ -76,4 +75,22 @@ func TestTreeIterator(t *testing.T) {
 		count++
 	}
 	assert.Equal(t, 20, count)
+}
+
+func insertLeaf(
+	t *testing.T,
+	ctx context.Context,
+	ns *nodestore.Nodestore,
+	nodeID nodestore.NodeID,
+	version uint64,
+	time uint64,
+	data []byte,
+	stats *nodestore.Statistics,
+) nodestore.NodeID {
+	t.Helper()
+	_, path, err := tree.Insert(ctx, ns, nodeID, version, time, data, stats)
+	require.NoError(t, err)
+	rootID, err := ns.Flush(ctx, version, path...)
+	require.NoError(t, err)
+	return rootID
 }
