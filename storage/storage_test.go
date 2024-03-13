@@ -2,6 +2,7 @@ package storage_test
 
 import (
 	"context"
+	"io"
 	"os"
 	"testing"
 
@@ -45,7 +46,10 @@ func TestStorageProviders(t *testing.T) {
 			})
 			t.Run("get range", func(t *testing.T) {
 				require.NoError(t, c.store.Put(ctx, "test2", []byte("hello")))
-				data, err := c.store.GetRange(ctx, "test2", 1, 4)
+				r, err := c.store.GetRange(ctx, "test2", 1, 4)
+				require.NoError(t, err)
+				defer r.Close()
+				data, err := io.ReadAll(r)
 				require.NoError(t, err)
 				require.Equal(t, []byte("ello"), data)
 			})

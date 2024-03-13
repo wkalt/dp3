@@ -1,11 +1,14 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/wkalt/dp3/util"
 )
 
 /*
@@ -34,7 +37,7 @@ func (d *DirectoryStore) Put(_ context.Context, id string, data []byte) error {
 }
 
 // GetRange retrieves a range of bytes from an object in the directory.
-func (d *DirectoryStore) GetRange(_ context.Context, id string, offset int, length int) ([]byte, error) {
+func (d *DirectoryStore) GetRange(_ context.Context, id string, offset int, length int) (io.ReadSeekCloser, error) {
 	f, err := os.Open(d.root + "/" + id)
 	if err != nil {
 		return nil, ErrObjectNotFound
@@ -49,7 +52,7 @@ func (d *DirectoryStore) GetRange(_ context.Context, id string, offset int, leng
 	if err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
-	return buf, nil
+	return util.NewReadSeekNopCloser(bytes.NewReader(buf)), nil
 }
 
 // Delete removes an object from the directory.

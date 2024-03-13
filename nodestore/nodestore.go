@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
 	"sync"
@@ -79,12 +80,17 @@ func (n *Nodestore) Get(ctx context.Context, id NodeID) (Node, error) {
 	if value, ok := n.staging[id]; ok {
 		return value, nil
 	}
-	data, err := n.store.GetRange(ctx, id.OID(), id.Offset(), id.Length())
+	reader, err := n.store.GetRange(ctx, id.OID(), id.Offset(), id.Length())
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotFound) {
 			return nil, NodeNotFoundError{id}
 		}
 		return nil, fmt.Errorf("failed to get node: %w", err)
+	}
+	defer reader.Close()
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read node: %w", err)
 	}
 	node, err := n.bytesToNode(data)
 	if err != nil {
