@@ -43,8 +43,11 @@ func NewDP3Service() *DP3 {
 }
 
 // Start starts the DP3 service.
-func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error {
-	opts := readOpts(options...)
+func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolint:funlen
+	opts, err := readOpts(options...)
+	if err != nil {
+		return fmt.Errorf("failed to read options: %w", err)
+	}
 	slog.SetLogLoggerLevel(opts.LogLevel)
 	log.Debugf(ctx, "Debug logging enabled")
 	store := storage.NewDirectoryStore(opts.DataDir)
@@ -103,16 +106,20 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error {
 	return nil
 }
 
-func readOpts(opts ...DP3Option) DP3Options {
+func readOpts(opts ...DP3Option) (*DP3Options, error) {
 	options := DP3Options{
 		CacheSizeBytes: 1 * gigabyte,
 		Port:           8089,
-		DataDir:        "data",
+		DataDir:        "",
 		LogLevel:       slog.LevelInfo,
 		SyncWorkers:    10,
 	}
 	for _, opt := range opts {
 		opt(&options)
 	}
-	return options
+	if options.DataDir == "" {
+		return nil, errors.New("data dir is required")
+	}
+
+	return &options, nil
 }
