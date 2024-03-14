@@ -42,6 +42,7 @@ type Statistics struct {
 	NumStats     map[int]*NumericalSummary `json:"numeric"`
 	TextStats    map[int]*TextSummary      `json:"text"`
 	MessageCount uint64                    `json:"messageCount"`
+	ByteCount    uint64                    `json:"byteCount"`
 }
 
 func (s *Statistics) ObserveNumeric(idx int, v float64) {
@@ -88,7 +89,9 @@ func NewStatistics(fields []ros1msg.TypedField) *Statistics {
 // Add adds the message count from another statistics object to this one.
 func (s *Statistics) Add(other *Statistics) error {
 	if s.MessageCount == 0 {
-		*s = *other
+		if other != nil {
+			*s = *other
+		}
 		return nil
 	}
 	s.MessageCount += other.MessageCount

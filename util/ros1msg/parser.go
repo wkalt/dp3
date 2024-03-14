@@ -167,7 +167,7 @@ func recordToFieldParser(fields []schema.Field) Parser {
 
 func parseBool(data []byte, values *[]any, parse bool) (int, error) {
 	if len(data) < 1 {
-		return 0, ErrShortRead
+		return 0, ShortReadError{"bool"}
 	}
 	if parse {
 		*values = append(*values, data[0] != 0)
@@ -177,7 +177,7 @@ func parseBool(data []byte, values *[]any, parse bool) (int, error) {
 
 func parseInt8(data []byte, values *[]any, parse bool) (int, error) {
 	if len(data) < 1 {
-		return 0, ErrShortRead
+		return 0, ShortReadError{"bool"}
 	}
 	if parse {
 		*values = append(*values, int8(data[0]))
@@ -187,7 +187,7 @@ func parseInt8(data []byte, values *[]any, parse bool) (int, error) {
 
 func parseUint8(data []byte, values *[]any, parse bool) (int, error) {
 	if len(data) < 1 {
-		return 0, ErrShortRead
+		return 0, ShortReadError{"int8"}
 	}
 	if parse {
 		*values = append(*values, data[0])
@@ -197,7 +197,7 @@ func parseUint8(data []byte, values *[]any, parse bool) (int, error) {
 
 func parseInt16(data []byte, values *[]any, parse bool) (int, error) {
 	if len(data) < 2 {
-		return 0, ErrShortRead
+		return 0, ShortReadError{"int16"}
 	}
 	if parse {
 		*values = append(*values, int16(binary.LittleEndian.Uint16(data)))
@@ -207,7 +207,7 @@ func parseInt16(data []byte, values *[]any, parse bool) (int, error) {
 
 func parseUint16(data []byte, values *[]any, parse bool) (int, error) {
 	if len(data) < 2 {
-		return 0, ErrShortRead
+		return 0, ShortReadError{"int16"}
 	}
 	if parse {
 		*values = append(*values, binary.LittleEndian.Uint16(data))
@@ -217,7 +217,7 @@ func parseUint16(data []byte, values *[]any, parse bool) (int, error) {
 
 func parseInt32(data []byte, values *[]any, parse bool) (int, error) {
 	if len(data) < 4 {
-		return 0, ErrShortRead
+		return 0, ShortReadError{"int32"}
 	}
 	if parse {
 		*values = append(*values, int32(binary.LittleEndian.Uint32(data)))
@@ -227,7 +227,7 @@ func parseInt32(data []byte, values *[]any, parse bool) (int, error) {
 
 func parseUint32(data []byte, values *[]any, parse bool) (int, error) {
 	if len(data) < 4 {
-		return 0, ErrShortRead
+		return 0, ShortReadError{"int32"}
 	}
 	if parse {
 		*values = append(*values, binary.LittleEndian.Uint32(data))
@@ -237,7 +237,7 @@ func parseUint32(data []byte, values *[]any, parse bool) (int, error) {
 
 func parseInt64(data []byte, values *[]any, parse bool) (int, error) {
 	if len(data) < 8 {
-		return 0, ErrShortRead
+		return 0, ShortReadError{"int64"}
 	}
 	if parse {
 		*values = append(*values, int64(binary.LittleEndian.Uint64(data)))
@@ -247,7 +247,7 @@ func parseInt64(data []byte, values *[]any, parse bool) (int, error) {
 
 func parseUint64(data []byte, values *[]any, parse bool) (int, error) {
 	if len(data) < 8 {
-		return 0, ErrShortRead
+		return 0, ShortReadError{"uint64"}
 	}
 	if parse {
 		*values = append(*values, binary.LittleEndian.Uint64(data))
@@ -257,7 +257,7 @@ func parseUint64(data []byte, values *[]any, parse bool) (int, error) {
 
 func parseFloat32(data []byte, values *[]any, parse bool) (int, error) {
 	if len(data) < 4 {
-		return 0, ErrShortRead
+		return 0, ShortReadError{"uint32"}
 	}
 	if parse {
 		*values = append(*values, math.Float32frombits(binary.LittleEndian.Uint32(data)))
@@ -267,7 +267,7 @@ func parseFloat32(data []byte, values *[]any, parse bool) (int, error) {
 
 func parseFloat64(data []byte, values *[]any, parse bool) (int, error) {
 	if len(data) < 8 {
-		return 0, ErrShortRead
+		return 0, ShortReadError{"float64"}
 	}
 	if parse {
 		*values = append(*values, math.Float64frombits(binary.LittleEndian.Uint64(data)))
@@ -277,11 +277,11 @@ func parseFloat64(data []byte, values *[]any, parse bool) (int, error) {
 
 func parseString(data []byte, values *[]any, parse bool) (int, error) {
 	if len(data) < 4 {
-		return 0, ErrShortRead
+		return 0, ShortReadError{"string"}
 	}
 	l := int(binary.LittleEndian.Uint32(data))
 	if len(data) < l+4 {
-		return 0, ErrShortRead
+		return 0, ShortReadError{"string"}
 	}
 	if parse {
 		*values = append(*values, string(data[4:4+l]))
@@ -291,7 +291,7 @@ func parseString(data []byte, values *[]any, parse bool) (int, error) {
 
 func parseTime(data []byte, values *[]any, parse bool) (int, error) {
 	if len(data) < 8 {
-		return 0, ErrShortRead
+		return 0, ShortReadError{"time"}
 	}
 	secs := binary.LittleEndian.Uint32(data)
 	nanos := binary.LittleEndian.Uint32(data[4:])
@@ -315,7 +315,7 @@ func parseDuration(data []byte, values *[]any, parse bool) (int, error) {
 
 func parseChar(data []byte, values *[]any, parse bool) (int, error) {
 	if len(data) < 1 {
-		return 0, ErrShortRead
+		return 0, ShortReadError{"char"}
 	}
 	if parse {
 		*values = append(*values, rune(data[0]))
@@ -325,7 +325,7 @@ func parseChar(data []byte, values *[]any, parse bool) (int, error) {
 
 func parseByte(data []byte, values *[]any, parse bool) (int, error) {
 	if len(data) < 1 {
-		return 0, ErrShortRead
+		return 0, ShortReadError{"char"}
 	}
 	if parse {
 		*values = append(*values, data[0])

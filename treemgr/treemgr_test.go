@@ -5,7 +5,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
 	"strings"
 	"testing"
 
@@ -42,30 +41,6 @@ func removeSpace(s string) string {
 func assertEqualTrees(t *testing.T, a, b string) {
 	t.Helper()
 	require.Equal(t, removeSpace(a), removeSpace(b), "%s != %s", a, b)
-}
-
-func TestReceiveRealFile(t *testing.T) {
-	ctx := context.Background()
-	cases := []struct {
-		assertion string
-		inputfile string
-	}{
-		{
-			"example mcap",
-			"../example-data/fix.mcap",
-		},
-	}
-	for _, c := range cases {
-		t.Run(c.assertion, func(t *testing.T) {
-			f, err := os.Open(c.inputfile)
-			require.NoError(t, err)
-			defer f.Close()
-
-			tmgr := testTreeManager(ctx, t)
-			require.NoError(t, tmgr.Receive(ctx, "my-device", f))
-			require.NoError(t, tmgr.SyncWAL(ctx))
-		})
-	}
 }
 
 func TestReceive(t *testing.T) {

@@ -10,9 +10,10 @@ import (
 
 	"github.com/relvacode/iso8601"
 	"github.com/spf13/cobra"
-	"github.com/wkalt/dp3/client/dp3/util"
+	cutil "github.com/wkalt/dp3/client/dp3/util"
 	"github.com/wkalt/dp3/routes"
 	"github.com/wkalt/dp3/tree"
+	"github.com/wkalt/dp3/util"
 )
 
 var (
@@ -53,20 +54,72 @@ var statrangeCmd = &cobra.Command{
 		}
 		defer resp.Body.Close()
 
-		util.MustOK(resp)
+		cutil.MustOK(resp)
 
 		response := []tree.StatRange{}
 		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 			bailf("error decoding response: %s", err)
 		}
-		headers := []string{"Start", "End", "MessageCount"}
+
+		headers := []string{"Start", "End", "Volume", "MessageCount", "Frequency"}
 		data := [][]string{}
 		for _, record := range response {
 			start := time.Unix(0, int64(record.Start)).Format(time.RFC3339)
 			end := time.Unix(0, int64(record.End)).Format(time.RFC3339)
-			data = append(data, []string{start, end, fmt.Sprintf("%d", record.Statistics.MessageCount)})
+			volume := util.HumanBytes(record.Statistics.ByteCount)
+			count := fmt.Sprintf("%d", record.Statistics.MessageCount)
+			frequency := util.HumanFrequency(float64(record.Statistics.MessageCount) /
+				(float64(record.End-record.Start) / 1e9))
+			data = append(data, []string{start, end, volume, count, frequency})
 		}
-		util.PrintTable(os.Stdout, headers, data)
+
+		fmt.Println()
+		fmt.Println("Message statistics")
+		cutil.PrintTable(os.Stdout, headers, data)
+
+		headers = []string{"Start", "End", "Field", "Type", "Min", "Max", "Mean", "Sum"}
+		data = [][]string{}
+		for _, record := range response {
+			start := time.Unix(0, int64(record.Start)).Format(time.RFC3339)
+			end := time.Unix(0, int64(record.End)).Format(time.RFC3339)
+			for _, k := range util.Okeys(record.Statistics.NumStats) {
+				stats, ok := record.Statistics.NumStats[k]
+				if !ok {
+					continue
+				}
+				fieldName := record.Statistics.Fields[k].Name()
+				fieldType := record.Statistics.Fields[k].Type().String()
+				min := fmt.Sprintf("%f", stats.Min)
+				max := fmt.Sprintf("%f", stats.Max)
+				mean := fmt.Sprintf("%f", stats.Mean)
+				sum := fmt.Sprintf("%f", stats.Sum)
+				data = append(data, []string{start, end, fieldName, fieldType, min, max, mean, sum})
+			}
+		}
+
+		fmt.Println()
+		fmt.Println("Numeric field statistics")
+		cutil.PrintTable(os.Stdout, headers, data)
+
+		headers = []string{"Start", "End", "Field", "Type", "Min", "Max"}
+		data = [][]string{}
+		for _, record := range response {
+			start := time.Unix(0, int64(record.Start)).Format(time.RFC3339)
+			end := time.Unix(0, int64(record.End)).Format(time.RFC3339)
+			for _, k := range util.Okeys(record.Statistics.TextStats) {
+				stats, ok := record.Statistics.TextStats[k]
+				if !ok {
+					continue
+				}
+				fieldName := record.Statistics.Fields[k].Name()
+				fieldType := record.Statistics.Fields[k].Type().String()
+				data = append(data, []string{start, end, fieldName, fieldType, stats.Min, stats.Max})
+			}
+		}
+
+		fmt.Println()
+		fmt.Println("Text field statistics")
+		cutil.PrintTable(os.Stdout, headers, data)
 	},
 }
 

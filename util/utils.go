@@ -77,3 +77,15 @@ func HumanBytes(n uint64) string {
 	}
 	return strconv.FormatUint(n, 10) + " " + suffix[i]
 }
+
+// HumanFrequency returns a human-readable representation of a frequency
+// supplied in Hz.
+func HumanFrequency(n float64) string {
+	suffix := []string{"Hz", "kHz", "MHz", "GHz", "THz", "PHz", "EHz"}
+	i := 0
+	for n >= 1000 && i < len(suffix)-1 {
+		n /= 1000
+		i++
+	}
+	return strconv.FormatFloat(n, 'f', -1, 64) + " " + suffix[i]
+}

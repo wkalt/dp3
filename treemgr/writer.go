@@ -12,6 +12,7 @@ import (
 	"github.com/wkalt/dp3/util/log"
 	"github.com/wkalt/dp3/util/ros1msg"
 	"github.com/wkalt/dp3/util/schema"
+	"golang.org/x/exp/maps"
 )
 
 /*
@@ -156,7 +157,12 @@ func (w *writer) flush(ctx context.Context) error {
 		return fmt.Errorf("failed to close mcap writer: %w", err)
 	}
 
-	if err := w.tmgr.insert(ctx, w.producerID, w.topic, w.lower*1e9, w.buf.Bytes(), w.schemaStats[1]); err != nil {
+	// todo: this is wrong and assumes one schema per tree, which has not been
+	// totally nailed down yet. If we go that route then schemaStats won't need
+	// to be a map.
+	stats := maps.Values(w.schemaStats)[0]
+
+	if err := w.tmgr.insert(ctx, w.producerID, w.topic, w.lower*1e9, w.buf.Bytes(), stats); err != nil {
 		return fmt.Errorf("failed to insert %d bytes data for stream %s/%s at time %d: %w",
 			w.buf.Len(), w.producerID, w.topic, w.lower, err)
 	}
@@ -241,6 +247,7 @@ func (w *writer) updateStatistics(message *fmcap.Message) error {
 		}
 	}
 	statistics.MessageCount++
+	statistics.ByteCount += uint64(len(message.Data))
 	return nil
 }
 

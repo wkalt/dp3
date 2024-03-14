@@ -78,10 +78,15 @@ func AnalyzeSchema(s schema.Schema) []TypedField {
 			}
 			if t.Array {
 				if t.FixedSize > 0 && t.FixedSize < 10 {
+					elementtypes := make([]schema.Type, 0, t.FixedSize+len(types))
+					elementnames := make([]string, 0, t.FixedSize+len(names))
 					for i := 0; i < t.FixedSize; i++ {
-						types = append(types, *t.Items)
-						names = append(names, fmt.Sprintf("%s[%d]", name, i))
+						elementtypes = append(elementtypes, *t.Items)
+						elementnames = append(elementnames, fmt.Sprintf("%s[%d]", name, i))
 					}
+					// straight to the front
+					types = append(elementtypes, types...)
+					names = append(elementnames, names...)
 				}
 				continue
 			}

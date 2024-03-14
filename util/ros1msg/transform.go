@@ -2,6 +2,7 @@ package ros1msg
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/wkalt/dp3/util/schema"
 )
@@ -69,9 +70,13 @@ func resolveType(pkg string, subdeps map[string]Definition, t *ROSType) (*schema
 	}
 
 	if isArray {
-		subdep, ok := subdeps[pkg+"/"+t.Name]
-		if !ok {
-			return nil, fmt.Errorf("failed to resolve array type %s", t.Name)
+		subdep, err := getSubdep(pkg, subdeps, t.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve array type %s: %w", t.Name, err)
+		}
+		if strings.Contains(t.Name, "/") {
+			parts := strings.Split(t.Name, "/")
+			pkg = parts[0]
 		}
 		items, err := resolveSubdef(pkg, subdeps, subdep)
 		if err != nil {
@@ -85,13 +90,9 @@ func resolveType(pkg string, subdeps map[string]Definition, t *ROSType) (*schema
 	}
 
 	// record type
-	subdep, ok := subdeps[t.Name]
-	if !ok {
-		// Try and resolve the name qualified with the package.
-		subdep, ok = subdeps[pkg+"/"+t.Name]
-		if !ok {
-			return nil, fmt.Errorf("failed to resolve type %s", t.Name)
-		}
+	subdep, err := getSubdep(pkg, subdeps, t.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve record type %s: %w", t.Name, err)
 	}
 	return resolveSubdef(pkg, subdeps, subdep)
 }
@@ -117,6 +118,21 @@ func resolveSubdef(pkg string, subdeps map[string]Definition, def Definition) (*
 		}
 	}
 	return t, nil
+}
+
+// getSubdep returns the subdep with the given name, or if that doesn't exist,
+// the one with the given package and name. ros1msg allows schema names in
+// messages to be either namespaced by a package or not. If they are not
+// namespaced, they inherit the package of their parent message.
+func getSubdep(parentPkg string, subdeps map[string]Definition, name string) (Definition, error) {
+	subdep, ok := subdeps[name]
+	if !ok {
+		subdep, ok = subdeps[parentPkg+"/"+name]
+		if !ok {
+			return Definition{}, fmt.Errorf("failed to resolve subdep %s", name)
+		}
+	}
+	return subdep, nil
 }
 
 func transformAST(pkg string, name string, ast MessageDefinition) (*schema.Schema, error) {

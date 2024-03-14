@@ -32,7 +32,7 @@ func newImportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			return
 		}
 		defer f.Close()
-		log.Infof(ctx, "importing file %s for producer %s", req.Path, req.ProducerID)
+		log.Infof(ctx, "Importing file %s for producer %s", req.Path, req.ProducerID)
 		if err := tmgr.Receive(ctx, req.ProducerID, f); err != nil {
 			httputil.BadRequest(ctx, w, "error receiving file: %s", err)
 			return
@@ -45,6 +45,6 @@ func newImportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			httputil.InternalServerError(ctx, w, "error syncing WAL: %s", err)
 			return
 		}
-		log.Infow(ctx, "imported", "location", req.Path, "producer_id", req.ProducerID)
+		log.Infow(ctx, "Imported", "location", req.Path, "producer_id", req.ProducerID)
 	}
 }
