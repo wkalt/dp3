@@ -7,8 +7,14 @@ import (
 )
 
 /*
-Converts the participle AST into our schema.Schema representation, which will be
-nicer to work with.
+This file contains the ParseROS1MessageDefinition function, which accepts a
+[]byte-valued ROS1 message definition with name and package, and returns a
+*schema.Schema.
+
+It does this by calling the participle parser on the message definition to
+create a participle AST, and then transforming that AST into a schema.Schema,
+which will be friendlier to work with. The participle AST does not leave the
+ros1msg package.
 */
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -33,6 +39,16 @@ var (
 		"byte":     schema.BYTE,
 	}
 )
+
+// ParseROS1MessageDefinition parses a ROS1 message definition and returns a
+// schema.Schema representation of it.
+func ParseROS1MessageDefinition(pkg string, name string, msgdef []byte) (*schema.Schema, error) {
+	ast, err := MessageDefinitionParser.ParseBytes("", msgdef)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse ros1 message definition: %w", err)
+	}
+	return transformAST(pkg, name, *ast)
+}
 
 func resolveType(pkg string, subdeps map[string]Definition, t *ROSType) (*schema.Type, error) {
 	primitive, isPrimitive := primitiveTypes[t.Name]
@@ -125,12 +141,4 @@ func transformAST(pkg string, name string, ast MessageDefinition) (*schema.Schem
 		}
 	}
 	return &s, nil
-}
-
-func ParseROS1MessageDefinition(pkg string, name string, msgdef []byte) (*schema.Schema, error) {
-	ast, err := MessageDefinitionParser.ParseBytes("", msgdef)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse ros1 message definition: %w", err)
-	}
-	return transformAST(pkg, name, *ast)
 }
