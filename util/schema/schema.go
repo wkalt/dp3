@@ -1,5 +1,7 @@
 package schema
 
+import "fmt"
+
 /*
 Schema is a generic representation of message schemas. We translate ROS1 schemas
 into these. Hopefully we will be able to leverage this for additional encodings,
@@ -18,6 +20,90 @@ think they won't require model changes.
 
 // PrimitiveType is an enumeration of the primitive types.
 type PrimitiveType int
+
+func (p PrimitiveType) String() string {
+	switch p {
+	case INT8:
+		return "int8"
+	case INT16:
+		return "int16"
+	case INT32:
+		return "int32"
+	case INT64:
+		return "int64"
+	case UINT8:
+		return "uint8"
+	case UINT16:
+		return "uint16"
+	case UINT32:
+		return "uint32"
+	case UINT64:
+		return "uint64"
+	case FLOAT32:
+		return "float32"
+	case FLOAT64:
+		return "float64"
+	case STRING:
+		return "string"
+	case BOOL:
+		return "bool"
+	case TIME:
+		return "time"
+	case DURATION:
+		return "duration"
+	case CHAR:
+		return "char"
+	case BYTE:
+		return "byte"
+	default:
+		return "unknown"
+	}
+}
+
+// MarshalJSON returns the JSON representation of the primitive type.
+func (p PrimitiveType) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf(`"%s"`, p.String())), nil
+}
+
+func (p *PrimitiveType) UnmarshalJSON(data []byte) error {
+	switch string(data) {
+	case `"int8"`:
+		*p = INT8
+	case `"int16"`:
+		*p = INT16
+	case `"int32"`:
+		*p = INT32
+	case `"int64"`:
+		*p = INT64
+	case `"uint8"`:
+		*p = UINT8
+	case `"uint16"`:
+		*p = UINT16
+	case `"uint32"`:
+		*p = UINT32
+	case `"uint64"`:
+		*p = UINT64
+	case `"float32"`:
+		*p = FLOAT32
+	case `"float64"`:
+		*p = FLOAT64
+	case `"string"`:
+		*p = STRING
+	case `"bool"`:
+		*p = BOOL
+	case `"time"`:
+		*p = TIME
+	case `"duration"`:
+		*p = DURATION
+	case `"char"`:
+		*p = CHAR
+	case `"byte"`:
+		*p = BYTE
+	default:
+		return fmt.Errorf("unknown primitive type: %s", data)
+	}
+	return nil
+}
 
 const (
 	INT8 PrimitiveType = iota + 1

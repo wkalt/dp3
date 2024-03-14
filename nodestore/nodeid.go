@@ -42,6 +42,22 @@ func (n NodeID) String() string {
 	return fmt.Sprintf("%s:%d:%d", n.OID(), n.Offset(), n.Length())
 }
 
+func (n NodeID) MarshalJSON() ([]byte, error) {
+	return []byte(fmt.Sprintf(`"%s"`, n.String())), nil
+}
+
+func (n *NodeID) UnmarshalJSON(data []byte) error {
+	s := string(data)
+	s = s[1 : len(s)-1]
+	parts := strings.Split(s, ":")
+	oid, _ := strconv.ParseUint(parts[0], 10, 64)
+	offset, _ := strconv.ParseUint(parts[1], 10, 32)
+	length, _ := strconv.ParseUint(parts[2], 10, 32)
+	nodeID := generateNodeID(objectID(oid), int(offset), int(length))
+	*n = nodeID
+	return nil
+}
+
 // Scan implements the sql.Scanner interface. In SQL storage we store node IDs
 // as a string, formated OID:offset:length.
 func (n *NodeID) Scan(value interface{}) error {

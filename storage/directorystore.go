@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 
 	"github.com/wkalt/dp3/util"
 )
@@ -68,5 +69,9 @@ func (d *DirectoryStore) Delete(_ context.Context, id string) error {
 }
 
 func (d *DirectoryStore) String() string {
-	return fmt.Sprintf("directory(%s)", d.root)
+	path := d.root
+	if abspath, err := filepath.Abs(d.root); err == nil {
+		path = abspath
+	}
+	return fmt.Sprintf("directory(%s)", path)
 }

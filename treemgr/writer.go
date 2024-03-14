@@ -4,12 +4,14 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"slices"
+	"strings"
 
 	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/util/log"
+	"github.com/wkalt/dp3/util/ros1msg"
+	"github.com/wkalt/dp3/util/schema"
 )
 
 /*
@@ -39,15 +41,18 @@ type writer struct {
 	producerID string
 	topic      string
 
-	schemas     []*fmcap.Schema
-	channels    []*fmcap.Channel
+	schemas  map[uint16]*fmcap.Schema
+	channels map[uint16]*fmcap.Channel
+
+	schemaStats map[uint16]*nodestore.Statistics
+	parsers     map[uint16]ros1msg.Parser
+
 	initialized bool
 
 	buf *bytes.Buffer
 	w   *fmcap.Writer
 
-	dims       *treeDimensions
-	statistics *nodestore.Statistics
+	dims *treeDimensions
 }
 
 func newWriter(ctx context.Context, tmgr *TreeManager, producerID string, topic string) (*writer, error) {
@@ -60,22 +65,23 @@ func newWriter(ctx context.Context, tmgr *TreeManager, producerID string, topic 
 		tmgr:        tmgr,
 		lower:       0,
 		upper:       0,
-		schemas:     []*fmcap.Schema{},
-		channels:    []*fmcap.Channel{},
+		schemas:     map[uint16]*fmcap.Schema{},
+		channels:    map[uint16]*fmcap.Channel{},
 		initialized: false,
 		buf:         buf,
 		w:           nil,
 		dims:        dims,
 
-		producerID: producerID,
-		topic:      topic,
-		statistics: &nodestore.Statistics{},
+		producerID:  producerID,
+		topic:       topic,
+		schemaStats: map[uint16]*nodestore.Statistics{},
+		parsers:     map[uint16]ros1msg.Parser{},
 	}, nil
 }
 
 // WriteSchema writes the supplied schema to the output writer.
 func (w *writer) WriteSchema(schema *fmcap.Schema) error {
-	known := slices.Contains(w.schemas, schema)
+	_, known := w.schemas[schema.ID]
 	if w.initialized && known {
 		return nil
 	}
@@ -85,13 +91,13 @@ func (w *writer) WriteSchema(schema *fmcap.Schema) error {
 		}
 	}
 	if !known {
-		w.schemas = append(w.schemas, schema)
+		w.schemas[schema.ID] = schema
 	}
 	return nil
 }
 
 func (w *writer) WriteChannel(channel *fmcap.Channel) error {
-	known := slices.Contains(w.channels, channel)
+	_, known := w.channels[channel.ID]
 	if w.initialized && known {
 		return nil
 	}
@@ -101,7 +107,7 @@ func (w *writer) WriteChannel(channel *fmcap.Channel) error {
 		}
 	}
 	if !known {
-		w.channels = append(w.channels, channel)
+		w.channels[channel.ID] = channel
 	}
 	return nil
 }
@@ -121,6 +127,20 @@ func (w *writer) initialize(ts uint64) (err error) {
 		if err := w.w.WriteSchema(schema); err != nil {
 			return fmt.Errorf("failed to write schema: %w", err)
 		}
+		parts := strings.SplitN(schema.Name, "/", 2)
+		var pkg, name string
+		if len(parts) == 2 {
+			pkg = parts[0]
+			name = parts[1]
+		}
+		msgdef, err := ros1msg.ParseROS1MessageDefinition(pkg, name, schema.Data)
+		if err != nil {
+			return fmt.Errorf("failed to parse ROS1 message definition: %w", err)
+		}
+		parser := ros1msg.GenParser(*msgdef)
+		w.parsers[schema.ID] = parser
+		fields := ros1msg.AnalyzeSchema(*msgdef)
+		w.schemaStats[schema.ID] = nodestore.NewStatistics(fields)
 	}
 	for _, channel := range w.channels {
 		if err := w.w.WriteChannel(channel); err != nil {
@@ -128,7 +148,6 @@ func (w *writer) initialize(ts uint64) (err error) {
 		}
 	}
 	w.initialized = true
-	w.statistics = &nodestore.Statistics{}
 	return nil
 }
 
@@ -136,7 +155,8 @@ func (w *writer) flush(ctx context.Context) error {
 	if err := w.w.Close(); err != nil {
 		return fmt.Errorf("failed to close mcap writer: %w", err)
 	}
-	if err := w.tmgr.insert(ctx, w.producerID, w.topic, w.lower*1e9, w.buf.Bytes(), w.statistics); err != nil {
+
+	if err := w.tmgr.insert(ctx, w.producerID, w.topic, w.lower*1e9, w.buf.Bytes(), w.schemaStats[1]); err != nil {
 		return fmt.Errorf("failed to insert %d bytes data for stream %s/%s at time %d: %w",
 			w.buf.Len(), w.producerID, w.topic, w.lower, err)
 	}
@@ -160,8 +180,68 @@ func (w *writer) reset(ctx context.Context, ts uint64) error {
 	return nil
 }
 
-func (w *writer) updateStatistics(_ *fmcap.Message) {
-	w.statistics.MessageCount++
+func toFloat(x any) (float64, error) {
+	switch x := x.(type) {
+	case int8:
+		return float64(x), nil
+	case int16:
+		return float64(x), nil
+	case int32:
+		return float64(x), nil
+	case int64:
+		return float64(x), nil
+	case float32:
+		return float64(x), nil
+	case float64:
+		return x, nil
+	case uint8:
+		return float64(x), nil
+	case uint16:
+		return float64(x), nil
+	case uint32:
+		return float64(x), nil
+	case uint64:
+		return float64(x), nil
+	default:
+		return 0, fmt.Errorf("unsupported type: %T", x)
+	}
+}
+
+func (w *writer) updateStatistics(message *fmcap.Message) error {
+	channel := w.channels[message.ChannelID]
+	schemaID := channel.SchemaID
+	statistics, ok := w.schemaStats[schemaID]
+	if !ok {
+		return fmt.Errorf("unknown schema ID: %d", schemaID)
+	}
+	parser, ok := w.parsers[schemaID]
+	if !ok {
+		return fmt.Errorf("unknown field skipper for schema ID: %d", schemaID)
+	}
+	values := make([]any, 0, len(statistics.Fields))
+	if err := ros1msg.ParseMessage(parser, message.Data, &values); err != nil {
+		return fmt.Errorf("failed to parse message on %s: %w", channel.Topic, err)
+	}
+	for i, field := range statistics.Fields {
+		value := values[i]
+		switch field.Type() {
+		case schema.INT8, schema.INT16, schema.INT32, schema.INT64, schema.FLOAT32, schema.FLOAT64,
+			schema.UINT8, schema.UINT16, schema.UINT32, schema.UINT64:
+			v, err := toFloat(value)
+			if err != nil {
+				return fmt.Errorf("failed to convert value to float: %w", err)
+			}
+			statistics.ObserveNumeric(i, v)
+		case schema.STRING:
+			v, ok := value.(string)
+			if !ok {
+				return fmt.Errorf("expected string, got %T", value)
+			}
+			statistics.ObserveText(i, v)
+		}
+	}
+	statistics.MessageCount++
+	return nil
 }
 
 func (w *writer) WriteMessage(ctx context.Context, message *fmcap.Message) error {
@@ -178,7 +258,9 @@ func (w *writer) WriteMessage(ctx context.Context, message *fmcap.Message) error
 	if err := w.w.WriteMessage(message); err != nil {
 		return fmt.Errorf("failed to write message: %w", err)
 	}
-	w.updateStatistics(message)
+	if err := w.updateStatistics(message); err != nil {
+		return fmt.Errorf("failed to update statistics: %w", err)
+	}
 	return nil
 }
 
