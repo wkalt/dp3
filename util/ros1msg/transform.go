@@ -71,11 +71,11 @@ func resolveType(pkg string, subdeps map[string]Definition, t *ROSType) (*schema
 	if isArray {
 		subdep, ok := subdeps[pkg+"/"+t.Name]
 		if !ok {
-			return nil, fmt.Errorf("failed to resolve type %s", t.Name)
+			return nil, fmt.Errorf("failed to resolve array type %s", t.Name)
 		}
 		items, err := resolveSubdef(pkg, subdeps, subdep)
 		if err != nil {
-			return nil, fmt.Errorf("failed to resolve type %s: %w", t.Name, err)
+			return nil, fmt.Errorf("failed to resolve subdef type %s: %w", t.Name, err)
 		}
 		return &schema.Type{
 			Array:     true,
@@ -87,7 +87,11 @@ func resolveType(pkg string, subdeps map[string]Definition, t *ROSType) (*schema
 	// record type
 	subdep, ok := subdeps[t.Name]
 	if !ok {
-		return nil, fmt.Errorf("failed to resolve type %s", t.Name)
+		// Try and resolve the name qualified with the package.
+		subdep, ok = subdeps[pkg+"/"+t.Name]
+		if !ok {
+			return nil, fmt.Errorf("failed to resolve type %s", t.Name)
+		}
 	}
 	return resolveSubdef(pkg, subdeps, subdep)
 }

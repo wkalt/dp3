@@ -30,13 +30,23 @@ values.
 // Name may take the form of "field1", "field2[0].subfield",
 // "field2[1].subfield[0]", etc.
 type TypedField struct {
-	name string
-	typ  schema.PrimitiveType
+	Nam string               `json:"name"`
+	Typ schema.PrimitiveType `json:"type"`
+}
+
+// Name returns the name of the field.
+func (f TypedField) Name() string {
+	return f.Nam
+}
+
+// Type returns the type of the field.
+func (f TypedField) Type() schema.PrimitiveType {
+	return f.Typ
 }
 
 // NewTypedField creates a new TypedField with the given name and type.
 func NewTypedField(name string, typ schema.PrimitiveType) TypedField {
-	return TypedField{name: name, typ: typ}
+	return TypedField{Nam: name, Typ: typ}
 }
 
 // ParseMessage extracts all interesting values from an MCAP message, according

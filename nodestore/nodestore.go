@@ -460,7 +460,9 @@ func (n *Nodestore) mergeInnerNodes(
 		for _, node := range nodes {
 			if inner := node.Children[conflict]; inner != nil && !slices.Contains(children, inner.ID) {
 				children = append(children, inner.ID)
-				stats.Add(inner.Statistics)
+				if err := stats.Add(inner.Statistics); err != nil {
+					return nil, fmt.Errorf("failed to add statistics: %w", err)
+				}
 			}
 		}
 		merged, err := n.nodeMerge(ctx, version, children) // merged child for this conflict
