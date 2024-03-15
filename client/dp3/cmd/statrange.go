@@ -87,8 +87,8 @@ var statrangeCmd = &cobra.Command{
 				if !ok {
 					continue
 				}
-				fieldName := record.Statistics.Fields[k].Name()
-				fieldType := record.Statistics.Fields[k].Type().String()
+				fieldName := record.Statistics.Fields[k].Name
+				fieldType := record.Statistics.Fields[k].Value.String()
 				min := fmt.Sprintf("%f", stats.Min)
 				max := fmt.Sprintf("%f", stats.Max)
 				mean := fmt.Sprintf("%f", stats.Mean)
@@ -111,8 +111,8 @@ var statrangeCmd = &cobra.Command{
 				if !ok {
 					continue
 				}
-				fieldName := record.Statistics.Fields[k].Name()
-				fieldType := record.Statistics.Fields[k].Type().String()
+				fieldName := record.Statistics.Fields[k].Name
+				fieldType := record.Statistics.Fields[k].Value.String()
 				data = append(data, []string{start, end, fieldName, fieldType, stats.Min, stats.Max})
 			}
 		}

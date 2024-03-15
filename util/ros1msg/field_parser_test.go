@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/ros1msg"
 	"github.com/wkalt/dp3/util/schema"
 	"github.com/wkalt/dp3/util/testutils"
@@ -13,7 +14,7 @@ func TestSchemaAnalyzer(t *testing.T) {
 	cases := []struct {
 		assertion string
 		schema    schema.Schema
-		expected  []ros1msg.TypedField
+		expected  []util.Named[schema.PrimitiveType]
 	}{
 		{
 			"primitives",
@@ -21,9 +22,9 @@ func TestSchemaAnalyzer(t *testing.T) {
 				schema.NewField("field1", schema.NewPrimitiveType(schema.INT8)),
 				schema.NewField("field2", schema.NewPrimitiveType(schema.INT16)),
 			),
-			[]ros1msg.TypedField{
-				ros1msg.NewTypedField("field1", schema.INT8),
-				ros1msg.NewTypedField("field2", schema.INT16),
+			[]util.Named[schema.PrimitiveType]{
+				util.NewNamed("field1", schema.INT8),
+				util.NewNamed("field2", schema.INT16),
 			},
 		},
 		{
@@ -33,8 +34,8 @@ func TestSchemaAnalyzer(t *testing.T) {
 					schema.NewField("subfield1", schema.NewPrimitiveType(schema.INT8)),
 				})),
 			),
-			[]ros1msg.TypedField{
-				ros1msg.NewTypedField("field1.subfield1", schema.INT8),
+			[]util.Named[schema.PrimitiveType]{
+				util.NewNamed("field1.subfield1", schema.INT8),
 			},
 		},
 		{
@@ -43,11 +44,11 @@ func TestSchemaAnalyzer(t *testing.T) {
 				schema.NewField("field1", schema.NewPrimitiveType(schema.INT8)),
 				schema.NewField("field2", schema.NewArrayType(3, schema.NewPrimitiveType(schema.INT16))),
 			),
-			[]ros1msg.TypedField{
-				ros1msg.NewTypedField("field1", schema.INT8),
-				ros1msg.NewTypedField("field2[0]", schema.INT16),
-				ros1msg.NewTypedField("field2[1]", schema.INT16),
-				ros1msg.NewTypedField("field2[2]", schema.INT16),
+			[]util.Named[schema.PrimitiveType]{
+				util.NewNamed("field1", schema.INT8),
+				util.NewNamed("field2[0]", schema.INT16),
+				util.NewNamed("field2[1]", schema.INT16),
+				util.NewNamed("field2[2]", schema.INT16),
 			},
 		},
 		{
@@ -56,8 +57,8 @@ func TestSchemaAnalyzer(t *testing.T) {
 				schema.NewField("field1", schema.NewPrimitiveType(schema.INT8)),
 				schema.NewField("field2", schema.NewArrayType(0, schema.NewPrimitiveType(schema.INT8))),
 			),
-			[]ros1msg.TypedField{
-				ros1msg.NewTypedField("field1", schema.INT8),
+			[]util.Named[schema.PrimitiveType]{
+				util.NewNamed("field1", schema.INT8),
 			},
 		},
 		{
@@ -68,10 +69,10 @@ func TestSchemaAnalyzer(t *testing.T) {
 					schema.NewField("subfield1", schema.NewPrimitiveType(schema.INT16)),
 				}))),
 			),
-			[]ros1msg.TypedField{
-				ros1msg.NewTypedField("field1", schema.INT8),
-				ros1msg.NewTypedField("field2[0].subfield1", schema.INT16),
-				ros1msg.NewTypedField("field2[1].subfield1", schema.INT16),
+			[]util.Named[schema.PrimitiveType]{
+				util.NewNamed("field1", schema.INT8),
+				util.NewNamed("field2[0].subfield1", schema.INT16),
+				util.NewNamed("field2[1].subfield1", schema.INT16),
 			},
 		},
 	}
@@ -295,7 +296,7 @@ func TestFieldParsing(t *testing.T) {
 		assertion string
 		schema    schema.Schema
 		data      []byte
-		expected  map[ros1msg.TypedField]any
+		expected  map[util.Named[schema.PrimitiveType]]any
 	}{
 		{
 			"primitives",
@@ -305,9 +306,9 @@ func TestFieldParsing(t *testing.T) {
 				schema.NewField("field2", schema.NewPrimitiveType(schema.INT16)),
 			),
 			testutils.Flatten(testutils.U8b(1), testutils.U16b(2)),
-			map[ros1msg.TypedField]any{
-				ros1msg.NewTypedField("field1", schema.INT8):  int8(1),
-				ros1msg.NewTypedField("field2", schema.INT16): int16(2),
+			map[util.Named[schema.PrimitiveType]]any{
+				util.NewNamed("field1", schema.INT8):  int8(1),
+				util.NewNamed("field2", schema.INT16): int16(2),
 			},
 		},
 		{
@@ -319,8 +320,8 @@ func TestFieldParsing(t *testing.T) {
 				})),
 			),
 			testutils.Flatten(testutils.U8b(1)),
-			map[ros1msg.TypedField]any{
-				ros1msg.NewTypedField("field1.subfield1", schema.INT8): int8(1),
+			map[util.Named[schema.PrimitiveType]]any{
+				util.NewNamed("field1.subfield1", schema.INT8): int8(1),
 			},
 		},
 		{
@@ -334,8 +335,8 @@ func TestFieldParsing(t *testing.T) {
 				})),
 			),
 			testutils.Flatten(testutils.U8b(1)),
-			map[ros1msg.TypedField]any{
-				ros1msg.NewTypedField("field1.subfield1.subsubfield1", schema.INT8): int8(1),
+			map[util.Named[schema.PrimitiveType]]any{
+				util.NewNamed("field1.subfield1.subsubfield1", schema.INT8): int8(1),
 			},
 		},
 		{
@@ -346,8 +347,8 @@ func TestFieldParsing(t *testing.T) {
 				schema.NewField("field2", schema.NewArrayType(0, schema.NewPrimitiveType(schema.INT8))),
 			),
 			testutils.Flatten(testutils.U8b(1), testutils.U32b(1), testutils.U8b(2)),
-			map[ros1msg.TypedField]any{
-				ros1msg.NewTypedField("field1", schema.INT8): int8(1),
+			map[util.Named[schema.PrimitiveType]]any{
+				util.NewNamed("field1", schema.INT8): int8(1),
 			},
 		},
 		{
@@ -358,10 +359,10 @@ func TestFieldParsing(t *testing.T) {
 				schema.NewField("field2", schema.NewArrayType(2, schema.NewPrimitiveType(schema.INT8))),
 			),
 			testutils.Flatten(testutils.U8b(1), testutils.U8b(3), testutils.U8b(2)),
-			map[ros1msg.TypedField]any{
-				ros1msg.NewTypedField("field1", schema.INT8):    int8(1),
-				ros1msg.NewTypedField("field2[0]", schema.INT8): int8(3),
-				ros1msg.NewTypedField("field2[1]", schema.INT8): int8(2),
+			map[util.Named[schema.PrimitiveType]]any{
+				util.NewNamed("field1", schema.INT8):    int8(1),
+				util.NewNamed("field2[0]", schema.INT8): int8(3),
+				util.NewNamed("field2[1]", schema.INT8): int8(2),
 			},
 		},
 		{
@@ -376,8 +377,8 @@ func TestFieldParsing(t *testing.T) {
 				testutils.U8b(1), testutils.U8b(1), testutils.U8b(1),
 				testutils.U8b(1), testutils.U8b(1), testutils.U8b(1),
 				testutils.U8b(1), testutils.U8b(1)),
-			map[ros1msg.TypedField]any{
-				ros1msg.NewTypedField("field1", schema.INT8): int8(1),
+			map[util.Named[schema.PrimitiveType]]any{
+				util.NewNamed("field1", schema.INT8): int8(1),
 			},
 		},
 	}
@@ -387,7 +388,7 @@ func TestFieldParsing(t *testing.T) {
 			fields := ros1msg.AnalyzeSchema(c.schema)
 			values := make([]any, 0, len(fields))
 			require.NoError(t, ros1msg.ParseMessage(ros1msg.GenParser(c.schema), c.data, &values))
-			m := make(map[ros1msg.TypedField]any)
+			m := make(map[util.Named[schema.PrimitiveType]]any)
 			for i, f := range fields {
 				m[f] = values[i]
 			}

@@ -230,7 +230,7 @@ func (w *writer) updateStatistics(message *fmcap.Message) error {
 	}
 	for i, field := range statistics.Fields {
 		value := values[i]
-		switch field.Type() {
+		switch field.Value {
 		case schema.INT8, schema.INT16, schema.INT32, schema.INT64, schema.FLOAT32, schema.FLOAT64,
 			schema.UINT8, schema.UINT16, schema.UINT32, schema.UINT64:
 			v, err := toFloat(value)

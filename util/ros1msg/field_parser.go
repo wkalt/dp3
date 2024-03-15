@@ -3,6 +3,7 @@ package ros1msg
 import (
 	"fmt"
 
+	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/schema"
 )
 
@@ -22,33 +23,6 @@ values.
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// TypedField is a "named" field within a schema. Currently we only name
-// primitive types. For record types and array types, names are represented with
-// dot or square bracket notation. Variable-length or long fixed-length arrays
-// never appear.
-//
-// Name may take the form of "field1", "field2[0].subfield",
-// "field2[1].subfield[0]", etc.
-type TypedField struct {
-	Nam string               `json:"name"`
-	Typ schema.PrimitiveType `json:"type"`
-}
-
-// Name returns the name of the field.
-func (f TypedField) Name() string {
-	return f.Nam
-}
-
-// Type returns the type of the field.
-func (f TypedField) Type() schema.PrimitiveType {
-	return f.Typ
-}
-
-// NewTypedField creates a new TypedField with the given name and type.
-func NewTypedField(name string, typ schema.PrimitiveType) TypedField {
-	return TypedField{Nam: name, Typ: typ}
-}
-
 // ParseMessage extracts all interesting values from an MCAP message, according
 // to the construction of the supplied field skipper.
 func ParseMessage(parser Parser, data []byte, values *[]any) error {
@@ -59,11 +33,11 @@ func ParseMessage(parser Parser, data []byte, values *[]any) error {
 	return nil
 }
 
-// AnalyzeSchema returns a list of TypedFields that represent interesting values
-// in a message. The length and ordering of this list match the response of
-// ParseMessage.
-func AnalyzeSchema(s schema.Schema) []TypedField {
-	fields := []TypedField{}
+// AnalyzeSchema returns a list of Named[schema.PrimitiveType] that represent
+// interesting values in a message. The length and ordering of this list match
+// the response of ParseMessage.
+func AnalyzeSchema(s schema.Schema) []util.Named[schema.PrimitiveType] {
+	fields := []util.Named[schema.PrimitiveType]{}
 	for _, f := range s.Fields {
 		types := []schema.Type{f.Type}
 		names := []string{f.Name}
@@ -73,7 +47,7 @@ func AnalyzeSchema(s schema.Schema) []TypedField {
 			name := names[0]
 			names = names[1:]
 			if t.Primitive > 0 {
-				fields = append(fields, NewTypedField(name, t.Primitive))
+				fields = append(fields, util.NewNamed(name, t.Primitive))
 				continue
 			}
 			if t.Array {
