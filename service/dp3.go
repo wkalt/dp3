@@ -51,7 +51,7 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 	log.Debugf(ctx, "Debug logging enabled")
 	store := opts.StorageProvider
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](opts.CacheSizeBytes)
-	walpath := "wal.db"
+	walpath := "wal.db?_journal=WAL&mode=rwc"
 	db, err := sql.Open("sqlite3", walpath)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
