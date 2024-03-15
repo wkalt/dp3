@@ -3,7 +3,8 @@ package nodestore
 import (
 	"fmt"
 
-	"github.com/wkalt/dp3/util/ros1msg"
+	"github.com/wkalt/dp3/util"
+	"github.com/wkalt/dp3/util/schema"
 )
 
 /*
@@ -38,11 +39,11 @@ type TextSummary struct {
 
 // Statistics represents the statistics we store on each child element of an inner node.
 type Statistics struct {
-	Fields       []ros1msg.TypedField      `json:"fields"`
-	NumStats     map[int]*NumericalSummary `json:"numeric"`
-	TextStats    map[int]*TextSummary      `json:"text"`
-	MessageCount uint64                    `json:"messageCount"`
-	ByteCount    uint64                    `json:"byteCount"`
+	Fields       []util.Named[schema.PrimitiveType] `json:"fields"`
+	NumStats     map[int]*NumericalSummary          `json:"numeric"`
+	TextStats    map[int]*TextSummary               `json:"text"`
+	MessageCount uint64                             `json:"messageCount"`
+	ByteCount    uint64                             `json:"byteCount"`
 }
 
 func (s *Statistics) ObserveNumeric(idx int, v float64) {
@@ -77,7 +78,7 @@ func (s *Statistics) ObserveText(idx int, v string) {
 	}
 }
 
-func NewStatistics(fields []ros1msg.TypedField) *Statistics {
+func NewStatistics(fields []util.Named[schema.PrimitiveType]) *Statistics {
 	return &Statistics{
 		Fields:       fields,
 		NumStats:     make(map[int]*NumericalSummary),
