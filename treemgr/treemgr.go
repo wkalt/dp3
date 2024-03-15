@@ -77,13 +77,17 @@ func (tm *TreeManager) Receive(ctx context.Context, producerID string, data io.R
 	if err != nil {
 		return fmt.Errorf("failed to create message iterator: %w", err)
 	}
+	buf := make([]byte, 1024)
 	for {
-		schema, channel, msg, err := it.Next(nil)
+		schema, channel, msg, err := it.Next(buf)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
 			return fmt.Errorf("failed to read next message: %w", err)
+		}
+		if len(msg.Data) > len(buf) {
+			buf = make([]byte, 2*len(msg.Data))
 		}
 		var writer *writer
 		var ok bool
