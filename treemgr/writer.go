@@ -11,7 +11,6 @@ import (
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/util/log"
 	"github.com/wkalt/dp3/util/ros1msg"
-	"github.com/wkalt/dp3/util/schema"
 	"golang.org/x/exp/maps"
 )
 
@@ -186,33 +185,6 @@ func (w *writer) reset(ctx context.Context, ts uint64) error {
 	return nil
 }
 
-func toFloat(x any) (float64, error) {
-	switch x := x.(type) {
-	case int8:
-		return float64(x), nil
-	case int16:
-		return float64(x), nil
-	case int32:
-		return float64(x), nil
-	case int64:
-		return float64(x), nil
-	case float32:
-		return float64(x), nil
-	case float64:
-		return x, nil
-	case uint8:
-		return float64(x), nil
-	case uint16:
-		return float64(x), nil
-	case uint32:
-		return float64(x), nil
-	case uint64:
-		return float64(x), nil
-	default:
-		return 0, fmt.Errorf("unsupported type: %T", x)
-	}
-}
-
 func (w *writer) updateStatistics(message *fmcap.Message) error {
 	channel := w.channels[message.ChannelID]
 	schemaID := channel.SchemaID
@@ -228,26 +200,9 @@ func (w *writer) updateStatistics(message *fmcap.Message) error {
 	if err := ros1msg.ParseMessage(parser, message.Data, &values); err != nil {
 		return fmt.Errorf("failed to parse message on %s: %w", channel.Topic, err)
 	}
-	for i, field := range statistics.Fields {
-		value := values[i]
-		switch field.Value {
-		case schema.INT8, schema.INT16, schema.INT32, schema.INT64, schema.FLOAT32, schema.FLOAT64,
-			schema.UINT8, schema.UINT16, schema.UINT32, schema.UINT64:
-			v, err := toFloat(value)
-			if err != nil {
-				return fmt.Errorf("failed to convert value to float: %w", err)
-			}
-			statistics.ObserveNumeric(i, v)
-		case schema.STRING:
-			v, ok := value.(string)
-			if !ok {
-				return fmt.Errorf("expected string, got %T", value)
-			}
-			statistics.ObserveText(i, v)
-		}
+	if err := statistics.ObserveMessage(message, values); err != nil {
+		return fmt.Errorf("failed to observe message: %w", err)
 	}
-	statistics.MessageCount++
-	statistics.ByteCount += uint64(len(message.Data))
 	return nil
 }
 

@@ -68,8 +68,15 @@ var statrangeCmd = &cobra.Command{
 			end := time.Unix(0, int64(record.End)).Format(time.RFC3339)
 			volume := util.HumanBytes(record.Statistics.ByteCount)
 			count := fmt.Sprintf("%d", record.Statistics.MessageCount)
-			frequency := util.HumanFrequency(float64(record.Statistics.MessageCount) /
-				(float64(record.End-record.Start) / 1e9))
+			var frequency string
+			if record.Statistics.MessageCount > 0 {
+				start := record.Statistics.MinObservedTime
+				end := record.Statistics.MaxObservedTime
+				frequency = util.HumanFrequency(float64(record.Statistics.MessageCount) /
+					(float64(end-start) / 1e9))
+			} else {
+				frequency = "N/A"
+			}
 			data = append(data, []string{start, end, volume, count, frequency})
 		}
 
