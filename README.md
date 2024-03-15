@@ -171,6 +171,8 @@ Users of ROS 1 bag files can try dp3 by converting their bags to mcap with the
 ## Developers
 We use golangci-lint for linting.  To install it it follow the directions here: https://golangci-lint.run/usage/install.
 
+
+### Run the tests
 To run the tests:
 ```
     make test
@@ -180,3 +182,39 @@ To run the linter:
 ```
     make lint
 ```
+
+### Build the binary
+```
+    make build
+```
+
+### Profiling the server
+Profiles can be generated with the pprof webserver on port 6060. For example,
+
+* Heap snapshot
+```
+    go tool pprof http://localhost:6060/debug/pprof/heap
+```
+
+* CPU profile
+```
+    go tool pprof http://localhost:6060/debug/pprof/profile?seconds=30
+```
+
+* Goroutine blocking
+```
+    go tool pprof http://localhost:6060/debug/pprof/block
+```
+
+* Mutex contention
+```
+    go tool pprof http://localhost:6060/debug/pprof/mutex
+```
+
+* Function tracing
+```
+    curl -o trace.out http://localhost:6060/debug/pprof/trace?seconds=5
+    go tool trace trace.out
+```
+
+See https://pkg.go.dev/net/http/pprof for additional information about pprof.

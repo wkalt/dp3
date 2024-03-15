@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	_ "net/http/pprof"
+
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/rootmap"
 	"github.com/wkalt/dp3/routes"
@@ -77,15 +79,18 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
+		log.Infow(ctx, "Starting server",
+			"port", opts.Port, "cache", util.HumanBytes(opts.CacheSizeBytes), "storage", store)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Errorf(ctx, "failed to start server: %s", err)
 		}
 	}()
-	log.Infow(ctx, "Started server",
-		"port", opts.Port,
-		"cache", util.HumanBytes(opts.CacheSizeBytes),
-		"storage", store,
-	)
+	go func() {
+		log.Infof(ctx, "Starting pprof server on :6060")
+		if err := http.ListenAndServe(":6060", nil); err != nil {
+			log.Errorf(ctx, "failed to start pprof server: %s", err)
+		}
+	}()
 	<-done
 	log.Infof(ctx, "Allowing 10 seconds for existing connections to close")
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
