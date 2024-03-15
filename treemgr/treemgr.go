@@ -92,13 +92,9 @@ func (tm *TreeManager) Receive(ctx context.Context, producerID string, data io.R
 		var writer *writer
 		var ok bool
 		if writer, ok = writers[channel.Topic]; !ok {
-			_, _, err := tm.rootmap.GetLatest(ctx, producerID, channel.Topic)
-			if err != nil {
+			if _, _, err := tm.rootmap.GetLatest(ctx, producerID, channel.Topic); err != nil {
 				switch {
-				case errors.Is(err, rootmap.StreamNotFoundError{
-					ProducerID: producerID,
-					Topic:      channel.Topic,
-				}):
+				case errors.Is(err, rootmap.StreamNotFoundError{}):
 					if err := tm.newRoot(ctx, producerID, channel.Topic); err != nil {
 						return fmt.Errorf("failed to create new root: %w", err)
 					}
@@ -112,13 +108,7 @@ func (tm *TreeManager) Receive(ctx context.Context, producerID string, data io.R
 			}
 			writers[channel.Topic] = writer
 		}
-		if err := writer.WriteSchema(schema); err != nil {
-			return fmt.Errorf("failed to write schema: %w", err)
-		}
-		if err := writer.WriteChannel(channel); err != nil {
-			return fmt.Errorf("failed to write channel: %w", err)
-		}
-		if err := writer.WriteMessage(ctx, msg); err != nil {
+		if err := writer.Write(ctx, schema, channel, msg); err != nil {
 			return fmt.Errorf("failed to write message: %w", err)
 		}
 	}
@@ -325,6 +315,7 @@ func (tm *TreeManager) SyncWAL(ctx context.Context) error {
 		return fmt.Errorf("failed to list WAL: %w", err)
 	}
 	grp := errgroup.Group{}
+	log.Infof(ctx, "Syncing %d WAL listings", len(listings))
 	grp.SetLimit(tm.syncWorkers)
 	for _, listing := range listings {
 		grp.Go(func() error {
@@ -334,6 +325,7 @@ func (tm *TreeManager) SyncWAL(ctx context.Context) error {
 	if err := grp.Wait(); err != nil {
 		return fmt.Errorf("failed to sync WAL: %w", err)
 	}
+	log.Infof(ctx, "WAL sync complete")
 	return nil
 }
 

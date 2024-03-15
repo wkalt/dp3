@@ -81,8 +81,8 @@ func newWriter(ctx context.Context, tmgr *TreeManager, producerID string, topic 
 	}, nil
 }
 
-// WriteSchema writes the supplied schema to the output writer.
-func (w *writer) WriteSchema(schema *fmcap.Schema) error {
+// writeSchema writes the supplied schema to the output writer.
+func (w *writer) writeSchema(schema *fmcap.Schema) error {
 	_, known := w.schemas[schema.ID]
 	if w.initialized && known {
 		return nil
@@ -98,7 +98,7 @@ func (w *writer) WriteSchema(schema *fmcap.Schema) error {
 	return nil
 }
 
-func (w *writer) WriteChannel(channel *fmcap.Channel) error {
+func (w *writer) writeChannel(channel *fmcap.Channel) error {
 	_, known := w.channels[channel.ID]
 	if w.initialized && known {
 		return nil
@@ -116,7 +116,7 @@ func (w *writer) WriteChannel(channel *fmcap.Channel) error {
 
 func (w *writer) initialize(ts uint64) (err error) {
 	lower, upper := w.dims.bounds(ts)
-	w.w, err = mcap.NewWriter(w.buf)
+	w.w, err = mcap.NewWriter(w.buf, mcap.WithCompression(fmcap.CompressionNone))
 	if err != nil {
 		return fmt.Errorf("failed to create mcap writer: %w", err)
 	}
@@ -215,7 +215,25 @@ func (w *writer) updateStatistics(message *fmcap.Message) error {
 	return nil
 }
 
-func (w *writer) WriteMessage(ctx context.Context, message *fmcap.Message) error {
+func (w *writer) Write(
+	ctx context.Context,
+	schema *fmcap.Schema,
+	channel *fmcap.Channel,
+	message *fmcap.Message,
+) error {
+	if err := w.writeSchema(schema); err != nil {
+		return fmt.Errorf("failed to write schema: %w", err)
+	}
+	if err := w.writeChannel(channel); err != nil {
+		return fmt.Errorf("failed to write channel: %w", err)
+	}
+	if err := w.writeMessage(ctx, message); err != nil {
+		return fmt.Errorf("failed to write message: %w", err)
+	}
+	return nil
+}
+
+func (w *writer) writeMessage(ctx context.Context, message *fmcap.Message) error {
 	if !w.initialized {
 		if err := w.initialize(message.LogTime); err != nil {
 			return fmt.Errorf("failed to initialize writer: %w", err)

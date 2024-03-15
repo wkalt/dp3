@@ -312,17 +312,16 @@ func (a *arraySkipper) Parse(data []byte, values *[]any, parse bool) (int, error
 		}
 		length := int(binary.LittleEndian.Uint32(data))
 		offset += 4
-
 		if itemSize := a.items.FixedSize(); itemSize > 0 {
 			offset += itemSize * length
-		} else {
-			for i := 0; i < length; i++ {
-				n, err := a.items.Parse(data[offset:], values, false)
-				if err != nil {
-					return 0, fmt.Errorf("failed to parse array item: %w", err)
-				}
-				offset += n
+			return offset, nil
+		}
+		for i := 0; i < length; i++ {
+			n, err := a.items.Parse(data[offset:], values, false)
+			if err != nil {
+				return 0, fmt.Errorf("failed to parse array item: %w", err)
 			}
+			offset += n
 		}
 		return offset, nil
 	}
@@ -331,25 +330,24 @@ func (a *arraySkipper) Parse(data []byte, values *[]any, parse bool) (int, error
 	if a.fixedSize > 10 {
 		if itemsize := a.items.FixedSize(); itemsize > 0 {
 			offset += itemsize * a.fixedSize
-		} else {
-			for i := 0; i < a.fixedSize; i++ {
-				n, err := a.items.Parse(data[offset:], values, false)
-				if err != nil {
-					return 0, fmt.Errorf("failed to skip array item: %w", err)
-				}
-				offset += n
+			return offset, nil
+		}
+
+		for i := 0; i < a.fixedSize; i++ {
+			n, err := a.items.Parse(data[offset:], values, false)
+			if err != nil {
+				return 0, fmt.Errorf("failed to skip array item: %w", err)
 			}
+			offset += n
 		}
 
 		return offset, nil
 	}
 
 	// Otherwise, if not parsing try and multiply
-	if itemsize := a.items.FixedSize(); itemsize > 0 {
-		if !parse {
-			offset += itemsize * a.fixedSize
-			return offset, nil
-		}
+	if itemsize := a.items.FixedSize(); itemsize > 0 && !parse {
+		offset += itemsize * a.fixedSize
+		return offset, nil
 	}
 
 	// Otherwise we need to parse
