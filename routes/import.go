@@ -43,7 +43,7 @@ func newImportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		// bigger writes to final storage, as well as to decouple write size
 		// from input size. For now we just kick it off on request though.
 		go func() {
-			if err := tmgr.SyncWAL(context.Background()); err != nil {
+			if err := tmgr.SyncWAL(context.WithoutCancel(ctx)); err != nil {
 				log.Errorf(ctx, "Failed to sync WAL: %s", err)
 			}
 		}()

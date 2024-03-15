@@ -109,7 +109,7 @@ func readOpts(opts ...DP3Option) (*DP3Options, error) {
 		CacheSizeBytes: 1 * gigabyte,
 		Port:           8089,
 		LogLevel:       slog.LevelInfo,
-		SyncWorkers:    10,
+		SyncWorkers:    32,
 	}
 	for _, opt := range opts {
 		opt(&options)

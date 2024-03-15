@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -58,11 +59,14 @@ func BenchmarkReceive(b *testing.B) {
 
 	for _, c := range cases {
 		b.Run(c.assertion, func(b *testing.B) {
+			f, err := os.Open(c.inputfile)
+			require.NoError(b, err)
+			data, err := io.ReadAll(f)
+			require.NoError(b, err)
+			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				f, err := os.Open(c.inputfile)
-				require.NoError(b, err)
 				tmgr := testTreeManager(ctx, b)
-				require.NoError(b, tmgr.Receive(ctx, "my-device", f))
+				require.NoError(b, tmgr.Receive(ctx, "my-device", bytes.NewReader(data)))
 				require.NoError(b, f.Close())
 			}
 		})
@@ -125,15 +129,15 @@ func TestReceive(t *testing.T) {
 	}
 }
 
-func testTreeManager(ctx context.Context, t testing.TB) *treemgr.TreeManager {
-	t.Helper()
+func testTreeManager(ctx context.Context, tb testing.TB) *treemgr.TreeManager {
+	tb.Helper()
 	store := storage.NewMemStore()
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1000)
 	db, err := sql.Open("sqlite3", ":memory:")
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	db.SetMaxOpenConns(1)
 	wal, err := nodestore.NewSQLWAL(ctx, db)
-	require.NoError(t, err)
+	require.NoError(tb, err)
 	ns := nodestore.NewNodestore(store, cache, wal)
 	vs := versionstore.NewMemVersionStore()
 	rm := rootmap.NewMemRootmap()
