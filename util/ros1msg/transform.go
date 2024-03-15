@@ -2,13 +2,20 @@ package ros1msg
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/wkalt/dp3/util/schema"
 )
 
 /*
-Converts the participle AST into our schema.Schema representation, which will be
-nicer to work with.
+This file contains the ParseROS1MessageDefinition function, which accepts a
+[]byte-valued ROS1 message definition with name and package, and returns a
+*schema.Schema.
+
+It does this by calling the participle parser on the message definition to
+create a participle AST, and then transforming that AST into a schema.Schema,
+which will be friendlier to work with. The participle AST does not leave the
+ros1msg package.
 */
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -34,6 +41,16 @@ var (
 	}
 )
 
+// ParseROS1MessageDefinition parses a ROS1 message definition and returns a
+// schema.Schema representation of it.
+func ParseROS1MessageDefinition(pkg string, name string, msgdef []byte) (*schema.Schema, error) {
+	ast, err := MessageDefinitionParser.ParseBytes("", msgdef)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse ros1 message definition: %w", err)
+	}
+	return transformAST(pkg, name, *ast)
+}
+
 func resolveType(pkg string, subdeps map[string]Definition, t *ROSType) (*schema.Type, error) {
 	primitive, isPrimitive := primitiveTypes[t.Name]
 	isArray := t.Array
@@ -53,13 +70,17 @@ func resolveType(pkg string, subdeps map[string]Definition, t *ROSType) (*schema
 	}
 
 	if isArray {
-		subdep, ok := subdeps[pkg+"/"+t.Name]
-		if !ok {
-			return nil, fmt.Errorf("failed to resolve type %s", t.Name)
+		subdep, err := getSubdep(pkg, subdeps, t.Name)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve array type %s: %w", t.Name, err)
+		}
+		if strings.Contains(t.Name, "/") {
+			parts := strings.Split(t.Name, "/")
+			pkg = parts[0]
 		}
 		items, err := resolveSubdef(pkg, subdeps, subdep)
 		if err != nil {
-			return nil, fmt.Errorf("failed to resolve type %s: %w", t.Name, err)
+			return nil, fmt.Errorf("failed to resolve subdef type %s: %w", t.Name, err)
 		}
 		return &schema.Type{
 			Array:     true,
@@ -69,9 +90,9 @@ func resolveType(pkg string, subdeps map[string]Definition, t *ROSType) (*schema
 	}
 
 	// record type
-	subdep, ok := subdeps[t.Name]
-	if !ok {
-		return nil, fmt.Errorf("failed to resolve type %s", t.Name)
+	subdep, err := getSubdep(pkg, subdeps, t.Name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve record type %s: %w", t.Name, err)
 	}
 	return resolveSubdef(pkg, subdeps, subdep)
 }
@@ -97,6 +118,21 @@ func resolveSubdef(pkg string, subdeps map[string]Definition, def Definition) (*
 		}
 	}
 	return t, nil
+}
+
+// getSubdep returns the subdep with the given name, or if that doesn't exist,
+// the one with the given package and name. ros1msg allows schema names in
+// messages to be either namespaced by a package or not. If they are not
+// namespaced, they inherit the package of their parent message.
+func getSubdep(parentPkg string, subdeps map[string]Definition, name string) (Definition, error) {
+	subdep, ok := subdeps[name]
+	if !ok {
+		subdep, ok = subdeps[parentPkg+"/"+name]
+		if !ok {
+			return Definition{}, fmt.Errorf("failed to resolve subdep %s", name)
+		}
+	}
+	return subdep, nil
 }
 
 func transformAST(pkg string, name string, ast MessageDefinition) (*schema.Schema, error) {
@@ -125,12 +161,4 @@ func transformAST(pkg string, name string, ast MessageDefinition) (*schema.Schem
 		}
 	}
 	return &s, nil
-}
-
-func ParseROS1MessageDefinition(pkg string, name string, msgdef []byte) (*schema.Schema, error) {
-	ast, err := MessageDefinitionParser.ParseBytes("", msgdef)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse ros1 message definition: %w", err)
-	}
-	return transformAST(pkg, name, *ast)
 }

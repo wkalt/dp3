@@ -182,6 +182,7 @@ func (tm *TreeManager) getMessages(
 		iterators = append(iterators, it)
 	}
 	defer closeAll(ctx, iterators...)
+
 	pq := util.NewPriorityQueue[record, uint64]()
 	heap.Init(pq)
 
