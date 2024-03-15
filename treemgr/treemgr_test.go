@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -41,6 +42,31 @@ func removeSpace(s string) string {
 func assertEqualTrees(t *testing.T, a, b string) {
 	t.Helper()
 	require.Equal(t, removeSpace(a), removeSpace(b), "%s != %s", a, b)
+}
+
+func BenchmarkReceive(b *testing.B) {
+	ctx := context.Background()
+	cases := []struct {
+		assertion string
+		inputfile string
+	}{
+		{
+			"cal loop",
+			"/home/wyatt/data/bags/cal_loop.mcap",
+		},
+	}
+
+	for _, c := range cases {
+		b.Run(c.assertion, func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				f, err := os.Open(c.inputfile)
+				require.NoError(b, err)
+				tmgr := testTreeManager(ctx, b)
+				require.NoError(b, tmgr.Receive(ctx, "my-device", f))
+				require.NoError(b, f.Close())
+			}
+		})
+	}
 }
 
 func TestReceive(t *testing.T) {
@@ -99,12 +125,13 @@ func TestReceive(t *testing.T) {
 	}
 }
 
-func testTreeManager(ctx context.Context, t *testing.T) *treemgr.TreeManager {
+func testTreeManager(ctx context.Context, t testing.TB) *treemgr.TreeManager {
 	t.Helper()
 	store := storage.NewMemStore()
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1000)
 	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
+	db.SetMaxOpenConns(1)
 	wal, err := nodestore.NewSQLWAL(ctx, db)
 	require.NoError(t, err)
 	ns := nodestore.NewNodestore(store, cache, wal)

@@ -84,92 +84,7 @@ func TestSchemaAnalyzer(t *testing.T) {
 	}
 }
 
-func TestParseMessage(t *testing.T) {
-	cases := []struct {
-		assertion string
-		schema    schema.Schema
-		data      []byte
-		expected  []any
-	}{
-		{
-			"primitives",
-			schema.NewSchema(
-				"",
-				schema.NewField("field1", schema.NewPrimitiveType(schema.INT8)),
-				schema.NewField("field2", schema.NewPrimitiveType(schema.INT16)),
-			),
-			testutils.Flatten(testutils.U8b(1), testutils.U16b(2)),
-			[]any{int8(1), int16(2)},
-		},
-		{
-			"records",
-			schema.NewSchema(
-				"",
-				schema.NewField("field1", schema.NewRecordType([]schema.Field{
-					schema.NewField("subfield1", schema.NewPrimitiveType(schema.INT8)),
-				})),
-			),
-			testutils.Flatten(testutils.U8b(1)),
-			[]any{int8(1)},
-		},
-		{
-			"nested record",
-			schema.NewSchema(
-				"",
-				schema.NewField("field1", schema.NewRecordType([]schema.Field{
-					schema.NewField("subfield1", schema.NewRecordType([]schema.Field{
-						schema.NewField("subsubfield1", schema.NewPrimitiveType(schema.INT8)),
-					})),
-				})),
-			),
-			testutils.Flatten(testutils.U8b(1)),
-			[]any{int8(1)},
-		},
-		{
-			"variable length arrays are skipped",
-			schema.NewSchema(
-				"",
-				schema.NewField("field1", schema.NewPrimitiveType(schema.INT8)),
-				schema.NewField("field2", schema.NewArrayType(0, schema.NewPrimitiveType(schema.INT8))),
-			),
-			testutils.Flatten(testutils.U8b(1), testutils.U32b(1), testutils.U8b(2)),
-			[]any{int8(1)},
-		},
-		{
-			"fixed-length arrays under 10 are emitted",
-			schema.NewSchema(
-				"",
-				schema.NewField("field1", schema.NewPrimitiveType(schema.INT8)),
-				schema.NewField("field2", schema.NewArrayType(2, schema.NewPrimitiveType(schema.INT8))),
-			),
-			testutils.Flatten(testutils.U8b(1), testutils.U8b(3), testutils.U8b(2)),
-			[]any{int8(1), int8(3), int8(2)},
-		},
-		{
-			"fixed-length arrays over 10 are skipped",
-			schema.NewSchema(
-				"",
-				schema.NewField("field1", schema.NewPrimitiveType(schema.INT8)),
-				schema.NewField("field2", schema.NewArrayType(11, schema.NewPrimitiveType(schema.INT8))),
-			),
-			testutils.Flatten(testutils.U8b(1),
-				testutils.U8b(2), testutils.U8b(2), testutils.U8b(2), testutils.U8b(2), // eleven bytes
-				testutils.U8b(2), testutils.U8b(2), testutils.U8b(2), testutils.U8b(2),
-				testutils.U8b(2), testutils.U8b(2), testutils.U8b(2)),
-			[]any{int8(1)},
-		},
-	}
-
-	for _, c := range cases {
-		t.Run(c.assertion, func(t *testing.T) {
-			fields := ros1msg.AnalyzeSchema(c.schema)
-			values := make([]any, 0, len(fields))
-			require.NoError(t, ros1msg.ParseMessage(ros1msg.GenParser(c.schema), c.data, &values))
-		})
-	}
-}
-
-func TestPrimitiveFieldParsing(t *testing.T) {
+func TestPrimitiveFieldSkipping(t *testing.T) {
 	cases := []struct {
 		assertion string
 		schema    schema.Schema
@@ -277,16 +192,101 @@ func TestPrimitiveFieldParsing(t *testing.T) {
 		t.Run(c.assertion, func(t *testing.T) {
 			fields := ros1msg.AnalyzeSchema(c.schema)
 			values := make([]any, 0, len(fields))
-			require.NoError(t, ros1msg.ParseMessage(ros1msg.GenParser(c.schema), c.data, &values))
+			require.NoError(t, ros1msg.SkipMessage(ros1msg.GenSkipper(c.schema), c.data, &values))
 			require.Len(t, values, 1)
 			require.Equal(t, c.expected, values[0])
 
 			t.Run("handles short reads", func(t *testing.T) {
 				require.ErrorIs(t,
-					ros1msg.ParseMessage(ros1msg.GenParser(c.schema), []byte{}, &values),
+					ros1msg.SkipMessage(ros1msg.GenSkipper(c.schema), []byte{}, &values),
 					ros1msg.ShortReadError{},
 				)
 			})
+		})
+	}
+}
+
+func TestSkipMessage(t *testing.T) {
+	cases := []struct {
+		assertion string
+		schema    schema.Schema
+		data      []byte
+		expected  []any
+	}{
+		{
+			"primitives",
+			schema.NewSchema(
+				"",
+				schema.NewField("field1", schema.NewPrimitiveType(schema.INT8)),
+				schema.NewField("field2", schema.NewPrimitiveType(schema.INT16)),
+			),
+			testutils.Flatten(testutils.U8b(1), testutils.U16b(2)),
+			[]any{int8(1), int16(2)},
+		},
+		{
+			"records",
+			schema.NewSchema(
+				"",
+				schema.NewField("field1", schema.NewRecordType([]schema.Field{
+					schema.NewField("subfield1", schema.NewPrimitiveType(schema.INT8)),
+				})),
+			),
+			testutils.Flatten(testutils.U8b(1)),
+			[]any{int8(1)},
+		},
+		{
+			"nested record",
+			schema.NewSchema(
+				"",
+				schema.NewField("field1", schema.NewRecordType([]schema.Field{
+					schema.NewField("subfield1", schema.NewRecordType([]schema.Field{
+						schema.NewField("subsubfield1", schema.NewPrimitiveType(schema.INT8)),
+					})),
+				})),
+			),
+			testutils.Flatten(testutils.U8b(1)),
+			[]any{int8(1)},
+		},
+		{
+			"variable length arrays are skipped",
+			schema.NewSchema(
+				"",
+				schema.NewField("field1", schema.NewPrimitiveType(schema.INT8)),
+				schema.NewField("field2", schema.NewArrayType(0, schema.NewPrimitiveType(schema.INT8))),
+			),
+			testutils.Flatten(testutils.U8b(1), testutils.U32b(1), testutils.U8b(2)),
+			[]any{int8(1)},
+		},
+		{
+			"fixed-length arrays under 10 are emitted",
+			schema.NewSchema(
+				"",
+				schema.NewField("field1", schema.NewPrimitiveType(schema.INT8)),
+				schema.NewField("field2", schema.NewArrayType(2, schema.NewPrimitiveType(schema.INT8))),
+			),
+			testutils.Flatten(testutils.U8b(1), testutils.U8b(3), testutils.U8b(2)),
+			[]any{int8(1), int8(3), int8(2)},
+		},
+		{
+			"fixed-length arrays over 10 are skipped",
+			schema.NewSchema(
+				"",
+				schema.NewField("field1", schema.NewPrimitiveType(schema.INT8)),
+				schema.NewField("field2", schema.NewArrayType(11, schema.NewPrimitiveType(schema.INT8))),
+			),
+			testutils.Flatten(testutils.U8b(1),
+				testutils.U8b(2), testutils.U8b(2), testutils.U8b(2), testutils.U8b(2), // eleven bytes
+				testutils.U8b(2), testutils.U8b(2), testutils.U8b(2), testutils.U8b(2),
+				testutils.U8b(2), testutils.U8b(2), testutils.U8b(2)),
+			[]any{int8(1)},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			fields := ros1msg.AnalyzeSchema(c.schema)
+			values := make([]any, 0, len(fields))
+			require.NoError(t, ros1msg.SkipMessage(ros1msg.GenSkipper(c.schema), c.data, &values))
 		})
 	}
 }
@@ -387,7 +387,7 @@ func TestFieldParsing(t *testing.T) {
 		t.Run(c.assertion, func(t *testing.T) {
 			fields := ros1msg.AnalyzeSchema(c.schema)
 			values := make([]any, 0, len(fields))
-			require.NoError(t, ros1msg.ParseMessage(ros1msg.GenParser(c.schema), c.data, &values))
+			require.NoError(t, ros1msg.SkipMessage(ros1msg.GenSkipper(c.schema), c.data, &values))
 			m := make(map[util.Named[schema.PrimitiveType]]any)
 			for i, f := range fields {
 				m[f] = values[i]

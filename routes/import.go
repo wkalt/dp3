@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -40,11 +41,12 @@ func newImportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 
 		// todo: WAL syncing should be done in a background thread to enable
 		// bigger writes to final storage, as well as to decouple write size
-		// from input size. For now we just do it synchronously though.
-		if err := tmgr.SyncWAL(ctx); err != nil {
-			httputil.InternalServerError(ctx, w, "error syncing WAL: %s", err)
-			return
-		}
+		// from input size. For now we just kick it off on request though.
+		go func() {
+			if err := tmgr.SyncWAL(context.Background()); err != nil {
+				log.Errorf(ctx, "Failed to sync WAL: %s", err)
+			}
+		}()
 		log.Infow(ctx, "Imported", "location", req.Path, "producer_id", req.ProducerID)
 	}
 }

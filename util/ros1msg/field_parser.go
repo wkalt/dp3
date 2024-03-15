@@ -23,10 +23,8 @@ values.
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// ParseMessage extracts all interesting values from an MCAP message, according
-// to the construction of the supplied field skipper.
-func ParseMessage(parser Parser, data []byte, values *[]any) error {
-	_, err := parser(data, values, true)
+func SkipMessage(skipper Parser, data []byte, values *[]any) error {
+	_, err := skipper.Parse(data, values, true)
 	if err != nil {
 		return fmt.Errorf("failed to parse message: %w", err)
 	}
@@ -76,7 +74,6 @@ func AnalyzeSchema(s schema.Schema) []util.Named[schema.PrimitiveType] {
 	return fields
 }
 
-// GenParser converts a schema.Schema to a ROS1 fieldskipper.
-func GenParser(s schema.Schema) Parser {
-	return recordToFieldParser(s.Fields)
+func GenSkipper(s schema.Schema) Parser {
+	return recordToFieldSkipper(s.Fields)
 }

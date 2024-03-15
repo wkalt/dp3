@@ -46,6 +46,7 @@ type writer struct {
 
 	schemaStats map[uint16]*nodestore.Statistics
 	parsers     map[uint16]ros1msg.Parser
+	values      map[uint16][]any
 
 	initialized bool
 
@@ -76,6 +77,7 @@ func newWriter(ctx context.Context, tmgr *TreeManager, producerID string, topic 
 		topic:       topic,
 		schemaStats: map[uint16]*nodestore.Statistics{},
 		parsers:     map[uint16]ros1msg.Parser{},
+		values:      map[uint16][]any{},
 	}, nil
 }
 
@@ -137,7 +139,7 @@ func (w *writer) initialize(ts uint64) (err error) {
 		if err != nil {
 			return fmt.Errorf("failed to parse ROS1 message definition: %w", err)
 		}
-		parser := ros1msg.GenParser(*msgdef)
+		parser := ros1msg.GenSkipper(*msgdef)
 		w.parsers[schema.ID] = parser
 		fields := ros1msg.AnalyzeSchema(*msgdef)
 		w.schemaStats[schema.ID] = nodestore.NewStatistics(fields)
@@ -196,13 +198,20 @@ func (w *writer) updateStatistics(message *fmcap.Message) error {
 	if !ok {
 		return fmt.Errorf("unknown field skipper for schema ID: %d", schemaID)
 	}
-	values := make([]any, 0, len(statistics.Fields))
-	if err := ros1msg.ParseMessage(parser, message.Data, &values); err != nil {
+
+	values, ok := w.values[schemaID]
+	if !ok {
+		values = make([]any, 0, len(statistics.Fields))
+		w.values[schemaID] = values
+	}
+
+	if err := ros1msg.SkipMessage(parser, message.Data, &values); err != nil {
 		return fmt.Errorf("failed to parse message on %s: %w", channel.Topic, err)
 	}
 	if err := statistics.ObserveMessage(message, values); err != nil {
 		return fmt.Errorf("failed to observe message: %w", err)
 	}
+	clear(values)
 	return nil
 }
 
