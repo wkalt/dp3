@@ -52,7 +52,7 @@ func GetStatRange(
 			for i, child := range node.Children {
 				childStart := 1e9 * (node.Start + width*uint64(i))
 				childEnd := 1e9 * (node.Start + width*uint64(i+1))
-				inRange := child != nil && start < childEnd && end >= childStart
+				inRange := child != nil && start <= childEnd && end > childStart
 				if inRange && granularEnough {
 					ranges = append(ranges, StatRange{
 						Start:      childStart,

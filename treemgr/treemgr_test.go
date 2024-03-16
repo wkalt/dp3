@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,10 +18,146 @@ import (
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/rootmap"
 	"github.com/wkalt/dp3/storage"
+	"github.com/wkalt/dp3/tree"
 	"github.com/wkalt/dp3/treemgr"
 	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/versionstore"
 )
+
+func TestGetStatisticsLatest(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		assertion   string
+		input       [][]uint64
+		granularity uint64
+		topics      []string
+		bounds      []uint64
+		ranges      map[string][]tree.StatRange
+	}{
+		{
+			"single topic file",
+			[][]uint64{{10, 100, 1000}},
+			600 * 1e9,
+			[]string{"topic-0"},
+			[]uint64{0, 1001},
+			map[string][]tree.StatRange{
+				"topic-0": {
+					{
+						Start: 0,
+						End:   60e9,
+						Statistics: &nodestore.Statistics{
+							MessageCount:    3,
+							ByteCount:       15,
+							MaxObservedTime: 1000,
+							MinObservedTime: 10,
+						},
+					},
+				},
+			},
+		},
+		{
+			"multiple buckets",
+			[][]uint64{{10, 100, 1000, 90e9}},
+			600 * 1e9,
+			[]string{"topic-0"},
+			[]uint64{0, 100e9},
+			map[string][]tree.StatRange{
+				"topic-0": {
+					{
+						Start: 0,
+						End:   60e9,
+						Statistics: &nodestore.Statistics{
+							MessageCount:    3,
+							ByteCount:       15,
+							MaxObservedTime: 1000,
+							MinObservedTime: 10,
+						},
+					},
+					{
+						Start: 60e9,
+						End:   120e9,
+						Statistics: &nodestore.Statistics{
+							MessageCount:    1,
+							ByteCount:       5,
+							MaxObservedTime: 90e9,
+							MinObservedTime: 90e9,
+						},
+					},
+				},
+			},
+		},
+		{
+			"multiple buckets, low granularity",
+			[][]uint64{{10, 100, 1000, 90e9}},
+			64 * 600 * 1e9,
+			[]string{"topic-0"},
+			[]uint64{0, 100e9},
+			map[string][]tree.StatRange{
+				"topic-0": {
+					{
+						Start: 0,
+						End:   3840000000000,
+						Statistics: &nodestore.Statistics{
+							MessageCount:    4,
+							ByteCount:       20,
+							MaxObservedTime: 90e9,
+							MinObservedTime: 10,
+						},
+					},
+				},
+			},
+		},
+		{
+			"excludes buckets based on [) semantics",
+			[][]uint64{{10, 100, 1000, 90e9}},
+			600 * 1e9,
+			[]string{"topic-0"},
+			[]uint64{100, 60e9},
+			map[string][]tree.StatRange{
+				"topic-0": {
+					{
+						Start: 0,
+						End:   60e9,
+						Statistics: &nodestore.Statistics{
+							MessageCount:    3,
+							ByteCount:       15,
+							MaxObservedTime: 1000,
+							MinObservedTime: 10,
+						},
+					},
+				},
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			mcap.WriteFile(t, buf, c.input...)
+			tmgr := testTreeManager(ctx, t)
+			require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
+			require.NoError(t, tmgr.SyncWAL(ctx))
+			start := c.bounds[0]
+			end := c.bounds[1]
+
+			result := make(map[string]string)
+			for _, topic := range c.topics {
+				ranges, err := tmgr.GetStatisticsLatest(ctx, start, end, "my-device", topic, c.granularity)
+				require.NoError(t, err)
+				data, err := json.Marshal(ranges)
+				require.NoError(t, err)
+				result[topic] = string(data)
+			}
+			expected := make(map[string]string)
+			for topic, ranges := range c.ranges {
+				data, err := json.Marshal(ranges)
+				require.NoError(t, err)
+				expected[topic] = string(data)
+			}
+			require.Equal(t, expected, result)
+		})
+	}
+}
 
 func TestGetMessagesLatest(t *testing.T) {
 	ctx := context.Background()
@@ -125,12 +262,6 @@ func TestGetMessagesLatest(t *testing.T) {
 			require.Equal(t, c.outputMessages, messages)
 		})
 	}
-}
-
-func TestGetStatistics(t *testing.T) {
-}
-
-func TestGetStatisticsLatest(t *testing.T) {
 }
 
 func TestSyncWAL(t *testing.T) {

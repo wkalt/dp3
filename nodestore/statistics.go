@@ -41,9 +41,9 @@ type TextSummary struct {
 
 // Statistics represents the statistics we store on each child element of an inner node.
 type Statistics struct {
-	Fields          []util.Named[schema.PrimitiveType] `json:"fields"`
-	NumStats        map[int]*NumericalSummary          `json:"numeric"`
-	TextStats       map[int]*TextSummary               `json:"text"`
+	Fields          []util.Named[schema.PrimitiveType] `json:"fields,omitempty"`
+	NumStats        map[int]*NumericalSummary          `json:"numeric,omitempty"`
+	TextStats       map[int]*TextSummary               `json:"text,omitempty"`
 	MessageCount    uint64                             `json:"messageCount"`
 	ByteCount       uint64                             `json:"byteCount"`
 	MaxObservedTime uint64                             `json:"maxObservedTime"`
