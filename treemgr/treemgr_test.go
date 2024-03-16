@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -21,7 +22,109 @@ import (
 	"github.com/wkalt/dp3/versionstore"
 )
 
-func TestGetMessages(t *testing.T) {
+func TestGetMessagesLatest(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		assertion      string
+		input          [][]uint64
+		topics         []string
+		bounds         []uint64
+		outputMessages map[string][]uint64
+	}{
+		{
+			"single topic file",
+			[][]uint64{{10, 100, 1000}},
+			[]string{"topic-0"},
+			[]uint64{0, 1001},
+			map[string][]uint64{
+				"topic-0": {10, 100, 1000},
+			},
+		},
+		{
+			"exhibits [) behavior",
+			[][]uint64{{10, 100, 1000}},
+			[]string{"topic-0"},
+			[]uint64{10, 1000},
+			map[string][]uint64{
+				"topic-0": {10, 100},
+			},
+		},
+		{
+			"respects lower bound",
+			[][]uint64{{10, 100, 1000}},
+			[]string{"topic-0"},
+			[]uint64{100, 1001},
+			map[string][]uint64{
+				"topic-0": {100, 1000},
+			},
+		},
+		{
+			"topic that does not exist",
+			[][]uint64{{10, 100, 1000}},
+			[]string{"topic-1"},
+			[]uint64{100, 1001},
+			map[string][]uint64{},
+		},
+		{
+			"multiple topics, one queried",
+			[][]uint64{{10, 100, 1000}, {15, 200, 2000}},
+			[]string{"topic-1"},
+			[]uint64{0, 1001},
+			map[string][]uint64{
+				"topic-1": {15, 200},
+			},
+		},
+		{
+			"multiple topics, two queried, one not existing",
+			[][]uint64{{10, 100, 1000}, {15, 200, 2000}},
+			[]string{"topic-1", "topic-2"},
+			[]uint64{0, 1001},
+			map[string][]uint64{
+				"topic-1": {15, 200},
+			},
+		},
+		{
+			"multiple topics, three queried",
+			[][]uint64{{10, 100, 1000}, {15, 200, 2000}, {20, 300, 3000}},
+			[]string{"topic-0", "topic-1", "topic-2"},
+			[]uint64{0, 1001},
+			map[string][]uint64{
+				"topic-0": {10, 100, 1000},
+				"topic-1": {15, 200},
+				"topic-2": {20, 300},
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			mcap.WriteFile(t, buf, c.input...)
+			tmgr := testTreeManager(ctx, t)
+			require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
+			require.NoError(t, tmgr.SyncWAL(ctx))
+
+			output := &bytes.Buffer{}
+			start := c.bounds[0]
+			end := c.bounds[1]
+			require.NoError(t, tmgr.GetMessagesLatest(ctx, output, start, end, "my-device", c.topics))
+
+			reader, err := mcap.NewReader(bytes.NewReader(output.Bytes()))
+			require.NoError(t, err)
+			messages := make(map[string][]uint64)
+			it, err := reader.Messages()
+			require.NoError(t, err)
+			for {
+				_, channel, message, err := it.Next(nil)
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				require.NoError(t, err)
+				messages[channel.Topic] = append(messages[channel.Topic], message.LogTime)
+			}
+			require.Equal(t, c.outputMessages, messages)
+		})
+	}
 }
 
 func TestGetStatistics(t *testing.T) {
