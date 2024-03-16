@@ -232,13 +232,17 @@ func (tm *TreeManager) GetMessagesLatest(
 	producerID string,
 	topics []string,
 ) error {
-	roots := make([]nodestore.NodeID, len(topics))
-	for i, topic := range topics {
+	roots := make([]nodestore.NodeID, 0, len(topics))
+	for _, topic := range topics {
 		root, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
 		if err != nil {
-			return fmt.Errorf("failed to get latest root for %s/%s: %w", producerID, topic, err)
+			if !errors.Is(err, rootmap.StreamNotFoundError{}) {
+				return fmt.Errorf("failed to get latest root for %s/%s: %w", producerID, topic, err)
+			}
+			log.Debugf(ctx, "no root found for %s/%s - omitting from output", producerID, topic)
+			continue
 		}
-		roots[i] = root
+		roots = append(roots, root)
 	}
 	if err := tm.getMessages(ctx, w, start, end, roots); err != nil {
 		return fmt.Errorf("failed to get messages for %s: %w", producerID, err)
