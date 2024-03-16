@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -21,6 +20,7 @@ import (
 	"github.com/wkalt/dp3/tree"
 	"github.com/wkalt/dp3/treemgr"
 	"github.com/wkalt/dp3/util"
+	"github.com/wkalt/dp3/util/schema"
 	"github.com/wkalt/dp3/versionstore"
 )
 
@@ -46,8 +46,26 @@ func TestGetStatisticsLatest(t *testing.T) {
 						Start: 0,
 						End:   60e9,
 						Statistics: &nodestore.Statistics{
+							Fields: []util.Named[schema.PrimitiveType]{
+								util.NewNamed("data", schema.STRING),
+								util.NewNamed("count", schema.INT16),
+							},
+							TextStats: map[int]*nodestore.TextSummary{
+								0: {
+									Max: "hello",
+									Min: "hello",
+								},
+							},
+							NumStats: map[int]*nodestore.NumericalSummary{
+								1: {
+									Max:  2024,
+									Min:  2024,
+									Sum:  6072,
+									Mean: 2024,
+								},
+							},
 							MessageCount:    3,
-							ByteCount:       15,
+							ByteCount:       33,
 							MaxObservedTime: 1000,
 							MinObservedTime: 10,
 						},
@@ -67,8 +85,26 @@ func TestGetStatisticsLatest(t *testing.T) {
 						Start: 0,
 						End:   60e9,
 						Statistics: &nodestore.Statistics{
+							Fields: []util.Named[schema.PrimitiveType]{
+								util.NewNamed("data", schema.STRING),
+								util.NewNamed("count", schema.INT16),
+							},
+							NumStats: map[int]*nodestore.NumericalSummary{
+								1: {
+									Max:  2024,
+									Min:  2024,
+									Sum:  6072,
+									Mean: 2024,
+								},
+							},
+							TextStats: map[int]*nodestore.TextSummary{
+								0: {
+									Max: "hello",
+									Min: "hello",
+								},
+							},
 							MessageCount:    3,
-							ByteCount:       15,
+							ByteCount:       33,
 							MaxObservedTime: 1000,
 							MinObservedTime: 10,
 						},
@@ -77,8 +113,26 @@ func TestGetStatisticsLatest(t *testing.T) {
 						Start: 60e9,
 						End:   120e9,
 						Statistics: &nodestore.Statistics{
+							Fields: []util.Named[schema.PrimitiveType]{
+								util.NewNamed("data", schema.STRING),
+								util.NewNamed("count", schema.INT16),
+							},
+							NumStats: map[int]*nodestore.NumericalSummary{
+								1: {
+									Max:  2024,
+									Min:  2024,
+									Sum:  2024,
+									Mean: 2024,
+								},
+							},
+							TextStats: map[int]*nodestore.TextSummary{
+								0: {
+									Max: "hello",
+									Min: "hello",
+								},
+							},
 							MessageCount:    1,
-							ByteCount:       5,
+							ByteCount:       11,
 							MaxObservedTime: 90e9,
 							MinObservedTime: 90e9,
 						},
@@ -98,8 +152,26 @@ func TestGetStatisticsLatest(t *testing.T) {
 						Start: 0,
 						End:   3840000000000,
 						Statistics: &nodestore.Statistics{
+							Fields: []util.Named[schema.PrimitiveType]{
+								util.NewNamed("data", schema.STRING),
+								util.NewNamed("count", schema.INT16),
+							},
+							NumStats: map[int]*nodestore.NumericalSummary{
+								1: {
+									Max:  2024,
+									Min:  2024,
+									Sum:  8096,
+									Mean: 2024,
+								},
+							},
+							TextStats: map[int]*nodestore.TextSummary{
+								0: {
+									Max: "hello",
+									Min: "hello",
+								},
+							},
 							MessageCount:    4,
-							ByteCount:       20,
+							ByteCount:       44,
 							MaxObservedTime: 90e9,
 							MinObservedTime: 10,
 						},
@@ -119,8 +191,26 @@ func TestGetStatisticsLatest(t *testing.T) {
 						Start: 0,
 						End:   60e9,
 						Statistics: &nodestore.Statistics{
+							Fields: []util.Named[schema.PrimitiveType]{
+								util.NewNamed("data", schema.STRING),
+								util.NewNamed("count", schema.INT16),
+							},
+							NumStats: map[int]*nodestore.NumericalSummary{
+								1: {
+									Max:  2024,
+									Min:  2024,
+									Sum:  6072,
+									Mean: 2024,
+								},
+							},
+							TextStats: map[int]*nodestore.TextSummary{
+								0: {
+									Max: "hello",
+									Min: "hello",
+								},
+							},
 							MessageCount:    3,
-							ByteCount:       15,
+							ByteCount:       33,
 							MaxObservedTime: 1000,
 							MinObservedTime: 10,
 						},
@@ -140,21 +230,13 @@ func TestGetStatisticsLatest(t *testing.T) {
 			start := c.bounds[0]
 			end := c.bounds[1]
 
-			result := make(map[string]string)
+			result := make(map[string][]tree.StatRange)
 			for _, topic := range c.topics {
 				ranges, err := tmgr.GetStatisticsLatest(ctx, start, end, "my-device", topic, c.granularity)
 				require.NoError(t, err)
-				data, err := json.Marshal(ranges)
-				require.NoError(t, err)
-				result[topic] = string(data)
+				result[topic] = ranges
 			}
-			expected := make(map[string]string)
-			for topic, ranges := range c.ranges {
-				data, err := json.Marshal(ranges)
-				require.NoError(t, err)
-				expected[topic] = string(data)
-			}
-			require.Equal(t, expected, result)
+			require.Equal(t, c.ranges, result)
 		})
 	}
 }

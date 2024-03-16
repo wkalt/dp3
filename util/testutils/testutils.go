@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"testing"
 )
 
 /*
@@ -63,4 +64,16 @@ func F32b(v float32) []byte {
 
 func F64b(v float64) []byte {
 	return U64b(math.Float64bits(v))
+}
+
+func ReadPrefixedString(t *testing.T, bs []byte) string {
+	t.Helper()
+	if len(bs) < 4 {
+		t.Fatalf("expected at least 4 bytes, got %d", len(bs))
+	}
+	l := binary.LittleEndian.Uint32(bs)
+	if len(bs) < 4+int(l) {
+		t.Fatalf("expected at least %d bytes, got %d", 4+int(l), len(bs))
+	}
+	return string(bs[4 : 4+l])
 }
