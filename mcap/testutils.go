@@ -8,6 +8,7 @@ import (
 
 	"github.com/foxglove/mcap/go/mcap"
 	"github.com/stretchr/testify/require"
+	"github.com/wkalt/dp3/util/testutils"
 )
 
 func ReadFile(t *testing.T, r io.Reader) []uint64 {
@@ -40,8 +41,11 @@ func WriteFile(t *testing.T, w io.Writer, timestampsets ...[]uint64) {
 		ID:       1,
 		Name:     "test",
 		Encoding: "ros1msg",
+		Data: []byte(`
+		string data
+		int16 count
+		`),
 	}))
-
 	for i := range timestampsets {
 		require.NoError(t, writer.WriteChannel(&mcap.Channel{
 			ID:       uint16(i),
@@ -49,13 +53,12 @@ func WriteFile(t *testing.T, w io.Writer, timestampsets ...[]uint64) {
 			Topic:    fmt.Sprintf("topic-%d", i),
 		}))
 	}
-
 	for chanID, timestamps := range timestampsets {
 		for _, ts := range timestamps {
 			require.NoError(t, writer.WriteMessage(&mcap.Message{
 				ChannelID: uint16(chanID),
 				LogTime:   ts,
-				Data:      []byte("hello"),
+				Data:      testutils.Flatten(testutils.U32b(5), []byte("hello"), testutils.U16b(2024)),
 			}))
 		}
 	}

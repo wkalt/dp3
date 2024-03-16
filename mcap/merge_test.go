@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wkalt/dp3/mcap"
+	"github.com/wkalt/dp3/util/testutils"
 )
 
 func TestMerge(t *testing.T) {
@@ -43,7 +44,7 @@ func TestMerge(t *testing.T) {
 			break
 		}
 		require.NoError(t, err)
-		assert.Equal(t, []byte("hello"), msg.Data)
+		assert.Equal(t, "hello", testutils.ReadPrefixedString(t, msg.Data))
 		assert.GreaterOrEqual(t, msg.LogTime, n)
 		n = msg.LogTime
 	}
