@@ -40,7 +40,6 @@ func NewServer(t *testing.T) (*mclient.Client, string, func()) {
 	go func() {
 		minio.Main([]string{"minio", "server", "--quiet", "--address", addr, tmpdir})
 	}()
-
 	// wait for the server to come up
 	start := time.Now()
 	for {
@@ -53,19 +52,27 @@ func NewServer(t *testing.T) (*mclient.Client, string, func()) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
-
 	mc, err := mclient.New(addr, &mclient.Options{
 		Creds:  credentials.NewStaticV4(accessKeyID, secretAccessKey, ""),
 		Secure: false,
 	})
 	require.NoError(t, err)
-
 	require.NoError(t, mc.MakeBucket(ctx, testBucket, mclient.MakeBucketOptions{}))
-
 	return mc, testBucket, func() {
-		err1 := madm.ServiceStop(ctx)
-		err2 := os.RemoveAll(tmpdir)
-		require.NoError(t, err1)
-		require.NoError(t, err2)
+		err := os.RemoveAll(tmpdir)
+		require.NoError(t, err)
+		// minio is running but borked on access because storage is gone. Need
+		// to make sure it shuts down after the test close. If it shuts down
+		// before test close it will call os.Exit and break the test. Most
+		// likely this fixture is called as a top-level item but that may not be
+		// the case. Give it 5s for now, most likely the process will have
+		// exited already.
+		go func() {
+			time.Sleep(5 * time.Second)
+			err := madm.ServiceStop(ctx)
+			if err != nil {
+				t.Log(err)
+			}
+		}()
 	}
 }
