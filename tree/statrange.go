@@ -47,7 +47,7 @@ func GetStatRange(
 		}
 		switch node := node.(type) {
 		case *nodestore.InnerNode:
-			granularEnough := 1e9*bwidth(node) < granularity
+			granularEnough := 1e9*bwidth(node) <= granularity
 			width := bwidth(node)
 			for i, child := range node.Children {
 				childStart := 1e9 * (node.Start + width*uint64(i))
