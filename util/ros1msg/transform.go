@@ -74,10 +74,6 @@ func resolveType(pkg string, subdeps map[string]Definition, t *ROSType) (*schema
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve array type %s: %w", t.Name, err)
 		}
-		if strings.Contains(t.Name, "/") {
-			parts := strings.Split(t.Name, "/")
-			pkg = parts[0]
-		}
 		items, err := resolveSubdef(subdeps, subdep)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve subdef type %s: %w", t.Name, err)
