@@ -78,7 +78,7 @@ func resolveType(pkg string, subdeps map[string]Definition, t *ROSType) (*schema
 			parts := strings.Split(t.Name, "/")
 			pkg = parts[0]
 		}
-		items, err := resolveSubdef(pkg, subdeps, subdep)
+		items, err := resolveSubdef(subdeps, subdep)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve subdef type %s: %w", t.Name, err)
 		}
@@ -92,16 +92,20 @@ func resolveType(pkg string, subdeps map[string]Definition, t *ROSType) (*schema
 	// record type
 	subdep, err := getSubdep(pkg, subdeps, t.Name)
 	if err != nil {
-		return nil, fmt.Errorf("failed to resolve record type %s: %w", t.Name, err)
+		return nil, fmt.Errorf("failed to resolve record type %s/%s: %w", pkg, t.Name, err)
 	}
-	return resolveSubdef(pkg, subdeps, subdep)
+	return resolveSubdef(subdeps, subdep)
 }
 
-func resolveSubdef(pkg string, subdeps map[string]Definition, def Definition) (*schema.Type, error) {
+func resolveSubdef(subdeps map[string]Definition, def Definition) (*schema.Type, error) {
 	t := &schema.Type{
 		Record: true,
 		Fields: []schema.Field{},
 	}
+	if !strings.Contains(def.Header.Type, "/") {
+		return nil, fmt.Errorf("failed to resolve subdef type %s", def.Header.Type)
+	}
+	pkg := strings.Split(def.Header.Type, "/")[0]
 	for _, element := range def.Elements {
 		switch item := element.(type) {
 		case ROSField:
@@ -129,7 +133,7 @@ func getSubdep(parentPkg string, subdeps map[string]Definition, name string) (De
 	if !ok {
 		subdep, ok = subdeps[parentPkg+"/"+name]
 		if !ok {
-			return Definition{}, fmt.Errorf("failed to resolve subdep %s", name)
+			return Definition{}, fmt.Errorf("failed to resolve subdep %s/%s", parentPkg, name)
 		}
 	}
 	return subdep, nil
@@ -140,6 +144,7 @@ func transformAST(pkg string, name string, ast MessageDefinition) (*schema.Schem
 	for _, definition := range ast.Definitions {
 		if definition.Header.Type == "std_msgs/Header" {
 			subdefinitions["Header"] = definition
+			subdefinitions["std_msgs/Header"] = definition
 			continue
 		}
 		subdefinitions[definition.Header.Type] = definition
