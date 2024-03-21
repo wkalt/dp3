@@ -141,7 +141,7 @@ will enable orgs to make use of dp3 "off the bat" without secondary indicies.
 
 ### Multigranular summarization
 dp3's underlying storage is a time-partitioned tree spanning a range of time
-from the epoch to a future date. The typical depth of the tree is 5 but it can
+from the epoch to a future date. The typical height of the tree is 5 but it can
 vary based on parameter selection. Data is stored in the leaf nodes, and the
 inner nodes contain pointers to children as well as statistical summaries of
 children. Data consists of nanosecond-timestamped messages.
