@@ -6,6 +6,12 @@ import (
 	"github.com/wkalt/dp3/nodestore"
 )
 
+/*
+Errors that can be returned by the tree package.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
 // UnexpectedNodeError is returned when a node of the wrong type is found in the
 // nodestore.
 type UnexpectedNodeError struct {
@@ -46,5 +52,21 @@ func (e OutOfBoundsError) Error() string {
 // Is returns true if the target error is an OutOfBoundsError.
 func (e OutOfBoundsError) Is(target error) bool {
 	_, ok := target.(OutOfBoundsError)
+	return ok
+}
+
+// MismatchedHeightsError is returned if a merge is attempted on two nodes of
+// different height.
+type MismatchedHeightsError struct {
+	height1 uint8
+	height2 uint8
+}
+
+func (e MismatchedHeightsError) Error() string {
+	return fmt.Sprintf("mismatched depths: %d and %d", e.height1, e.height2)
+}
+
+func (e MismatchedHeightsError) Is(target error) bool {
+	_, ok := target.(MismatchedHeightsError)
 	return ok
 }

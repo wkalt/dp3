@@ -1,14 +1,12 @@
 package tree_test
 
 import (
-	"bytes"
 	"context"
 	"math"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/tree"
 	"github.com/wkalt/dp3/util"
@@ -16,118 +14,131 @@ import (
 
 func TestTreeErrors(t *testing.T) {
 	ctx := context.Background()
-	ns := nodestore.MockNodestore(ctx, t)
 	t.Run("inserting into a non-existent root", func(t *testing.T) {
-		id := nodestore.RandomNodeID()
-		_, _, err := tree.Insert(ctx, ns, id, 0, 0, []byte{}, &nodestore.Statistics{})
-		require.ErrorIs(t, err, nodestore.NodeNotFoundError{NodeID: id})
+		root := nodestore.NewInnerNode(1, 0, 4096, 64)
+		tw := tree.NewMemTree(nodestore.RandomNodeID(), root)
+		tw.SetRoot(nodestore.RandomNodeID())
+		err := tree.Insert(ctx, tw, 0, 0, []byte{0x01}, &nodestore.Statistics{})
+		require.ErrorIs(t, err, nodestore.NodeNotFoundError{})
 	})
+
+	t.Run("root is nil", func(t *testing.T) {
+		tw := tree.NewMemTree(nodestore.RandomNodeID(), nil)
+		require.Error(t, tree.Insert(ctx, tw, 0, 0, []byte{0x01}, &nodestore.Statistics{}))
+	})
+
 	t.Run("out of bounds insert", func(t *testing.T) {
-		rootID, err := ns.NewRoot(ctx, 100, 1e9, 64, 64)
-		require.NoError(t, err)
-		_, _, err = tree.Insert(ctx, ns, rootID, 10, 1e9, []byte{}, &nodestore.Statistics{})
+		root := nodestore.NewInnerNode(1, 0, 4096, 64)
+		tw := tree.NewMemTree(nodestore.RandomNodeID(), root)
+		err := tree.Insert(ctx, tw, 0, 10000*1e9, []byte{0x01}, &nodestore.Statistics{})
 		require.ErrorIs(t, err, tree.OutOfBoundsError{})
 	})
-	t.Run("inserting into a node with mislinked children", func(t *testing.T) {
-		id1 := nodestore.RandomNodeID()
-		node1 := nodestore.NewInnerNode(5, 0, 1e9, 64)
-		id2 := nodestore.RandomNodeID()
-		node1.Children[0] = &nodestore.Child{
-			ID:      id2,
-			Version: 2,
-		}
-		require.NoError(t, ns.StageWithID(id1, node1))
-		rootID, err := ns.Flush(ctx, 2, id1)
-		require.NoError(t, err)
-		_, _, err = tree.Insert(ctx, ns, rootID, 10, 3, []byte{}, &nodestore.Statistics{})
-		require.ErrorIs(t, err, nodestore.NodeNotFoundError{NodeID: id2})
+
+	t.Run("root is not an inner node", func(t *testing.T) {
+		root := nodestore.NewInnerNode(1, 0, 4096, 64)
+		tw := tree.NewMemTree(nodestore.RandomNodeID(), root)
+		require.NoError(t, tree.Insert(ctx, tw, 0, 1000*1e9, []byte{0x01}, &nodestore.Statistics{}))
+
+		leaf := nodestore.NewLeafNode([]byte{0x01})
+		leafid := nodestore.RandomNodeID()
+		require.NoError(t, tw.Put(ctx, leafid, leaf))
+		tw.SetRoot(leafid)
+
+		err := tree.Insert(ctx, tw, 0, 64*1e9, []byte{0x01}, &nodestore.Statistics{})
+		require.ErrorIs(t, err, tree.UnexpectedNodeError{})
 	})
 }
 
-func TestStatRange(t *testing.T) {
+func TestMergeErrors(t *testing.T) {
 	ctx := context.Background()
-	cases := []struct {
-		assertion    string
-		messageTimes []uint64
-		start        uint64
-		end          uint64
-		granularity  uint64
-		expected     []tree.StatRange
-	}{
-		{
-			"empty tree",
-			[]uint64{},
-			0,
-			100e9,
-			1e9,
-			[]tree.StatRange{},
-		},
-		{
-			"single insert",
-			[]uint64{100},
-			0,
-			100e9,
-			600e9,
-			[]tree.StatRange{
-				{
-					Start:      64e9,
-					End:        128e9,
-					Statistics: &nodestore.Statistics{MessageCount: 1},
-				},
-			},
-		},
-		{
-			"inserts spanning buckets",
-			[]uint64{100, 4097},
-			0,
-			5000e9,
-			600e9,
-			[]tree.StatRange{
-				{Start: 4096000000000, End: 4160000000000, Statistics: &nodestore.Statistics{MessageCount: 1}},
-				{Start: 64000000000, End: 128000000000, Statistics: &nodestore.Statistics{MessageCount: 1}},
-			},
-		},
-		{
-			"inserts spanning disjoint buckets",
-			[]uint64{100, 262143},
-			0,
-			math.MaxUint64,
-			600e9,
-			[]tree.StatRange{
-				{Start: 262080000000000, End: 262144000000000, Statistics: &nodestore.Statistics{MessageCount: 1}},
-				{Start: 64000000000, End: 128000000000, Statistics: &nodestore.Statistics{MessageCount: 1}},
-			},
-		},
-	}
-	for _, c := range cases {
-		t.Run(c.assertion, func(t *testing.T) {
-			ns := nodestore.MockNodestore(ctx, t)
-			rootID, err := ns.NewRoot(ctx, 0, util.Pow(uint64(64), 3), 64, 64)
-			require.NoError(t, err)
-			version := uint64(0)
-			roots := make([]nodestore.NodeID, len(c.messageTimes))
-			for i, time := range c.messageTimes {
-				buf := &bytes.Buffer{}
-				mcap.WriteFile(t, buf, []uint64{time})
-				version++
-				rootID, path, err := tree.Insert(
-					ctx, ns, rootID, version, time*1e9, buf.Bytes(),
-					&nodestore.Statistics{
-						MessageCount: 1,
-					},
-				)
-				require.NoError(t, err)
-				require.NoError(t, ns.FlushStagingToWAL(ctx, "producer", "topic", version, path))
-				roots[i] = rootID
-			}
-			rootID, err = ns.MergeWALToStorage(ctx, rootID, version, roots)
-			require.NoError(t, err)
+	t.Run("merging trees of different height", func(t *testing.T) {
+		root := nodestore.NewInnerNode(1, 0, 4096, 64)
+		tw := tree.NewMemTree(nodestore.RandomNodeID(), root)
+		require.NoError(t, tree.Insert(ctx, tw, 0, 1000*1e9, []byte{0x01}, &nodestore.Statistics{}))
 
-			statrange, err := tree.GetStatRange(ctx, ns, rootID, c.start, c.end, c.granularity)
-			require.NoError(t, err)
-			require.Equal(t, c.expected, statrange)
-		})
-	}
+		root2 := nodestore.NewInnerNode(2, 0, 4096, 64)
+		tw2 := tree.NewMemTree(nodestore.RandomNodeID(), root2)
+		require.NoError(t, tree.Insert(ctx, tw2, 0, 64*1e9, []byte{0x01}, &nodestore.Statistics{}))
+
+		root3 := nodestore.NewInnerNode(2, 0, 4096, 64)
+		tw3 := tree.NewMemTree(nodestore.RandomNodeID(), root3)
+
+		err := tree.Merge(ctx, tw3, tw, tw2)
+		require.ErrorIs(t, err, tree.MismatchedHeightsError{})
+	})
+
+	t.Run("merging tree with wrong height", func(t *testing.T) {
+		// build a corrupt tree
+		root := nodestore.NewInnerNode(2, 0, 64*64*64, 64)
+		tw := tree.NewMemTree(nodestore.RandomNodeID(), root)
+
+		// child
+		childnode := nodestore.NewInnerNode(1, 0, 64*64, 64)
+		childid := nodestore.RandomNodeID()
+		child := nodestore.Child{
+			ID:         childid,
+			Version:    0,
+			Statistics: &nodestore.Statistics{},
+		}
+		require.NoError(t, tw.Put(ctx, childid, childnode))
+		root.Children[0] = &child
+
+		// grandchild should be a leaf, based on tree dimensions
+		gchildnode := nodestore.NewInnerNode(0, 0, 64*64, 64)
+		gchildid := nodestore.RandomNodeID()
+		gchild := nodestore.Child{
+			ID:         gchildid,
+			Version:    0,
+			Statistics: &nodestore.Statistics{},
+		}
+		require.NoError(t, tw.Put(ctx, gchildid, gchildnode))
+		childnode.Children[0] = &gchild
+
+		// merge with a correct tree
+		root2 := nodestore.NewInnerNode(2, 0, 64*64*64, 64)
+		tw2 := tree.NewMemTree(nodestore.RandomNodeID(), root2)
+		require.NoError(t, tree.Insert(ctx, tw2, 0, 63*1e9, []byte{0x01}, &nodestore.Statistics{}))
+
+		root3 := nodestore.NewInnerNode(2, 0, 64*64*64, 64)
+		tw3 := tree.NewMemTree(nodestore.RandomNodeID(), root3)
+
+		err := tree.Merge(ctx, tw3, tw, tw2)
+		require.Error(t, err)
+	})
+
+	t.Run("root is not an inner node", func(t *testing.T) {
+		root := nodestore.NewInnerNode(1, 0, 4096, 64)
+		tw := tree.NewMemTree(nodestore.RandomNodeID(), root)
+		require.NoError(t, tree.Insert(ctx, tw, 0, 1000*1e9, []byte{0x01}, &nodestore.Statistics{}))
+
+		leaf := nodestore.NewLeafNode([]byte{0x01})
+		leafid := nodestore.RandomNodeID()
+		require.NoError(t, tw.Put(ctx, leafid, leaf))
+		tw.SetRoot(leafid)
+
+		root2 := nodestore.NewInnerNode(2, 0, 4096, 64)
+		tw2 := tree.NewMemTree(nodestore.RandomNodeID(), root2)
+		require.NoError(t, tree.Insert(ctx, tw2, 0, 64*1e9, []byte{0x01}, &nodestore.Statistics{}))
+
+		root3 := nodestore.NewInnerNode(2, 0, 4096, 64)
+		tw3 := tree.NewMemTree(nodestore.RandomNodeID(), root3)
+
+		err := tree.Merge(ctx, tw3, tw, tw2)
+		require.ErrorIs(t, err, tree.UnexpectedNodeError{})
+	})
+
+	t.Run("root does not exist", func(t *testing.T) {
+		root := nodestore.NewInnerNode(1, 0, 4096, 64)
+		tw := tree.NewMemTree(nodestore.RandomNodeID(), root)
+		require.NoError(t, tree.Insert(ctx, tw, 0, 1000*1e9, []byte{0x01}, &nodestore.Statistics{}))
+		tw.SetRoot(nodestore.RandomNodeID())
+
+		root2 := nodestore.NewInnerNode(2, 0, 4096, 64)
+		tw2 := tree.NewMemTree(nodestore.RandomNodeID(), root2)
+
+		err := tree.Merge(ctx, tw2, tw)
+		require.ErrorIs(t, err, nodestore.NodeNotFoundError{})
+	})
 }
 
 func TestTreeInsert(t *testing.T) {
@@ -135,69 +146,45 @@ func TestTreeInsert(t *testing.T) {
 	cases := []struct {
 		assertion string
 		height    uint8
-		times     []uint64
+		times     [][]uint64
 		repr      string
 	}{
 		{
 			"empty tree",
 			1,
-			[]uint64{},
-			"[0-4096:0]",
+			[][]uint64{},
+			"[0-4096]",
 		},
 		{
 			"single insert",
 			1,
-			[]uint64{10},
-			"[0-4096:1 [0-64:1 (count=1) [leaf 1 msg]]]",
-		},
-		{
-			"two inserts same bucket get merged",
-			1,
-			[]uint64{10, 20},
-			"[0-4096:2 [0-64:2 (count=2) [leaf 2 msgs]]]",
-		},
-		{
-			"inserts in different bucket, simulate single inserts",
-			1,
-			[]uint64{10, 20, 128, 256},
-			`[0-4096:4 [0-64:4 (count=2) [leaf 2 msgs]] [128-192:4 (count=1)
-			[leaf 1 msg]] [256-320:4 (count=1) [leaf 1 msg]]]`,
+			[][]uint64{{10}},
+			"[0-4096 [0-64:1 (count=1) [leaf 1 msg]]]",
 		},
 		{
 			"height 2",
 			2,
-			[]uint64{10, 20, 4097},
-			`[0-262144:3 [0-4096:3 (count=2) [0-64:3 (count=2) [leaf 2 msgs]]]
-			[4096-8192:3 (count=1) [4096-4160:3 (count=1) [leaf 1 msg]]]]`,
+			[][]uint64{{10}},
+			"[0-262144 [0-4096:1 (count=1) [0-64:1 (count=1) [leaf 1 msg]]]]",
+		},
+		{
+			"two inserts into same bucket are merged",
+			1,
+			[][]uint64{{10}, {20}},
+			"[0-4096 [0-64:2 (count=2) [leaf 2 msgs]]]",
+		},
+		{
+			"inserts into different buckets",
+			1,
+			[][]uint64{{10}, {100}, {256}, {1000}},
+			`[0-4096 [0-64:1 (count=1) [leaf 1 msg]] [64-128:2 (count=1) [leaf 1 msg]]
+			[256-320:3 (count=1) [leaf 1 msg]] [960-1024:4 (count=1) [leaf 1 msg]]]`,
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
-			ns := nodestore.MockNodestore(ctx, t)
-			rootID, err := ns.NewRoot(ctx, 0, util.Pow(uint64(64), int(c.height)+1), 64, 64)
-			require.NoError(t, err)
-			version := uint64(0)
-			roots := make([]nodestore.NodeID, len(c.times))
-			for i, time := range c.times {
-				buf := &bytes.Buffer{}
-				mcap.WriteFile(t, buf, []uint64{time})
-				version++
-				rootID, path, err := tree.Insert(
-					ctx, ns, rootID, version, time*1e9, buf.Bytes(),
-					&nodestore.Statistics{
-						MessageCount: 1,
-					},
-				)
-				require.NoError(t, err)
-
-				require.NoError(t, ns.FlushStagingToWAL(ctx, "producer", "topic", version, path))
-				roots[i] = rootID
-			}
-
-			rootID, err = ns.MergeWALToStorage(ctx, rootID, version, roots)
-			require.NoError(t, err)
-
-			repr, err := ns.Print(ctx, rootID, version, nil)
+			output := tree.MergeInserts(ctx, t, 0, util.Pow(uint64(64), int(c.height+1)), c.height, 64, c.times)
+			repr, err := tree.Print(ctx, output)
 			require.NoError(t, err)
 			assertEqualTrees(t, c.repr, repr)
 		})
@@ -216,86 +203,68 @@ func removeSpace(s string) string {
 	return s
 }
 
-func TestRootConstruction(t *testing.T) {
+func TestStatRange(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
-		assertion string
-		start     string
-		end       string
-		width     int
-		bfactor   int
-		time      string
-		repr      string
+		assertion   string
+		messages    [][]uint64
+		start       uint64
+		end         uint64
+		granularity uint64
+		expected    []tree.StatRange
 	}{
 		{
-			"epoch to 2050 with 60 second buckets",
-			"1970-01-01",
-			"2030-01-01",
-			60,
-			64,
-			"1970-01-01",
-			`[0-64424509440:1 [0-1006632960:1 (count=1) [0-15728640:1 (count=1)
-			[0-245760:1 (count=1) [0-3840:1 (count=1) [0-60:1 (count=1) [leaf 1 msg]]]]]]]`,
+			"empty tree",
+			[][]uint64{},
+			0,
+			100e9,
+			1e9,
+			[]tree.StatRange{},
 		},
 		{
-			"single year 60 second buckets",
-			"1970-01-01",
-			"1971-01-01",
-			60,
-			64,
-			"1970-01-02",
-			`[0-1006632960:1 [0-15728640:1 (count=1) [0-245760:1 (count=1) [84480-88320:1 (count=1)
-			[86400-86460:1 (count=1) [leaf 1 msg]]]]]]`,
+			"single insert",
+			[][]uint64{{100}},
+			0,
+			100e9,
+			600e9,
+			[]tree.StatRange{
+				{
+					Start:      64e9,
+					End:        128e9,
+					Statistics: &nodestore.Statistics{MessageCount: 1},
+				},
+			},
 		},
 		{
-			"single year 60 second buckets bfactor 20",
-			"1970-01-01",
-			"1971-01-01",
-			60,
-			20,
-			"1970-01-02",
-			`[0-192000000:1 [0-9600000:1 (count=1) [0-480000:1 (count=1) [72000-96000:1 (count=1)
-			[86400-87600:1 (count=1) [86400-86460:1 (count=1) [leaf 1 msg]]]]]]]`,
+			"inserts spanning buckets",
+			[][]uint64{{100}, {4097}},
+			0,
+			5000e9,
+			600e9,
+			[]tree.StatRange{
+				{Start: 4096000000000, End: 4160000000000, Statistics: &nodestore.Statistics{MessageCount: 1}},
+				{Start: 64000000000, End: 128000000000, Statistics: &nodestore.Statistics{MessageCount: 1}},
+			},
 		},
 		{
-			"single year full day buckets bfactor 365",
-			"1970-01-01",
-			"1971-01-01",
-			60 * 60 * 24,
-			365,
-			"1970-01-02",
-			`[0-31536000:1 [86400-172800:1 (count=1) [leaf 1 msg]]]`,
+			"inserts spanning disjoint buckets",
+			[][]uint64{{100}, {262143}},
+			0,
+			math.MaxUint64,
+			600e9,
+			[]tree.StatRange{
+				{Start: 262080000000000, End: 262144000000000, Statistics: &nodestore.Statistics{MessageCount: 1}},
+				{Start: 64000000000, End: 128000000000, Statistics: &nodestore.Statistics{MessageCount: 1}},
+			},
 		},
 	}
-
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
-			ns := nodestore.MockNodestore(ctx, t)
-			rootID, err := ns.NewRoot(
-				ctx,
-				util.DateSeconds(c.start),
-				util.DateSeconds(c.end),
-				c.width,
-				c.bfactor,
-			)
-			require.NoError(t, err)
+			tw := tree.MergeInserts(ctx, t, 0, 64*64*64, 2, 64, c.messages)
 
-			version := uint64(1)
-
-			buf := &bytes.Buffer{}
-			mcap.WriteFile(t, buf, []uint64{10})
-			timestamp := util.DateSeconds(c.time) * 1e9
-			stats := &nodestore.Statistics{
-				MessageCount: 1,
-			}
-			_, path, err := tree.Insert(ctx, ns, rootID, version, timestamp, buf.Bytes(), stats)
+			statrange, err := tree.GetStatRange(ctx, tw, c.start, c.end, c.granularity)
 			require.NoError(t, err)
-			rootID, err = ns.Flush(ctx, version, path...)
-			require.NoError(t, err)
-
-			repr, err := ns.Print(ctx, rootID, version, nil)
-			require.NoError(t, err)
-			assertEqualTrees(t, c.repr, repr)
+			require.Equal(t, c.expected, statrange)
 		})
 	}
 }

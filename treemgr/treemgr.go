@@ -5,9 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"hash/maphash"
 	"io"
-	"slices"
-	"time"
+	"sort"
 
 	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/mcap"
@@ -17,8 +17,8 @@ import (
 	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/log"
 	"github.com/wkalt/dp3/versionstore"
+	"github.com/wkalt/dp3/wal"
 	"golang.org/x/exp/maps"
-	"golang.org/x/sync/errgroup"
 )
 
 /*
@@ -37,26 +37,80 @@ type TreeManager struct {
 	ns      *nodestore.Nodestore
 	vs      versionstore.Versionstore
 	rootmap rootmap.Rootmap
+	merges  <-chan *wal.Batch
 
-	batchsize   int
 	syncWorkers int
+
+	wal *wal.WALManager
+}
+
+// NewRoot creates a new root for the provided producer and topic.
+func (tm *TreeManager) NewRoot(ctx context.Context, producer string, topic string) error {
+	rootID, version, err := tm.newRoot(
+		ctx,
+		util.DateSeconds("1970-01-01"),
+		util.DateSeconds("2038-01-19"),
+		60,
+		64,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create new root: %w", err)
+	}
+	if err := tm.rootmap.Put(ctx, producer, topic, version, rootID); err != nil {
+		return fmt.Errorf("failed to put root: %w", err)
+	}
+	return nil
 }
 
 // NewTreeManager returns a new TreeManager.
 func NewTreeManager(
+	ctx context.Context,
 	ns *nodestore.Nodestore,
 	vs versionstore.Versionstore,
 	rm rootmap.Rootmap,
-	batchsize int,
-	syncWorkers int,
-) *TreeManager {
-	return &TreeManager{
+	opts ...Option,
+) (*TreeManager, error) {
+	conf := config{
+		walBufferSize: 0,
+		syncWorkers:   1,
+		waldir:        "",
+	}
+	for _, opt := range opts {
+		opt(&conf)
+	}
+	if conf.waldir == "" {
+		return nil, errors.New("wal directory not specified")
+	}
+	merges := make(chan *wal.Batch, conf.walBufferSize)
+	wmgr, err := wal.NewWALManager(ctx, conf.waldir, merges, conf.walopts...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create WAL manager: %w", err)
+	}
+
+	tm := &TreeManager{
 		ns:          ns,
 		vs:          vs,
+		wal:         wmgr,
+		merges:      merges,
 		rootmap:     rm,
-		batchsize:   batchsize,
-		syncWorkers: syncWorkers,
+		syncWorkers: conf.syncWorkers,
 	}
+
+	// start listeners on the merges channel that will multiplex merge requests
+	// over a pool of workers, arranged so that each producer/topic pair is
+	// routed to a single worker only.
+	if conf.syncWorkers > 0 {
+		go tm.spawnWALConsumers(ctx)
+	}
+
+	// Recover the WAL. This will feed the merges channel with any uncommitted
+	// work.
+	if err := wmgr.Recover(ctx); err != nil {
+		return nil, fmt.Errorf("failed to recover: %w", err)
+	}
+
+	// ready for requests
+	return tm, nil
 }
 
 // Receive an MCAP data stream on behalf of a particular producer. The data is
@@ -95,7 +149,7 @@ func (tm *TreeManager) Receive(ctx context.Context, producerID string, data io.R
 			if _, _, err := tm.rootmap.GetLatest(ctx, producerID, channel.Topic); err != nil {
 				switch {
 				case errors.Is(err, rootmap.StreamNotFoundError{}):
-					if err := tm.newRoot(ctx, producerID, channel.Topic); err != nil {
+					if err := tm.NewRoot(ctx, producerID, channel.Topic); err != nil {
 						return fmt.Errorf("failed to create new root: %w", err)
 					}
 				default:
@@ -112,7 +166,11 @@ func (tm *TreeManager) Receive(ctx context.Context, producerID string, data io.R
 			return fmt.Errorf("failed to write message: %w", err)
 		}
 	}
-	for _, writer := range writers {
+
+	keys := maps.Keys(writers)
+	sort.Strings(keys)
+	for _, k := range keys {
+		writer := writers[k]
 		if err := writer.Close(ctx); err != nil {
 			return fmt.Errorf("failed to close writer: %w", err)
 		}
@@ -140,11 +198,220 @@ func (tm *TreeManager) GetStatistics(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest root: %w", err)
 	}
-	ranges, err := tree.GetStatRange(ctx, tm.ns, rootID, start, end, granularity)
+	tr := tree.NewBYOTreeReader(rootID, tm.ns.Get)
+	ranges, err := tree.GetStatRange(ctx, tr, start, end, granularity)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stat range: %w", err)
 	}
 	return ranges, nil
+}
+
+// GetMessagesLatest returns a stream of messages for the given time range.
+func (tm *TreeManager) GetMessagesLatest(
+	ctx context.Context,
+	w io.Writer,
+	start, end uint64,
+	producerID string,
+	topics []string,
+) error {
+	roots := make([]nodestore.NodeID, 0, len(topics))
+	for _, topic := range topics {
+		root, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
+		if err != nil {
+			if !errors.Is(err, rootmap.StreamNotFoundError{}) {
+				return fmt.Errorf("failed to get latest root for %s/%s: %w", producerID, topic, err)
+			}
+			log.Debugf(ctx, "no root found for %s/%s - omitting from output", producerID, topic)
+			continue
+		}
+		roots = append(roots, root)
+	}
+	if err := tm.getMessages(ctx, w, start, end, roots); err != nil {
+		return fmt.Errorf("failed to get messages for %s: %w", producerID, err)
+	}
+	return nil
+}
+
+// GetStatisticsLatest returns a summary of statistics for the given time range.
+func (tm *TreeManager) GetStatisticsLatest(
+	ctx context.Context,
+	start, end uint64,
+	producerID string,
+	topic string,
+	granularity uint64,
+) ([]tree.StatRange, error) {
+	rootID, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest root: %w", err)
+	}
+	tr := tree.NewBYOTreeReader(rootID, tm.ns.Get)
+	ranges, err := tree.GetStatRange(ctx, tr, start, end, granularity)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get stat range: %w", err)
+	}
+	return ranges, nil
+}
+
+// ForceFlush forces a synchronous flush of WAL data to the tree. Used in tests only.
+func (tm *TreeManager) ForceFlush(ctx context.Context) error {
+	c, err := tm.wal.ForceMerge(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to force merge: %w", err)
+	}
+	err = tm.drainWAL(ctx, c)
+	if err != nil {
+		return fmt.Errorf("failed to drain WAL: %w", err)
+	}
+	return nil
+}
+
+// PrintStream returns a string representation of the tree for the given stream.
+func (tm *TreeManager) PrintStream(ctx context.Context, producerID string, topic string) string {
+	root, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
+	if err != nil {
+		return fmt.Sprintf("failed to get latest root: %v", err)
+	}
+	tr := tree.NewBYOTreeReader(root, tm.ns.Get)
+	s, err := tree.Print(ctx, tr)
+	if err != nil {
+		return fmt.Sprintf("failed to print tree: %v", err)
+	}
+	return s
+}
+
+func (tm *TreeManager) newRoot(
+	ctx context.Context,
+	start uint64,
+	end uint64,
+	leafWidthSecs int,
+	bfactor int,
+) (nodestore.NodeID, uint64, error) {
+	var height int
+	span := end - start
+	coverage := leafWidthSecs
+	for uint64(coverage) < span {
+		coverage *= bfactor
+		height++
+	}
+	root := nodestore.NewInnerNode(uint8(height), start, start+uint64(coverage), bfactor)
+	data := root.ToBytes()
+	version, err := tm.vs.Next(ctx)
+	if err != nil {
+		return nodestore.NodeID{}, 0, fmt.Errorf("failed to get next version: %w", err)
+	}
+	if err := tm.ns.Put(ctx, version, data); err != nil {
+		return nodestore.NodeID{}, 0, fmt.Errorf("failed to put root: %w", err)
+	}
+	nodeID := nodestore.NewNodeID(version, 0, len(data))
+	return nodeID, version, nil
+}
+
+func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
+	trees := make([]tree.TreeReader, 0, len(batch.Addrs)+1)
+	for _, addr := range batch.Addrs {
+		page, err := tm.wal.Get(addr)
+		if err != nil {
+			return fmt.Errorf("failed to get page %s: %w", addr, err)
+		}
+		var mt tree.MemTree
+		if err := mt.FromBytes(ctx, page); err != nil {
+			return fmt.Errorf("failed to deserialize tree: %w", err)
+		}
+		trees = append(trees, &mt)
+	}
+	version, err := tm.vs.Next(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get next version: %w", err)
+	}
+
+	// If there is an existing root, then we need to add that data to the merge.
+	existingRootID, _, err := tm.rootmap.GetLatest(ctx, batch.ProducerID, batch.Topic)
+	if err != nil && !errors.Is(err, rootmap.StreamNotFoundError{}) {
+		return fmt.Errorf("failed to get root: %w", err)
+	}
+	if err == nil {
+		treedata := tree.NewBYOTreeReader(existingRootID, tm.ns.Get)
+		trees = append(trees, treedata)
+	}
+
+	var merged tree.MemTree
+	if err := tree.Merge(ctx, &merged, trees...); err != nil {
+		return fmt.Errorf("failed to merge partial trees: %w", err)
+	}
+	data, err := merged.ToBytes(ctx, version)
+	if err != nil {
+		return fmt.Errorf("failed to serialize partial tree: %w", err)
+	}
+	rootID := data[len(data)-16:]
+	if err := tm.ns.Put(ctx, version, data[:len(data)-16]); err != nil {
+		return fmt.Errorf("failed to put tree: %w", err)
+	}
+	if err := tm.rootmap.Put(ctx, batch.ProducerID, batch.Topic, version, nodestore.NodeID(rootID)); err != nil {
+		return fmt.Errorf("failed to put root: %w", err)
+	}
+	return nil
+}
+
+func (tm *TreeManager) drainWAL(ctx context.Context, n int) error {
+	c := 0
+	for c < n {
+		select {
+		case <-ctx.Done():
+			return nil
+		case batch, ok := <-tm.merges:
+			if !ok {
+				return nil
+			}
+			if err := tm.mergeBatch(ctx, batch); err != nil {
+				return fmt.Errorf("failed to merge batch %s: %w", batch.ID, err)
+			}
+			if err := batch.Finish(); err != nil {
+				return fmt.Errorf("failed to commit batch success: %w", err)
+			}
+		}
+		c++
+	}
+	return nil
+}
+
+func (tm *TreeManager) spawnWALConsumers(ctx context.Context) {
+	mergechans := make([]chan *wal.Batch, tm.syncWorkers)
+	for i := 0; i < tm.syncWorkers; i++ {
+		mergechans[i] = make(chan *wal.Batch)
+	}
+	seed := maphash.MakeSeed()
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case batch := <-tm.merges:
+				hash := maphash.Hash{}
+				hash.SetSeed(seed)
+				_, _ = hash.WriteString(batch.ProducerID + batch.Topic)
+				bucket := hash.Sum64() % uint64(tm.syncWorkers)
+				mergechans[bucket] <- batch
+			}
+		}
+	}()
+
+	for i := 0; i < tm.syncWorkers; i++ {
+		mergechan := mergechans[i]
+		go func() {
+			for batch := range mergechan {
+				if err := tm.mergeBatch(ctx, batch); err != nil {
+					// todo - retry strategy?
+					log.Errorf(ctx, "failed to merge batch %s: %v", batch.ID, err)
+				} else {
+					if err := batch.Finish(); err != nil {
+						// todo retry strategy
+						log.Errorf(ctx, "failed to commit batch success to wal: %s", err)
+					}
+				}
+			}
+		}()
+	}
+	log.Infof(ctx, "spawned %d WAL consumers", tm.syncWorkers)
 }
 
 func closeAll(ctx context.Context, closers ...*tree.Iterator) {
@@ -169,7 +436,8 @@ func (tm *TreeManager) getMessages(
 ) error {
 	iterators := make([]*tree.Iterator, 0, len(roots))
 	for _, root := range roots {
-		it, err := tree.NewTreeIterator(ctx, tm.ns, root, start, end)
+		tr := tree.NewBYOTreeReader(root, tm.ns.Get)
+		it, err := tree.NewTreeIterator(ctx, tr, start, end)
 		if err != nil {
 			return fmt.Errorf("failed to create iterator for %s: %w", root, err)
 		}
@@ -177,10 +445,9 @@ func (tm *TreeManager) getMessages(
 	}
 	defer closeAll(ctx, iterators...)
 
+	// pop one message from each iterator and push it onto the priority queue
 	pq := util.NewPriorityQueue[record, uint64]()
 	heap.Init(pq)
-
-	// pop one message from each iterator and push it onto the priority queue
 	for i, it := range iterators {
 		if it.More() {
 			schema, channel, message, err := it.Next(ctx)
@@ -224,51 +491,6 @@ func (tm *TreeManager) getMessages(
 	return nil
 }
 
-// GetMessagesLatest returns a stream of messages for the given time range.
-func (tm *TreeManager) GetMessagesLatest(
-	ctx context.Context,
-	w io.Writer,
-	start, end uint64,
-	producerID string,
-	topics []string,
-) error {
-	roots := make([]nodestore.NodeID, 0, len(topics))
-	for _, topic := range topics {
-		root, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
-		if err != nil {
-			if !errors.Is(err, rootmap.StreamNotFoundError{}) {
-				return fmt.Errorf("failed to get latest root for %s/%s: %w", producerID, topic, err)
-			}
-			log.Debugf(ctx, "no root found for %s/%s - omitting from output", producerID, topic)
-			continue
-		}
-		roots = append(roots, root)
-	}
-	if err := tm.getMessages(ctx, w, start, end, roots); err != nil {
-		return fmt.Errorf("failed to get messages for %s: %w", producerID, err)
-	}
-	return nil
-}
-
-// GetStatisticsLatest returns a summary of statistics for the given time range.
-func (tm *TreeManager) GetStatisticsLatest(
-	ctx context.Context,
-	start, end uint64,
-	producerID string,
-	topic string,
-	granularity uint64,
-) ([]tree.StatRange, error) {
-	rootID, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get latest root: %w", err)
-	}
-	ranges, err := tree.GetStatRange(ctx, tm.ns, rootID, start, end, granularity)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get stat range: %w", err)
-	}
-	return ranges, nil
-}
-
 // insert data into the tree and flush it to the WAL.
 func (tm *TreeManager) insert(
 	ctx context.Context,
@@ -286,105 +508,21 @@ func (tm *TreeManager) insert(
 	if err != nil {
 		return fmt.Errorf("failed to get next version: %w", err)
 	}
-	_, nodeIDs, err := tree.Insert(ctx, tm.ns, rootID, version, time, data, statistics)
+	currentRoot, err := tm.ns.Get(ctx, rootID)
 	if err != nil {
+		return fmt.Errorf("failed to get root: %w", err)
+	}
+	mt := tree.NewMemTree(rootID, currentRoot.(*nodestore.InnerNode))
+	if err := tree.Insert(ctx, mt, version, time, data, statistics); err != nil {
 		return fmt.Errorf("insertion failure: %w", err)
 	}
-	if err := tm.ns.FlushStagingToWAL(ctx, producerID, topic, version, nodeIDs); err != nil {
-		return fmt.Errorf("failed to flush to WAL: %w", err)
-	}
-	return nil
-}
-
-// StartWALSyncLoop starts a loop that periodically syncs the WAL to the tree.
-func (tm *TreeManager) StartWALSyncLoop(ctx context.Context) {
-	ticker := time.NewTicker(120 * time.Second)
-	for {
-		select {
-		case <-ticker.C:
-			log.Infof(ctx, "syncing WAL")
-			if err := tm.SyncWAL(ctx); err != nil {
-				log.Errorw(ctx, "failed to sync WAL", "error", err.Error())
-			}
-		case <-ctx.Done():
-			return
-		}
-	}
-}
-
-// SyncWAL syncs the WAL to persistent storage.
-func (tm *TreeManager) SyncWAL(ctx context.Context) error {
-	listings, err := tm.ns.ListWAL(ctx)
+	serialized, err := mt.ToBytes(ctx, 0) // zero is a temporary oid
 	if err != nil {
-		return fmt.Errorf("failed to list WAL: %w", err)
+		return fmt.Errorf("failed to serialize tree: %w", err)
 	}
-	grp := errgroup.Group{}
-	log.Infof(ctx, "Syncing %d WAL listings", len(listings))
-	grp.SetLimit(tm.syncWorkers)
-	for _, listing := range listings {
-		grp.Go(func() error {
-			return tm.syncWALListing(ctx, listing)
-		})
-	}
-	if err := grp.Wait(); err != nil {
-		return fmt.Errorf("failed to sync WAL: %w", err)
-	}
-	log.Infof(ctx, "WAL sync complete")
-	return nil
-}
-
-func (tm *TreeManager) syncWALListing(
-	ctx context.Context,
-	listing nodestore.WALListing,
-) error {
-	rootID, _, err := tm.rootmap.GetLatest(ctx, listing.ProducerID, listing.Topic)
+	_, err = tm.wal.Insert(producerID, topic, serialized)
 	if err != nil {
-		return fmt.Errorf("failed to get latest root: %w", err)
-	}
-	roots := []nodestore.NodeID{}
-	version, err := tm.vs.Next(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get next version: %w", err)
-	}
-	var newRootID nodestore.NodeID
-	versions := maps.Keys(listing.Versions)
-	slices.Sort(versions)
-	if len(versions) == 1 {
-		log.Debugw(ctx, "flushing WAL entries",
-			"producerID", listing.ProducerID,
-			"topic", listing.Topic,
-			"count", len(listing.Versions),
-			"version", version,
-		)
-		value := maps.Values(listing.Versions)[0]
-		newRootID, err = tm.ns.FlushWALPath(ctx, version, value)
-		if err != nil {
-			return fmt.Errorf("failed to flush wal path: %w", err)
-		}
-	} else {
-		log.Debugw(ctx, "merging WAL entries",
-			"producerID", listing.ProducerID,
-			"topic", listing.Topic,
-			"count", len(listing.Versions))
-		for _, version := range versions {
-			nodeIDs := listing.Versions[version]
-			roots = append(roots, nodeIDs[0])
-		}
-		newRootID, err = tm.ns.MergeWALToStorage(ctx, rootID, version, roots)
-		if err != nil {
-			return fmt.Errorf("failed to merge WAL into tree: %w", err)
-		}
-	}
-	for _, version := range versions {
-		nodeIDs := listing.Versions[version]
-		for _, nodeID := range nodeIDs {
-			if err = tm.ns.WALDelete(ctx, nodeID); err != nil { // todo transaction
-				return fmt.Errorf("failed to delete node %s from WAL: %w", nodeID, err)
-			}
-		}
-	}
-	if err := tm.rootmap.Put(ctx, listing.ProducerID, listing.Topic, version, newRootID); err != nil {
-		return fmt.Errorf("failed to update rootmap: %w", err)
+		return fmt.Errorf("failed to insert into WAL: %w", err)
 	}
 	return nil
 }
@@ -433,32 +571,4 @@ func (tm *TreeManager) dimensions(
 		start:   inner.Start,
 		end:     inner.End,
 	}, nil
-}
-
-func (tm *TreeManager) newRoot(ctx context.Context, producerID string, topic string) error {
-	rootID, err := tm.ns.NewRoot(ctx, util.DateSeconds("1970-01-01"), util.DateSeconds("2038-01-19"), 60, 64)
-	if err != nil {
-		return fmt.Errorf("failed to create new root: %w", err)
-	}
-	version, err := tm.vs.Next(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get next version: %w", err)
-	}
-	if err := tm.rootmap.Put(ctx, producerID, topic, version, rootID); err != nil {
-		return fmt.Errorf("failed to update rootmap: %w", err)
-	}
-	return nil
-}
-
-// PrintStream returns a string representation of the tree for the given stream.
-func (tm *TreeManager) PrintStream(ctx context.Context, producerID string, topic string) string {
-	root, version, err := tm.rootmap.GetLatest(ctx, producerID, topic)
-	if err != nil {
-		return fmt.Sprintf("failed to get latest root: %v", err)
-	}
-	s, err := tm.ns.Print(ctx, root, version, nil)
-	if err != nil {
-		return fmt.Sprintf("failed to print tree: %v", err)
-	}
-	return s
 }

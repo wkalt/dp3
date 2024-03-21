@@ -1,96 +1,58 @@
 package tree_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
 	"testing"
 
-	fm "github.com/foxglove/mcap/go/mcap"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/wkalt/dp3/mcap"
-	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/tree"
-	"github.com/wkalt/dp3/util"
 )
 
 func TestTreeIterator(t *testing.T) {
 	ctx := context.Background()
-	ns := nodestore.MockNodestore(ctx, t)
-	rootID, err := ns.NewRoot(ctx, 0, util.Pow(uint64(64), 3), 64, 64)
-	require.NoError(t, err)
 
-	// create two mcap files and stick them into the tree
-	buf1 := &bytes.Buffer{}
-	buf2 := &bytes.Buffer{}
-	offset := 0
-	for _, buf := range []*bytes.Buffer{buf1, buf2} {
-		w, err := mcap.NewWriter(buf)
-		require.NoError(t, err)
-		require.NoError(t, w.WriteHeader(&fm.Header{}))
-		require.NoError(t, w.WriteSchema(&fm.Schema{
-			ID:       1,
-			Name:     "schema1",
-			Encoding: "ros1",
-			Data:     []byte{0x01, 0x02, 0x03},
-		}))
-		require.NoError(t, w.WriteChannel(&fm.Channel{
-			ID:              0,
-			SchemaID:        1,
-			Topic:           "/topic",
-			MessageEncoding: "ros1msg",
-		}))
-		for i := 0; i < 10; i++ {
-			require.NoError(t, w.WriteMessage(&fm.Message{
-				LogTime: uint64(i + offset),
-				Data:    []byte("hello"),
-			}))
-		}
-		require.NoError(t, w.Close())
-		offset += 64
-	}
-	stats := &nodestore.Statistics{
-		MessageCount: 10,
-	}
-	version := uint64(1)
-	rootID = insertLeaf(t, ctx, ns, rootID, version, 0, buf1.Bytes(), stats)
-	version++
-	rootID = insertLeaf(t, ctx, ns, rootID, version, 64*1e9, buf2.Bytes(), stats)
+	cases := []struct {
+		assertion            string
+		times                [][]uint64
+		expectedMessageCount int
+	}{
+		{
+			"empty tree",
+			[][]uint64{},
+			0,
+		},
+		{
+			"one message",
+			[][]uint64{{100}},
+			1,
+		},
 
-	it, err := tree.NewTreeIterator(ctx, ns, rootID, 0, 128*1e9)
-	require.NoError(t, err)
-	defer require.NoError(t, it.Close())
-	count := 0
-	for it.More() {
-		schema, channel, message, err := it.Next(ctx)
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		require.NoError(t, err)
-		require.Equal(t, []byte("hello"), message.Data)
-		require.Equal(t, "schema1", schema.Name)
-		require.Equal(t, "/topic", channel.Topic)
-		count++
+		{
+			"three messages",
+			[][]uint64{{100, 1000, 10000}},
+			3,
+		},
 	}
-	assert.Equal(t, 20, count)
-}
 
-func insertLeaf(
-	t *testing.T,
-	ctx context.Context,
-	ns *nodestore.Nodestore,
-	nodeID nodestore.NodeID,
-	version uint64,
-	time uint64,
-	data []byte,
-	stats *nodestore.Statistics,
-) nodestore.NodeID {
-	t.Helper()
-	_, path, err := tree.Insert(ctx, ns, nodeID, version, time, data, stats)
-	require.NoError(t, err)
-	rootID, err := ns.Flush(ctx, version, path...)
-	require.NoError(t, err)
-	return rootID
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			tr := tree.MergeInserts(ctx, t, 0, 128*1e9, 2, 64, c.times)
+
+			it, err := tree.NewTreeIterator(ctx, tr, 0, 128*1e9)
+			require.NoError(t, err)
+			var count int
+			for {
+				_, _, _, err := it.Next(ctx)
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				require.NoError(t, err)
+				count += 1
+			}
+			require.Equal(t, c.expectedMessageCount, count)
+			require.NoError(t, it.Close())
+		})
+	}
 }
