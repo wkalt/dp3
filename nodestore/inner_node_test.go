@@ -17,12 +17,12 @@ func TestInnerNode(t *testing.T) {
 	t.Run("serialization", func(t *testing.T) {
 		bytes := node.ToBytes()
 		expected := pfix(
-			1, `{"start":10,"end":20,"depth":0,"children":[null,null,null]}`)
+			1, `{"start":10,"end":20,"height":0,"children":[null,null,null]}`)
 		assert.Equal(t, expected, bytes)
 	})
 	t.Run("deserialization", func(t *testing.T) {
 		data := pfix(
-			1, `{"start":10,"end":20,"depth":0,"children":[null,null,null]}`)
+			1, `{"start":10,"end":20,"height":0,"children":[null,null,null]}`)
 		node := nodestore.NewInnerNode(0, 0, 0, 0)
 		err := node.FromBytes(data)
 		require.NoError(t, err)

@@ -397,7 +397,7 @@ type record struct {
 }
 
 type treeDimensions struct {
-	depth   uint8
+	height  uint8
 	bfactor int
 	start   uint64
 	end     uint64
@@ -405,7 +405,7 @@ type treeDimensions struct {
 
 func (td treeDimensions) bounds(ts uint64) (uint64, uint64) {
 	width := td.end - td.start
-	for i := 0; i < int(td.depth); i++ {
+	for i := 0; i < int(td.height); i++ {
 		width /= uint64(td.bfactor)
 	}
 	inset := ts/1e9 - td.start
@@ -428,7 +428,7 @@ func (tm *TreeManager) dimensions(
 	}
 	inner := node.(*nodestore.InnerNode)
 	return &treeDimensions{
-		depth:   inner.Depth,
+		height:  inner.Height,
 		bfactor: len(inner.Children),
 		start:   inner.Start,
 		end:     inner.End,

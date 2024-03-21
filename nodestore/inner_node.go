@@ -29,7 +29,7 @@ const innerNodeVersion = uint8(1)
 type InnerNode struct {
 	Start    uint64   `json:"start"`
 	End      uint64   `json:"end"`
-	Depth    uint8    `json:"depth"` // distance from leaf
+	Height   uint8    `json:"height"` // distance from leaf
 	Children []*Child `json:"children"`
 
 	version uint8
@@ -84,12 +84,12 @@ func (n *InnerNode) Type() NodeType {
 	return Inner
 }
 
-// NewInnerNode creates a new inner node with the given depth and range.
-func NewInnerNode(depth uint8, start, end uint64, branchingFactor int) *InnerNode {
+// NewInnerNode creates a new inner node with the given height and range.
+func NewInnerNode(height uint8, start, end uint64, branchingFactor int) *InnerNode {
 	return &InnerNode{
 		Start:    start,
 		End:      end,
-		Depth:    depth,
+		Height:   height,
 		Children: make([]*Child, branchingFactor),
 		version:  innerNodeVersion,
 	}
