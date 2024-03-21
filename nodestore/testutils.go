@@ -14,8 +14,7 @@ func MockNodestore(ctx context.Context, t *testing.T) *Nodestore {
 	t.Helper()
 	store := storage.NewMemStore()
 	cache := util.NewLRU[NodeID, Node](1e6)
-	wal := NewMemWAL()
-	return NewNodestore(store, cache, wal)
+	return NewNodestore(store, cache)
 }
 
 func RandomNodeID() NodeID {

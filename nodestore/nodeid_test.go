@@ -10,7 +10,7 @@ import (
 
 func TestNodeIDScanner(t *testing.T) {
 	for i := 0; i < 1e3; i++ {
-		id := genNodeID(t)
+		id := nodestore.RandomNodeID()
 		value, err := id.Value()
 		require.NoError(t, err)
 		var id2 nodestore.NodeID

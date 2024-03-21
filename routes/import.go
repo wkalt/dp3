@@ -1,7 +1,6 @@
 package routes
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"os"
@@ -38,15 +37,6 @@ func newImportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			httputil.BadRequest(ctx, w, "error receiving file: %s", err)
 			return
 		}
-
-		// todo: WAL syncing should be done in a background thread to enable
-		// bigger writes to final storage, as well as to decouple write size
-		// from input size. For now we just kick it off on request though.
-		go func() {
-			if err := tmgr.SyncWAL(context.WithoutCancel(ctx)); err != nil {
-				log.Errorf(ctx, "Failed to sync WAL: %s", err)
-			}
-		}()
 		log.Infow(ctx, "Imported", "location", req.Path, "producer_id", req.ProducerID)
 	}
 }

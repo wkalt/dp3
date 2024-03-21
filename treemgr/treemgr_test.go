@@ -3,7 +3,6 @@ package treemgr_test
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -224,9 +223,10 @@ func TestGetStatisticsLatest(t *testing.T) {
 		t.Run(c.assertion, func(t *testing.T) {
 			buf := &bytes.Buffer{}
 			mcap.WriteFile(t, buf, c.input...)
-			tmgr := testTreeManager(ctx, t)
+			tmgr, finish := testTreeManager(ctx, t)
+			defer finish()
 			require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
-			require.NoError(t, tmgr.SyncWAL(ctx))
+			require.NoError(t, tmgr.ForceFlush(ctx))
 			start := c.bounds[0]
 			end := c.bounds[1]
 
@@ -319,9 +319,10 @@ func TestGetMessagesLatest(t *testing.T) {
 		t.Run(c.assertion, func(t *testing.T) {
 			buf := &bytes.Buffer{}
 			mcap.WriteFile(t, buf, c.input...)
-			tmgr := testTreeManager(ctx, t)
+			tmgr, finish := testTreeManager(ctx, t)
+			defer finish()
 			require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
-			require.NoError(t, tmgr.SyncWAL(ctx))
+			require.NoError(t, tmgr.ForceFlush(ctx))
 
 			output := &bytes.Buffer{}
 			start := c.bounds[0]
@@ -361,38 +362,40 @@ func assertEqualTrees(t *testing.T, a, b string) {
 	require.Equal(t, removeSpace(a), removeSpace(b), "%s != %s", a, b)
 }
 
-func BenchmarkReceive(b *testing.B) {
-	ctx := context.Background()
-	cases := []struct {
-		assertion string
-		inputfile string
-	}{
-		{
-			"cal loop",
-			"/home/wyatt/data/bags/cal_loop.mcap",
-		},
-	}
-
-	for _, c := range cases {
-		b.Run(c.assertion, func(b *testing.B) {
-			f, err := os.Open(c.inputfile)
-			require.NoError(b, err)
-			data, err := io.ReadAll(f)
-			require.NoError(b, err)
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				tmgr := testTreeManager(ctx, b)
-				require.NoError(b, tmgr.Receive(ctx, "my-device", bytes.NewReader(data)))
-				require.NoError(b, f.Close())
-			}
-		})
-	}
-}
-
-func TestReceive(t *testing.T) {
+func TestStreamingAcrossMultipleReceives(t *testing.T) {
 	ctx := context.Background()
 	buf := &bytes.Buffer{}
+	mcap.WriteFile(t, buf, []uint64{10e9})
 
+	tmgr, finish := testTreeManager(ctx, t)
+	defer finish()
+	require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
+	require.NoError(t, tmgr.ForceFlush(ctx))
+
+	// overlapping
+	buf.Reset()
+	mcap.WriteFile(t, buf, []uint64{10e9})
+	require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
+	require.NoError(t, tmgr.ForceFlush(ctx))
+
+	// nonoverlapping
+	buf.Reset()
+	mcap.WriteFile(t, buf, []uint64{1000e9})
+	require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
+	require.NoError(t, tmgr.ForceFlush(ctx))
+
+	output := &bytes.Buffer{}
+	require.NoError(t, tmgr.GetMessagesLatest(ctx, output, 0, 100000e9, "my-device", []string{"topic-0"}))
+
+	reader, err := mcap.NewReader(bytes.NewReader(output.Bytes()))
+	require.NoError(t, err)
+
+	info, err := reader.Info()
+	require.NoError(t, err)
+	require.Equal(t, 3, int(info.Statistics.MessageCount))
+}
+func TestReceive(t *testing.T) {
+	ctx := context.Background()
 	cases := []struct {
 		assertion string
 		input     [][]uint64
@@ -400,39 +403,41 @@ func TestReceive(t *testing.T) {
 	}{
 		{
 			"single-topic file, single message",
-			[][]uint64{{10}},
+			[][]uint64{{10e9}},
 			[]string{
-				`[0-64424509440:4 [0-1006632960:4 (count=1) [0-15728640:4 (count=1)
-				[0-245760:4 (count=1) [0-3840:4 (count=1) [0-60:4 (count=1) [leaf 1 msg]]]]]]]`,
+				`[0-64424509440 [0-1006632960:3 (count=1) [0-15728640:3 (count=1)
+				[0-245760:3 (count=1) [0-3840:3 (count=1) [0-60:3 (count=1) [leaf 1 msg]]]]]]]`,
 			},
 		},
 		{
 			"two topics, single messages, nonoverlapping",
 			[][]uint64{{10e9}, {100e9}},
 			[]string{
-				`[0-64424509440:6 [0-1006632960:6 (count=1) [0-15728640:6 (count=1) [0-245760:6 (count=1)
-				[0-3840:6 (count=1) [0-60:6 (count=1) [leaf 1 msg]]]]]]]`,
-				`[0-64424509440:7 [0-1006632960:7 (count=1) [0-15728640:7 (count=1)
-				[0-245760:7 (count=1) [0-3840:7 (count=1) [60-120:7 (count=1) [leaf 1 msg]]]]]]]`,
+				`[0-64424509440 [0-1006632960:4 (count=1) [0-15728640:4 (count=1)
+				[0-245760:4 (count=1) [0-3840:4 (count=1) [0-60:4 (count=1) [leaf 1 msg]]]]]]]`,
+				`[0-64424509440 [0-1006632960:5 (count=1) [0-15728640:5 (count=1)
+				[0-245760:5 (count=1) [0-3840:5 (count=1) [60-120:5 (count=1) [leaf 1 msg]]]]]]]`,
 			},
 		},
 		{
 			"single-topic file, spanning leaf boundaries",
 			[][]uint64{{10e9, 100e9}},
 			[]string{
-				`[0-64424509440:5 [0-1006632960:5 (count=2) [0-15728640:5 (count=2)
-				[0-245760:5 (count=2) [0-3840:5 (count=2) [0-60:5 (count=1) [leaf 1 msg]]
-				[60-120:5 (count=1) [leaf 1 msg]]]]]]]`,
+				`[0-64424509440 [0-1006632960:4 (count=2) [0-15728640:4 (count=2)
+				[0-245760:4 (count=2) [0-3840:4 (count=2) [0-60:3 (count=1) [leaf 1 msg]]
+				[60-120:4 (count=1) [leaf 1 msg]]]]]]]`,
 			},
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
+			buf := &bytes.Buffer{}
 			buf.Reset()
 			mcap.WriteFile(t, buf, c.input...)
-			tmgr := testTreeManager(ctx, t)
+			tmgr, finish := testTreeManager(ctx, t)
+			defer finish()
 			require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
-			require.NoError(t, tmgr.SyncWAL(ctx))
+			require.NoError(t, tmgr.ForceFlush(ctx))
 
 			for i := range c.output {
 				topic := fmt.Sprintf("topic-%d", i)
@@ -445,18 +450,26 @@ func TestReceive(t *testing.T) {
 	}
 }
 
-func testTreeManager(ctx context.Context, tb testing.TB) *treemgr.TreeManager {
+func testTreeManager(ctx context.Context, tb testing.TB) (*treemgr.TreeManager, func()) {
 	tb.Helper()
 	store := storage.NewMemStore()
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1000)
-	db, err := sql.Open("sqlite3", ":memory:")
-	require.NoError(tb, err)
-	db.SetMaxOpenConns(1)
-	wal, err := nodestore.NewSQLWAL(ctx, db)
-	require.NoError(tb, err)
-	ns := nodestore.NewNodestore(store, cache, wal)
+	ns := nodestore.NewNodestore(store, cache)
 	vs := versionstore.NewMemVersionStore()
 	rm := rootmap.NewMemRootmap()
-	tmgr := treemgr.NewTreeManager(ns, vs, rm, 2, 1)
-	return tmgr
+	tmpdir, err := os.MkdirTemp("", "dp3-test")
+	require.NoError(tb, err)
+	tmgr, err := treemgr.NewTreeManager(
+		ctx,
+		ns,
+		vs,
+		rm,
+		treemgr.WithWALBufferSize(100),
+		treemgr.WithSyncWorkers(0), // control syncing manually
+		treemgr.WithWALDir(tmpdir),
+	)
+	require.NoError(tb, err)
+	return tmgr, func() {
+		os.RemoveAll(tmpdir)
+	}
 }
