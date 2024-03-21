@@ -21,8 +21,8 @@ import (
 /*
 dp3 is based on a copy-on-write time-partitioned tree structure. The tree
 contains inner nodes and leaf nodes. Leaf nodes hold the data, and inner nodes
-hold aggregate statistics and pointers to children. Trees are fixed-depth and a
-typical depth is 5 (just an example).
+hold aggregate statistics and pointers to children. Trees are fixed-height and a
+typical height is 5 (just an example).
 
 The Nodestore is responsible for providing access to nodes by node ID. It does
 this using a heirarchical storage scheme:
@@ -245,7 +245,7 @@ func (n *Nodestore) Flush(ctx context.Context, version uint64, ids ...NodeID) (n
 	return newIDs[len(newIDs)-1], nil
 }
 
-// NewRoot creates a new root node with the given depth and range, and persists
+// NewRoot creates a new root node with the given height and range, and persists
 // it to storage, returning the ID.
 func (n *Nodestore) NewRoot(
 	ctx context.Context,
@@ -254,14 +254,14 @@ func (n *Nodestore) NewRoot(
 	leafWidthSecs int,
 	bfactor int,
 ) (nodeID NodeID, err error) {
-	var depth int
+	var height int
 	span := end - start
 	coverage := leafWidthSecs
 	for uint64(coverage) < span {
 		coverage *= bfactor
-		depth++
+		height++
 	}
-	root := NewInnerNode(uint8(depth), start, start+uint64(coverage), bfactor)
+	root := NewInnerNode(uint8(height), start, start+uint64(coverage), bfactor)
 	tmpid := n.Stage(root)
 	id, err := n.Flush(ctx, 0, tmpid)
 	if err != nil {
@@ -412,7 +412,7 @@ func (n *Nodestore) nodeMerge(
 			// represent the logical leaves in the root that don't exist yet.
 			// Seems to make the downstream code simpler but might be confusing
 			// in the future.
-			inner = append(inner, NewInnerNode(node.Depth, node.Start, node.End, len(node.Children)))
+			inner = append(inner, NewInnerNode(node.Height, node.Start, node.End, len(node.Children)))
 		}
 
 		nodeIDs, err := n.mergeInnerNodes(ctx, version, inner)
@@ -451,7 +451,7 @@ func (n *Nodestore) mergeInnerNodes(
 			conflicts = append(conflicts, i)
 		}
 	}
-	newInner := NewInnerNode(node.Depth, node.Start, node.End, len(node.Children))
+	newInner := NewInnerNode(node.Height, node.Start, node.End, len(node.Children))
 	newID := n.Stage(newInner)
 	result := []NodeID{newID}
 	for _, conflict := range conflicts {

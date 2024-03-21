@@ -2,6 +2,7 @@ package tree
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/wkalt/dp3/nodestore"
@@ -16,7 +17,64 @@ The storage of dp3 consists of many trees, which are coordinated by the treemgr
 module.
 */
 
-////////////////////////////////////////////////////////////////////////////////
+// //////////////////////////////////////////////////////////////////////////////
+
+// StatRange is a range of multigranular statistics computed on inner nodes.
+type StatRange struct {
+	Start      uint64                `json:"start"`
+	End        uint64                `json:"end"`
+	Statistics *nodestore.Statistics `json:"statistics"`
+}
+
+// GetStatRange returns the statistics for the given range of time, for the tree
+// rooted at rootID. The granularity parameter is interpreted as a "maximum
+// granularity". The returned granularity is guaranteed to be at least as fine
+// as the one requested, and in practice can be considerably finer. This can
+// lead to confusing results so clients must be prepared to handle it.
+func GetStatRange(
+	ctx context.Context,
+	ns *nodestore.Nodestore,
+	rootID nodestore.NodeID,
+	start uint64,
+	end uint64,
+	granularity uint64,
+) ([]StatRange, error) {
+	ranges := []StatRange{}
+	stack := []nodestore.NodeID{rootID}
+	for len(stack) > 0 {
+		nodeID := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		node, err := ns.Get(ctx, nodeID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get node %s: %w", nodeID, err)
+		}
+		switch node := node.(type) {
+		case *nodestore.InnerNode:
+			granularEnough := 1e9*bwidth(node) <= granularity
+			width := bwidth(node)
+			for i, child := range node.Children {
+				childStart := 1e9 * (node.Start + width*uint64(i))
+				childEnd := 1e9 * (node.Start + width*uint64(i+1))
+				inRange := child != nil && start <= childEnd && end > childStart
+				if inRange && granularEnough {
+					ranges = append(ranges, StatRange{
+						Start:      childStart,
+						End:        childEnd,
+						Statistics: child.Statistics,
+					})
+					continue
+				}
+				if inRange {
+					stack = append(stack, child.ID)
+				}
+			}
+		case *nodestore.LeafNode:
+			// todo: compute exact statistics from the messages
+			return nil, errors.New("sorry, too granular")
+		}
+	}
+	return ranges, nil
+}
 
 // Insert stages leaf data into the tree rooted at nodeID, in the leaf location
 // appropriate for the supplied timestamp.
@@ -25,35 +83,37 @@ module.
 // version, and associated with the provided statistics record.
 // new leaf are assigned the version parameter.
 //
-// A new root node ID is returned, corresponding to the root of the new tree. At
-// the time it is returned, the new node exists only in the nodestore's staging
-// map. The caller is responsible for flushing the ID to WAL.
+// If there is no error, a new root node ID is returned, corresponding to the root
+// of the new tree. At the time it is returned, the new node exists only in the nodestore's
+// staging map. The caller is responsible for flushing the ID to WAL.
+//
+// On error, the rootID is returned unchanged, and the path is nil.
 func Insert(
 	ctx context.Context,
 	ns *nodestore.Nodestore,
-	nodeID nodestore.NodeID,
+	rootID nodestore.NodeID,
 	version uint64,
-	start uint64,
+	timestamp uint64,
 	data []byte,
 	statistics *nodestore.Statistics,
-) (rootID nodestore.NodeID, path []nodestore.NodeID, err error) {
-	root, err := cloneInnerNode(ctx, ns, nodeID)
+) (newRootID nodestore.NodeID, path []nodestore.NodeID, err error) {
+	root, err := cloneInnerNode(ctx, ns, rootID)
 	if err != nil {
 		return rootID, nil, err
 	}
-	if start < root.Start*1e9 || start >= root.End*1e9 {
-		return rootID, nil, OutOfBoundsError{start, root.Start, root.End}
+	if timestamp < root.Start*1e9 || timestamp >= root.End*1e9 {
+		return rootID, nil, OutOfBoundsError{timestamp, root.Start, root.End}
 	}
 	rootID = ns.Stage(root)
 	nodes := []nodestore.NodeID{rootID}
 	current := root
-	for current.Depth > 1 {
-		current, err = descend(ctx, ns, &nodes, current, start, version, statistics)
+	for current.Height > 1 {
+		current, err = descend(ctx, ns, &nodes, current, timestamp, version, statistics)
 		if err != nil {
 			return rootID, nil, err
 		}
 	}
-	bucket := bucket(start, current)
+	bucket := bucket(timestamp, current)
 	node := nodestore.NewLeafNode(data)
 	stagedID := ns.Stage(node) // todo: should insert flush to WAL?
 	nodes = append(nodes, stagedID)
@@ -86,7 +146,7 @@ func cloneInnerNode(ctx context.Context, ns *nodestore.Nodestore, id nodestore.N
 	if !ok {
 		return nil, newUnexpectedNodeError(nodestore.Inner, node)
 	}
-	newNode := nodestore.NewInnerNode(oldNode.Depth, oldNode.Start, oldNode.End, len(oldNode.Children))
+	newNode := nodestore.NewInnerNode(oldNode.Height, oldNode.Start, oldNode.End, len(oldNode.Children))
 	for i := range oldNode.Children {
 		if oldNode.Children[i] != nil {
 			newNode.Children[i] = &nodestore.Child{
@@ -118,7 +178,7 @@ func descend(
 	} else {
 		bwidth := bwidth(current)
 		node = nodestore.NewInnerNode(
-			current.Depth-1,
+			current.Height-1,
 			current.Start+bucket*bwidth,
 			current.Start+(bucket+1)*bwidth,
 			len(current.Children),
