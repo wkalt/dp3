@@ -137,10 +137,8 @@ func init() {
 	statrangeCmd.MarkPersistentFlagRequired("producer")
 	statrangeCmd.PersistentFlags().StringVarP(&statrangeTopic, "topic", "t", "", "Topic")
 	statrangeCmd.MarkPersistentFlagRequired("topic")
-	statrangeCmd.PersistentFlags().StringVarP(&statrangeStart, "start", "s", "", "Start time")
-	statrangeCmd.MarkPersistentFlagRequired("start")
-	statrangeCmd.PersistentFlags().StringVarP(&statrangeEnd, "end", "e", "", "End time")
-	statrangeCmd.MarkPersistentFlagRequired("end")
+	statrangeCmd.PersistentFlags().StringVarP(&statrangeStart, "start", "s", "1970-01-01T00:00:00Z", "Start time")
+	statrangeCmd.PersistentFlags().StringVarP(&statrangeEnd, "end", "e", "2050-01-01T00:00:00Z", "End time")
 
 	statrangeCmd.PersistentFlags().Uint64VarP(&statrangeGranularity, "granularity", "g", 60*60, "Granularity in seconds")
 }
