@@ -3,8 +3,10 @@ package mcap_test
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"testing"
 
 	fmcap "github.com/foxglove/mcap/go/mcap"
@@ -48,6 +50,169 @@ func TestMerge(t *testing.T) {
 		assert.GreaterOrEqual(t, msg.LogTime, n)
 		n = msg.LogTime
 	}
+}
+
+func TestIdenticalSchemas(t *testing.T) {
+	t.Run("schemas differ only in comments", func(t *testing.T) {
+		buf1 := &bytes.Buffer{}
+		buf2 := &bytes.Buffer{}
+		iterators := make([]fmcap.MessageIterator, 2)
+		for i, buf := range []*bytes.Buffer{buf1, buf2} {
+			writer, err := mcap.NewWriter(buf)
+			require.NoError(t, err)
+			require.NoError(t, writer.WriteHeader(&fmcap.Header{}))
+			require.NoError(t, writer.WriteSchema(&fmcap.Schema{
+				ID:       1,
+				Name:     "pkg/Type",
+				Encoding: "ros1msg",
+				Data:     []byte(fmt.Sprintf("string data # %d", i)),
+			}))
+			require.NoError(t, writer.WriteChannel(&fmcap.Channel{
+				ID:              0,
+				SchemaID:        1,
+				Topic:           "/foo",
+				MessageEncoding: "ros1msg",
+			}))
+			require.NoError(t, writer.WriteMessage(&fmcap.Message{
+				ChannelID: 0,
+				LogTime:   100,
+				Data:      testutils.PrefixedString("hello"),
+			}))
+			require.NoError(t, writer.Close())
+			reader, err := mcap.NewReader(bytes.NewReader(buf.Bytes()))
+			require.NoError(t, err)
+			iterators[i], err = reader.Messages()
+			require.NoError(t, err)
+		}
+		output := &bytes.Buffer{}
+		require.NoError(t, mcap.Nmerge(output, iterators...))
+		times := mcap.ReadFile(t, bytes.NewReader(output.Bytes()))
+		assert.Equal(t, []uint64{100, 100}, times)
+	})
+	t.Run("identical schemas, different channels", func(t *testing.T) {
+		buf1 := &bytes.Buffer{}
+		buf2 := &bytes.Buffer{}
+		iterators := make([]fmcap.MessageIterator, 2)
+		for i, buf := range []*bytes.Buffer{buf1, buf2} {
+			writer, err := mcap.NewWriter(buf)
+			require.NoError(t, err)
+			require.NoError(t, writer.WriteHeader(&fmcap.Header{}))
+			require.NoError(t, writer.WriteSchema(&fmcap.Schema{
+				ID:       uint16(5*i + 1),
+				Name:     "pkg/Type",
+				Encoding: "ros1msg",
+				Data:     []byte("string data"),
+			}))
+			require.NoError(t, writer.WriteChannel(&fmcap.Channel{
+				ID:              uint16(5 * i),
+				SchemaID:        uint16(5*i + 1),
+				Topic:           "/foo",
+				MessageEncoding: "ros1msg",
+				Metadata:        map[string]string{"foo": strconv.Itoa(i)},
+			}))
+			require.NoError(t, writer.WriteMessage(&fmcap.Message{
+				ChannelID: uint16(5 * i),
+				LogTime:   100,
+				Data:      testutils.PrefixedString("hello"),
+			}))
+			require.NoError(t, writer.Close())
+			reader, err := mcap.NewReader(bytes.NewReader(buf.Bytes()))
+			require.NoError(t, err)
+			iterators[i], err = reader.Messages()
+			require.NoError(t, err)
+		}
+		output := &bytes.Buffer{}
+		require.NoError(t, mcap.Nmerge(output, iterators...))
+		times := mcap.ReadFile(t, bytes.NewReader(output.Bytes()))
+		assert.Equal(t, []uint64{100, 100}, times)
+	})
+	t.Run("schemas differ in content", func(t *testing.T) {
+		buf1 := &bytes.Buffer{}
+		buf2 := &bytes.Buffer{}
+		iterators := make([]fmcap.MessageIterator, 2)
+		for i, buf := range []*bytes.Buffer{buf1, buf2} {
+			writer, err := mcap.NewWriter(buf)
+			require.NoError(t, err)
+			require.NoError(t, writer.WriteHeader(&fmcap.Header{}))
+			schema := ""
+			data := []byte{}
+			for j := 0; j < i+1; j++ {
+				schema += fmt.Sprintf("string data%d\n", i)
+				data = append(data, testutils.PrefixedString("hello")...)
+			}
+			require.NoError(t, writer.WriteSchema(&fmcap.Schema{
+				ID:       1,
+				Name:     "pkg/Type",
+				Encoding: "ros1msg",
+				Data:     []byte(schema),
+			}))
+			require.NoError(t, writer.WriteChannel(&fmcap.Channel{
+				ID:              0,
+				SchemaID:        1,
+				Topic:           "/foo",
+				MessageEncoding: "ros1msg",
+			}))
+			require.NoError(t, writer.WriteMessage(&fmcap.Message{
+				ChannelID: 0,
+				LogTime:   100,
+				Data:      data,
+			}))
+			require.NoError(t, writer.Close())
+			reader, err := mcap.NewReader(bytes.NewReader(buf.Bytes()))
+			require.NoError(t, err)
+			iterators[i], err = reader.Messages()
+			require.NoError(t, err)
+		}
+		output := &bytes.Buffer{}
+		require.NoError(t, mcap.Nmerge(output, iterators...))
+		times := mcap.ReadFile(t, bytes.NewReader(output.Bytes()))
+		assert.Equal(t, []uint64{100, 100}, times)
+	})
+	t.Run("identical schemas different channel metadata", func(t *testing.T) {
+		buf1 := &bytes.Buffer{}
+		buf2 := &bytes.Buffer{}
+		iterators := make([]fmcap.MessageIterator, 2)
+		for i, buf := range []*bytes.Buffer{buf1, buf2} {
+			writer, err := mcap.NewWriter(buf)
+			require.NoError(t, err)
+			require.NoError(t, writer.WriteHeader(&fmcap.Header{}))
+			schema := ""
+			data := []byte{}
+			for j := 0; j < i+1; j++ {
+				schema += fmt.Sprintf("string data%d\n", i)
+				data = append(data, testutils.PrefixedString("hello")...)
+			}
+			require.NoError(t, writer.WriteSchema(&fmcap.Schema{
+				ID:       uint16(i + 1),
+				Name:     "pkg/Type",
+				Encoding: "ros1msg",
+				Data:     []byte(schema),
+			}))
+			require.NoError(t, writer.WriteChannel(&fmcap.Channel{
+				ID:              uint16(i),
+				SchemaID:        uint16(i + 1),
+				Topic:           "/foo",
+				MessageEncoding: "ros1msg",
+				Metadata: map[string]string{
+					"foo": strconv.Itoa(i),
+				},
+			}))
+			require.NoError(t, writer.WriteMessage(&fmcap.Message{
+				ChannelID: uint16(i),
+				LogTime:   100,
+				Data:      data,
+			}))
+			require.NoError(t, writer.Close())
+			reader, err := mcap.NewReader(bytes.NewReader(buf.Bytes()))
+			require.NoError(t, err)
+			iterators[i], err = reader.Messages()
+			require.NoError(t, err)
+		}
+		output := &bytes.Buffer{}
+		require.NoError(t, mcap.Nmerge(output, iterators...))
+		times := mcap.ReadFile(t, bytes.NewReader(output.Bytes()))
+		assert.Equal(t, []uint64{100, 100}, times)
+	})
 }
 
 func TestNMerge(t *testing.T) {

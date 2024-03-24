@@ -73,6 +73,7 @@ func (c *MergeCoordinator) Write(schema *mcap.Schema, channel *mcap.Channel, msg
 		if mappedID, ok := c.schemaHashes[schemaHash]; ok {
 			// associate this schemau with the mapped ID
 			c.schemas[schema] = mappedID
+			schemaID = mappedID
 		} else {
 			schemaID = c.nextSchemaID
 			newSchema := &mcap.Schema{

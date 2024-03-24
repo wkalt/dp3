@@ -21,11 +21,12 @@ func ReadFile(t *testing.T, r io.Reader) []uint64 {
 
 	var timestamps []uint64
 	for {
-		_, _, msg, err := msgs.Next(nil)
+		schema, _, msg, err := msgs.Next(nil)
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		require.NoError(t, err)
+		require.NotNil(t, schema, "got a nil schema")
 		timestamps = append(timestamps, msg.LogTime)
 	}
 	return timestamps

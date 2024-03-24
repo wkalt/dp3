@@ -52,20 +52,32 @@ func U32b(v uint32) []byte {
 	return buf
 }
 
+// U64b returns a byte slice containing a single uint64 value.
 func U64b(v uint64) []byte {
 	buf := make([]byte, 8)
 	binary.LittleEndian.PutUint64(buf, v)
 	return buf
 }
 
+// F32b returns a byte slice containing a single float32 value.
 func F32b(v float32) []byte {
 	return U32b(math.Float32bits(v))
 }
 
+// F64b returns a byte slice containing a single float64 value.
 func F64b(v float64) []byte {
 	return U64b(math.Float64bits(v))
 }
 
+// PrefixedString returns a byte slice containing a string prefixed with its length.
+func PrefixedString(s string) []byte {
+	buf := make([]byte, 4+len(s))
+	binary.LittleEndian.PutUint32(buf, uint32(len(s)))
+	copy(buf[4:], s)
+	return buf
+}
+
+// ReadPrefixedString reads a string from a byte slice.
 func ReadPrefixedString(t *testing.T, bs []byte) string {
 	t.Helper()
 	if len(bs) < 4 {
