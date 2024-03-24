@@ -37,6 +37,15 @@ func (n NodeID) Length() int {
 	return int(binary.LittleEndian.Uint32(n[12:]))
 }
 
+// NewNodeID creates a new node ID from an object ID, offset, and length.
+func NewNodeID(oid uint64, offset, length int) NodeID {
+	var id NodeID
+	binary.LittleEndian.PutUint64(id[:8], oid)
+	binary.LittleEndian.PutUint32(id[8:12], uint32(offset))
+	binary.LittleEndian.PutUint32(id[12:], uint32(length))
+	return id
+}
+
 // String returns a string representation of the node ID.
 func (n NodeID) String() string {
 	return fmt.Sprintf("%s:%d:%d", n.OID(), n.Offset(), n.Length())
@@ -77,4 +86,12 @@ func (n *NodeID) Scan(value interface{}) error {
 // Value implements the driver.Valuer interface for the NodeID type.
 func (n NodeID) Value() (driver.Value, error) {
 	return driver.Value(n.String()), nil
+}
+
+func generateNodeID(oid objectID, offset int, length int) NodeID {
+	var id NodeID
+	binary.LittleEndian.PutUint64(id[:], uint64(oid))
+	binary.LittleEndian.PutUint32(id[8:], uint32(offset))
+	binary.LittleEndian.PutUint32(id[12:], uint32(length))
+	return id
 }

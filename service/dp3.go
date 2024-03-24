@@ -21,6 +21,7 @@ import (
 	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/log"
 	"github.com/wkalt/dp3/versionstore"
+	"github.com/wkalt/dp3/wal"
 )
 
 /*
@@ -51,26 +52,36 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 	log.Debugf(ctx, "Debug logging enabled")
 	store := opts.StorageProvider
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](opts.CacheSizeBytes)
-	walpath := "wal.db?_journal=WAL&mode=rwc"
-	db, err := sql.Open("sqlite3", walpath)
+	dbpath := "dp3.db?_journal=WAL&mode=rwc"
+	db, err := sql.Open("sqlite3", dbpath)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
 	if err = db.Ping(); err != nil {
-		return fmt.Errorf("failed to ping database at %s: %w", walpath, err)
+		return fmt.Errorf("failed to ping database at %s: %w", dbpath, err)
 	}
-	wal, err := nodestore.NewSQLWAL(ctx, db)
-	if err != nil {
-		return fmt.Errorf("failed to open wal at %s: %w", walpath, err)
-	}
-	ns := nodestore.NewNodestore(store, cache, wal)
+	ns := nodestore.NewNodestore(store, cache)
 	rm, err := rootmap.NewSQLRootmap(db)
 	if err != nil {
 		return fmt.Errorf("failed to open rootmap: %w", err)
 	}
 	vs := versionstore.NewSQLVersionstore(db, 1e9)
-	tmgr := treemgr.NewTreeManager(ns, vs, rm, 2, opts.SyncWorkers)
-	// go tmgr.StartWALSyncLoop(ctx)
+	walopts := []wal.Option{
+		wal.WithInactiveBatchMergeInterval(2),
+	}
+	waldir := "waldir"
+	tmgr, err := treemgr.NewTreeManager(
+		ctx,
+		ns,
+		vs,
+		rm,
+		treemgr.WithSyncWorkers(opts.SyncWorkers),
+		treemgr.WithWALOpts(walopts...),
+		treemgr.WithWALDir(waldir),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create tree manager: %w", err)
+	}
 	r := routes.MakeRoutes(tmgr)
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", opts.Port),
@@ -91,6 +102,7 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 			log.Errorf(ctx, "failed to start pprof server: %s", err)
 		}
 	}()
+
 	<-done
 	log.Infof(ctx, "Allowing 10 seconds for existing connections to close")
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)

@@ -150,7 +150,7 @@ In the service, nodes are cached on read in an LRU cache of configurable byte
 capacity. In production deployments, this cache will be sized such that most
 important inner nodes will fit within it at all times. Multigranular
 summarization requires traversing the tree down to a sufficiently granular
-depth, and then scanning the statistical summaries at that depth for the
+height, and then scanning the statistical summaries at that height for the
 requested range of time. If the cache is performing well this operation can be
 done in RAM.
 

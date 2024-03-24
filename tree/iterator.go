@@ -27,19 +27,18 @@ type Iterator struct {
 	reader      *mcap.Reader
 	rsc         io.ReadSeekCloser
 	msgIterator mcap.MessageIterator
-	ns          *nodestore.Nodestore
+	tr          TreeReader
 }
 
 // NewTreeIterator returns a new iterator over the given tree.
 func NewTreeIterator(
 	ctx context.Context,
-	ns *nodestore.Nodestore,
-	rootID nodestore.NodeID,
+	tr TreeReader,
 	start uint64,
 	end uint64,
 ) (*Iterator, error) {
-	it := &Iterator{start: start, end: end, ns: ns}
-	if err := it.initialize(ctx, rootID); err != nil {
+	it := &Iterator{start: start, end: end, tr: tr}
+	if err := it.initialize(ctx, tr.Root()); err != nil {
 		return nil, err
 	}
 	return it, nil
@@ -98,7 +97,7 @@ func (ti *Iterator) initialize(ctx context.Context, rootID nodestore.NodeID) err
 	for len(stack) > 0 {
 		nodeID := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
-		node, err := ti.ns.Get(ctx, nodeID)
+		node, err := ti.tr.Get(ctx, nodeID)
 		if err != nil {
 			return fmt.Errorf("failed to get node %s: %w", nodeID, err)
 		}
@@ -129,9 +128,9 @@ func (ti *Iterator) initialize(ctx context.Context, rootID nodestore.NodeID) err
 // openNextLeaf opens the next leaf in the iterator.
 func (ti *Iterator) openNextLeaf(ctx context.Context) error {
 	leafID := ti.leafIDs[ti.nextLeaf]
-	rsc, err := ti.ns.GetLeaf(ctx, leafID)
+	rsc, err := ti.tr.GetLeafData(ctx, leafID)
 	if err != nil {
-		return fmt.Errorf("failed to get node: %w", err)
+		return fmt.Errorf("failed to get reader: %w", err)
 	}
 	reader, err := mcap.NewReader(rsc)
 	if err != nil {
