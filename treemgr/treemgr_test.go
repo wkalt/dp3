@@ -393,7 +393,15 @@ func TestStreamingAcrossMultipleReceives(t *testing.T) {
 	info, err := reader.Info()
 	require.NoError(t, err)
 	require.Equal(t, 3, int(info.Statistics.MessageCount))
+
+	require.Len(t, info.Schemas, 1)
+	for _, channel := range info.Channels {
+		require.Equal(t, "topic-0", channel.Topic)
+		schema := info.Schemas[channel.SchemaID]
+		require.NotNil(t, schema)
+	}
 }
+
 func TestReceive(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
