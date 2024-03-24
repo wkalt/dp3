@@ -94,7 +94,7 @@ func (m *MemTree) FromBytes(ctx context.Context, data []byte) error {
 
 // ToBytes serializes the memtree to a byte array suitable for storage in the
 // WAL or in an object. The nodes are serialized from leaf to root. The IDs are
-// boosted by offset. The last 16 bytes are the root ID.
+// boosted by offset. The last 24 bytes are the root ID.
 func (m *MemTree) ToBytes(ctx context.Context, oid uint64) ([]byte, error) { // nolint: funlen
 	root, err := m.Get(ctx, m.root)
 	if err != nil {
@@ -147,7 +147,7 @@ func (m *MemTree) ToBytes(ctx context.Context, oid uint64) ([]byte, error) { // 
 		if err != nil {
 			return nil, fmt.Errorf("failed to write node: %w", err)
 		}
-		nodeID := nodestore.NewNodeID(oid, offset, n)
+		nodeID := nodestore.NewNodeID(oid, uint64(offset), uint64(n))
 		offset += n
 		processed[id] = nodeID
 	}

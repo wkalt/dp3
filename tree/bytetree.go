@@ -70,8 +70,8 @@ func (b *byteTree) Put(ctx context.Context, id nodestore.NodeID, node nodestore.
 }
 
 func (b *byteTree) Root() nodestore.NodeID {
-	_, _ = b.r.Seek(-16, io.SeekEnd)
-	id := make([]byte, 16)
+	_, _ = b.r.Seek(-24, io.SeekEnd)
+	id := make([]byte, 24)
 	_, _ = io.ReadFull(b.r, id)
 	return nodestore.NodeID(id)
 }

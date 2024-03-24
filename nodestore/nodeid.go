@@ -9,9 +9,9 @@ import (
 )
 
 /*
-Node IDs in dp3 are 16 bytes long. The first 8 bytes is an unsigned 64-bit
-integer interpreted as an object identifier in storage. The next 4 bytes is an
-offset, and the final 4 bytes is a length to read.
+Node IDs in dp3 are 24 bytes long. The first 8 bytes is an unsigned 64-bit
+integer interpreted as an object identifier in storage. The next 8 bytes is an
+offset, and the final 8 bytes is a length to read.
 
 With this structure it is possible to resolve any node ID directly to a storage
 location. Many nodes may be stored in a single object.
@@ -19,8 +19,8 @@ location. Many nodes may be stored in a single object.
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// NodeID is a 16-byte identifier for a node in the nodestore.
-type NodeID [16]byte
+// NodeID is a 24-byte identifier for a node in the nodestore.
+type NodeID [24]byte
 
 // OID returns the object identifier of the node.
 func (n NodeID) OID() string {
@@ -28,21 +28,21 @@ func (n NodeID) OID() string {
 }
 
 // Offset returns the offset of the node.
-func (n NodeID) Offset() int {
-	return int(binary.LittleEndian.Uint32(n[8:]))
+func (n NodeID) Offset() uint64 {
+	return binary.LittleEndian.Uint64(n[8:])
 }
 
 // Length returns the length of the node.
-func (n NodeID) Length() int {
-	return int(binary.LittleEndian.Uint32(n[12:]))
+func (n NodeID) Length() uint64 {
+	return binary.LittleEndian.Uint64(n[16:])
 }
 
 // NewNodeID creates a new node ID from an object ID, offset, and length.
-func NewNodeID(oid uint64, offset, length int) NodeID {
+func NewNodeID(oid, offset, length uint64) NodeID {
 	var id NodeID
 	binary.LittleEndian.PutUint64(id[:8], oid)
-	binary.LittleEndian.PutUint32(id[8:12], uint32(offset))
-	binary.LittleEndian.PutUint32(id[12:], uint32(length))
+	binary.LittleEndian.PutUint64(id[8:], offset)
+	binary.LittleEndian.PutUint64(id[16:], length)
 	return id
 }
 
@@ -60,9 +60,9 @@ func (n *NodeID) UnmarshalJSON(data []byte) error {
 	s = s[1 : len(s)-1]
 	parts := strings.Split(s, ":")
 	oid, _ := strconv.ParseUint(parts[0], 10, 64)
-	offset, _ := strconv.ParseUint(parts[1], 10, 32)
-	length, _ := strconv.ParseUint(parts[2], 10, 32)
-	nodeID := generateNodeID(objectID(oid), int(offset), int(length))
+	offset, _ := strconv.ParseUint(parts[1], 10, 64)
+	length, _ := strconv.ParseUint(parts[2], 10, 64)
+	nodeID := generateNodeID(objectID(oid), offset, length)
 	*n = nodeID
 	return nil
 }
@@ -76,9 +76,9 @@ func (n *NodeID) Scan(value interface{}) error {
 	}
 	parts := strings.Split(s, ":")
 	oid, _ := strconv.ParseUint(parts[0], 10, 64)
-	offset, _ := strconv.ParseUint(parts[1], 10, 32)
-	length, _ := strconv.ParseUint(parts[2], 10, 32)
-	nodeID := generateNodeID(objectID(oid), int(offset), int(length))
+	offset, _ := strconv.ParseUint(parts[1], 10, 64)
+	length, _ := strconv.ParseUint(parts[2], 10, 64)
+	nodeID := generateNodeID(objectID(oid), offset, length)
 	*n = nodeID
 	return nil
 }
@@ -88,10 +88,10 @@ func (n NodeID) Value() (driver.Value, error) {
 	return driver.Value(n.String()), nil
 }
 
-func generateNodeID(oid objectID, offset int, length int) NodeID {
+func generateNodeID(oid objectID, offset uint64, length uint64) NodeID {
 	var id NodeID
 	binary.LittleEndian.PutUint64(id[:], uint64(oid))
-	binary.LittleEndian.PutUint32(id[8:], uint32(offset))
-	binary.LittleEndian.PutUint32(id[12:], uint32(length))
+	binary.LittleEndian.PutUint64(id[8:], offset)
+	binary.LittleEndian.PutUint64(id[16:], length)
 	return id
 }

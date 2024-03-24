@@ -38,7 +38,7 @@ func TestNodestore(t *testing.T) {
 		bytes := node.ToBytes()
 		_, err = buf.Write(bytes)
 		require.NoError(t, err)
-		addr := nodestore.NewNodeID(1, n, len(bytes))
+		addr := nodestore.NewNodeID(1, uint64(n), uint64(len(bytes)))
 
 		require.NoError(t, ns.Put(ctx, 1, buf.Bytes()))
 

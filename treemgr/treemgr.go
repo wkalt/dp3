@@ -302,7 +302,7 @@ func (tm *TreeManager) newRoot(
 	if err := tm.ns.Put(ctx, version, data); err != nil {
 		return nodestore.NodeID{}, 0, fmt.Errorf("failed to put root: %w", err)
 	}
-	nodeID := nodestore.NewNodeID(version, 0, len(data))
+	nodeID := nodestore.NewNodeID(version, 0, uint64(len(data)))
 	return nodeID, version, nil
 }
 
@@ -342,8 +342,8 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 	if err != nil {
 		return fmt.Errorf("failed to serialize partial tree: %w", err)
 	}
-	rootID := data[len(data)-16:]
-	if err := tm.ns.Put(ctx, version, data[:len(data)-16]); err != nil {
+	rootID := data[len(data)-24:]
+	if err := tm.ns.Put(ctx, version, data[:len(data)-24]); err != nil {
 		return fmt.Errorf("failed to put tree: %w", err)
 	}
 	if err := tm.rootmap.Put(ctx, batch.ProducerID, batch.Topic, version, nodestore.NodeID(rootID)); err != nil {

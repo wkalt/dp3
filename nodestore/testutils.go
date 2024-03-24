@@ -18,7 +18,7 @@ func MockNodestore(ctx context.Context, t *testing.T) *Nodestore {
 }
 
 func RandomNodeID() NodeID {
-	buf := [16]byte{}
+	buf := [24]byte{}
 	_, _ = rand.Read(buf[:])
 	return NodeID(buf)
 }

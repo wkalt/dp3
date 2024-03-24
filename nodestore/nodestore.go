@@ -79,7 +79,7 @@ func (n *Nodestore) Get(ctx context.Context, id NodeID) (Node, error) {
 	if value, ok := n.cache.Get(id); ok {
 		return value, nil
 	}
-	reader, err := n.store.GetRange(ctx, id.OID(), id.Offset(), id.Length())
+	reader, err := n.store.GetRange(ctx, id.OID(), int(id.Offset()), int(id.Length()))
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotFound) {
 			return nil, NodeNotFoundError{id}
@@ -104,7 +104,7 @@ func (n *Nodestore) Get(ctx context.Context, id NodeID) (Node, error) {
 // does not cache data.
 func (n *Nodestore) GetLeafData(ctx context.Context, id NodeID) (io.ReadSeekCloser, error) {
 	// NB: Add one to the offset to skip the type byte.
-	reader, err := n.store.GetRange(ctx, id.OID(), id.Offset()+1, id.Length()-1)
+	reader, err := n.store.GetRange(ctx, id.OID(), int(id.Offset())+1, int(id.Length())-1)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotFound) {
 			return nil, NodeNotFoundError{id}
