@@ -112,16 +112,23 @@ func (m *MemTree) ToBytes(ctx context.Context, oid uint64) ([]byte, error) { // 
 			if child == nil {
 				continue
 			}
-			path = append(path, child.ID)
 			childNode, err := m.Get(ctx, child.ID)
 			if err != nil {
+				if errors.Is(err, nodestore.NodeNotFoundError{}) {
+					// assume it will inherit from parent during
+					// deserialization.
+					continue
+				}
 				return nil, fmt.Errorf("failed to get child node: %w", err)
 			}
+			path = append(path, child.ID)
 			if inner, ok := childNode.(*nodestore.InnerNode); ok {
 				nodes = append(nodes, inner)
 			}
 		}
 	}
+
+	// todo avoid second lookup
 
 	// serialize the path in reverse order
 	buf := &bytes.Buffer{}
@@ -147,6 +154,7 @@ func (m *MemTree) ToBytes(ctx context.Context, oid uint64) ([]byte, error) { // 
 		if err != nil {
 			return nil, fmt.Errorf("failed to write node: %w", err)
 		}
+
 		nodeID := nodestore.NewNodeID(oid, uint64(offset), uint64(n))
 		offset += n
 		processed[id] = nodeID

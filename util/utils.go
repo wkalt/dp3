@@ -89,3 +89,11 @@ func HumanFrequency(n float64) string {
 	}
 	return strconv.FormatFloat(n, 'f', -1, 64) + " " + suffix[i]
 }
+
+// When returns a if cond is true, otherwise b.
+func When[T any](cond bool, a, b T) T {
+	if cond {
+		return a
+	}
+	return b
+}

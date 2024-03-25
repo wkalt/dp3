@@ -2,11 +2,13 @@ package tree
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
 
 	"github.com/wkalt/dp3/nodestore"
+	"github.com/wkalt/dp3/util"
 )
 
 /*
@@ -23,24 +25,45 @@ type TreeReader interface {
 	GetLeafData(ctx context.Context, id nodestore.NodeID) (io.ReadSeekCloser, error)
 }
 
+func getNode(
+	ctx context.Context,
+	id nodestore.NodeID,
+	readers ...TreeReader,
+) (remote bool, node nodestore.Node, err error) {
+	for i, reader := range readers {
+		node, err = reader.Get(ctx, id)
+		if err != nil {
+			if errors.Is(err, nodestore.NodeNotFoundError{}) {
+				continue
+			}
+			return false, nil, fmt.Errorf("failed to get node: %w", err)
+		}
+		return i != 0, node, nil
+	}
+	return false, nil, nodestore.NodeNotFoundError{NodeID: id}
+}
+
 // Print a tree reader in human-readable format.
-func Print(ctx context.Context, reader TreeReader) (string, error) {
-	node, err := reader.Get(ctx, reader.Root())
+func Print(ctx context.Context, readers ...TreeReader) (string, error) {
+	overlay := readers[0]
+	node, err := overlay.Get(ctx, overlay.Root())
 	if err != nil {
 		return "", fmt.Errorf("failed to get root node: %w", err)
 	}
-	return printInnerNode(ctx, reader, node.(*nodestore.InnerNode), 0, nil)
+	return printInnerNode(ctx, false, readers, node.(*nodestore.InnerNode), 0, nil)
 }
 
 func printInnerNode(
 	ctx context.Context,
-	reader TreeReader,
+	remote bool,
+	readers []TreeReader,
 	node *nodestore.InnerNode,
 	version uint64,
 	stats *nodestore.Statistics,
 ) (string, error) {
 	sb := &strings.Builder{}
-	sb.WriteString(fmt.Sprintf("[%d-%d", node.Start, node.End))
+	remotestr := util.When(remote, "<link> ", "")
+	sb.WriteString(fmt.Sprintf("[%s%d-%d", remotestr, node.Start, node.End))
 	if version > 0 {
 		sb.WriteString(fmt.Sprintf(":%d %s", version, stats))
 	}
@@ -48,15 +71,25 @@ func printInnerNode(
 		if child == nil {
 			continue
 		}
-		sb.WriteString(" ")
-		childNode, err := reader.Get(ctx, child.ID)
-		if err != nil {
+		remote, childNode, err := getNode(ctx, child.ID, readers...)
+		if err != nil && !errors.Is(err, nodestore.NodeNotFoundError{}) {
 			return "", fmt.Errorf("failed to get node %d: %w", child.ID, err)
+		}
+		// the base reader was not included, so just print something useful
+		if childNode == nil {
+			width := (node.End - node.Start) / uint64(len(node.Children))
+			sb.WriteString(fmt.Sprintf(" [<link> %d-%d:%d]",
+				node.Start+uint64(i)*width,
+				node.Start+uint64(i+1)*width,
+				child.Version,
+			))
+			continue
 		}
 		var body string
 		switch cnode := childNode.(type) {
 		case *nodestore.InnerNode:
-			body, err = printInnerNode(ctx, reader, cnode, child.Version, child.Statistics)
+			sb.WriteString(" ")
+			body, err = printInnerNode(ctx, remote, readers, cnode, child.Version, child.Statistics)
 			if err != nil {
 				return "", err
 			}
@@ -64,7 +97,9 @@ func printInnerNode(
 		case *nodestore.LeafNode:
 			width := (node.End - node.Start) / uint64(len(node.Children))
 			body = cnode.String()
-			sb.WriteString(fmt.Sprintf("[%d-%d:%d %s %s]",
+			remotestr := util.When(remote, "<link> ", "")
+			sb.WriteString(fmt.Sprintf(" [%s%d-%d:%d %s %s]",
+				remotestr,
 				node.Start+uint64(i)*width,
 				node.Start+uint64(i+1)*width,
 				child.Version,
