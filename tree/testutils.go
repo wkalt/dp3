@@ -32,7 +32,7 @@ func MergeInserts(
 		mcap.WriteFile(t, buf, batch)
 		require.NoError(t, Insert(
 			ctx, tmp, version, batch[0]*1e9, buf.Bytes(), &nodestore.Statistics{
-				MessageCount: 1,
+				MessageCount: uint64(len(batch)),
 			},
 		))
 		version++
@@ -40,6 +40,18 @@ func MergeInserts(
 	}
 	root := nodestore.NewInnerNode(height, start, end, bfactor)
 	output := NewMemTree(nodestore.RandomNodeID(), root)
-	require.NoError(t, Merge(ctx, output, trees...))
-	return output
+	if len(times) == 0 {
+		return output
+	}
+	if len(times) == 1 {
+		return trees[0]
+	}
+
+	root2 := nodestore.NewInnerNode(height, start, end, bfactor)
+	base := NewMemTree(nodestore.RandomNodeID(), root2)
+
+	require.NoError(t, Merge(ctx, output, base, trees...))
+
+	// output is now the merged tree.
+	return NewOverlay([]TreeReader{output, base})
 }

@@ -151,52 +151,11 @@ func GetStatRange(
 	return ranges, nil
 }
 
-// Merge a list of TreeReaders into an empty TreeWriter. At each level of
-// conflict, merged nodes are versioned with the highest version of the
-// conflicted inputs.
-func Merge(ctx context.Context, tw TreeWriter, trees ...TreeReader) error {
-	if len(trees) == 0 {
-		return nil
-	}
-	ids := make([]nodestore.NodeID, 0, len(trees))
-	roots := make([]*nodestore.InnerNode, 0, len(trees))
-	for _, tree := range trees {
-		id := tree.Root()
-		root, err := tree.Get(ctx, id)
-		if err != nil {
-			return fmt.Errorf("failed to get root: %w", err)
-		}
-		innerNode, ok := root.(*nodestore.InnerNode)
-		if !ok {
-			return newUnexpectedNodeError(nodestore.Inner, root)
-		}
-		roots = append(roots, innerNode)
-		ids = append(ids, id)
-	}
-	for _, root := range roots[1:] {
-		if root.Height != roots[0].Height {
-			return MismatchedHeightsError{root.Height, roots[0].Height}
-		}
-	}
-	mergedRoot, err := mergeLevel(ctx, tw, ids, trees)
-	if err != nil {
-		return fmt.Errorf("failed to merge: %w", err)
-	}
-	tw.SetRoot(mergedRoot)
-	return nil
-}
-
-// mergeInnerNodes merges a list of inner nodes into a single inner node in the
-// new tree writer. It does this by identifying "conflicted" child indexes, and
-// then calling mergeLevel on each of the conflicted sets of children. The
-// mergeLevel function will either dispatch back to mergeInnerNodes, or to
-// mergeLeaves depending on the height at which it is called.
-
-// The passed nodes array must correspond in order and match in length with the
-// supplied list of tree readers.
-func mergeInnerNodes(
+func mergeInnerNodes( // nolint: funlen // needs refactor
 	ctx context.Context,
 	pt TreeWriter,
+	dest TreeReader,
+	destID *nodestore.NodeID,
 	nodes []*nodestore.InnerNode,
 	trees []TreeReader,
 ) (nodestore.Node, error) {
@@ -207,29 +166,49 @@ func mergeInnerNodes(
 		if child != nil && singleton {
 			conflicts = append(conflicts, i)
 			continue
-		} else {
-			var conflicted bool
-			for _, sibling := range nodes[1:] {
-				cousin := sibling.Children[i]
-				if child == nil && cousin != nil ||
-					child != nil && cousin == nil ||
-					child != nil && cousin != nil {
-					conflicted = true
-					break
-				}
-			}
-			if conflicted {
+		}
+		for _, sibling := range nodes[1:] {
+			cousin := sibling.Children[i]
+			if child == nil && cousin != nil ||
+				child != nil && cousin == nil ||
+				child != nil && cousin != nil {
 				conflicts = append(conflicts, i)
+				break
 			}
 		}
 	}
 	// Create a new merged child in the location of each conflict
+	var destInnerNode *nodestore.InnerNode
+	var ok bool
+	if destID != nil {
+		destNode, err := dest.Get(ctx, *destID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get dest node: %w", err)
+		}
+		destInnerNode, ok = destNode.(*nodestore.InnerNode)
+		if !ok {
+			return nil, newUnexpectedNodeError(nodestore.Inner, destNode)
+		}
+	}
+
 	newInner := nodestore.NewInnerNode(node.Height, node.Start, node.End, len(node.Children))
+	if destInnerNode != nil {
+		newInner.Children = destInnerNode.Children
+	}
 	for _, conflict := range conflicts {
 		conflictedNodes := make([]nodestore.NodeID, 0, len(trees))
 		conflictedTrees := make([]TreeReader, 0, len(trees))
 		stats := &nodestore.Statistics{}
 		maxVersion := uint64(0)
+		var destChild *nodestore.NodeID
+
+		if destInnerNode != nil && destInnerNode.Children[conflict] != nil {
+			destChild = &destInnerNode.Children[conflict].ID
+			if err := stats.Add(destInnerNode.Children[conflict].Statistics); err != nil {
+				return nil, fmt.Errorf("failed to add statistics: %w", err)
+			}
+		}
+
 		for i, node := range nodes {
 			child := node.Children[conflict]
 			if child == nil {
@@ -244,7 +223,7 @@ func mergeInnerNodes(
 				return nil, fmt.Errorf("failed to add statistics: %w", err)
 			}
 		}
-		merged, err := mergeLevel(ctx, pt, conflictedNodes, conflictedTrees)
+		merged, err := mergeLevel(ctx, pt, dest, destChild, conflictedNodes, conflictedTrees)
 		if err != nil {
 			return nil, err
 		}
@@ -255,6 +234,104 @@ func mergeInnerNodes(
 		}
 	}
 	return newInner, nil
+}
+
+func mergeLevel(
+	ctx context.Context,
+	mt TreeWriter,
+	dest TreeReader,
+	destID *nodestore.NodeID,
+	ids []nodestore.NodeID,
+	trees []TreeReader,
+) (nodeID nodestore.NodeID, err error) {
+	if len(ids) == 0 {
+		return nodeID, errors.New("no nodes to merge")
+	}
+	nodes := make([]nodestore.Node, 0, len(ids)+1) // may include dest
+	for i, id := range ids {
+		node, err := trees[i].Get(ctx, id)
+		if err != nil {
+			return nodeID, fmt.Errorf("failed to get node: %w", err)
+		}
+		nodes = append(nodes, node)
+	}
+	for _, node := range nodes {
+		if node.Type() != nodes[0].Type() {
+			return nodeID, errors.New("mismatched node types")
+		}
+	}
+	var node nodestore.Node
+	switch nodes[0].Type() {
+	case nodestore.Leaf:
+		if destID != nil {
+			destNode, err := dest.Get(ctx, *destID)
+			if err != nil {
+				return nodeID, fmt.Errorf("failed to get dest node: %w", err)
+			}
+			nodes = append(nodes, destNode)
+		}
+		// needs to handle dest
+		node, err = mergeLeaves(nodes)
+		if err != nil {
+			return nodeID, fmt.Errorf("failed to merge leaves: %w", err)
+		}
+	case nodestore.Inner:
+		innerNodes := make([]*nodestore.InnerNode, len(nodes))
+		for i, node := range nodes {
+			innerNodes[i] = node.(*nodestore.InnerNode)
+		}
+		node, err = mergeInnerNodes(ctx, mt, dest, destID, innerNodes, trees)
+		if err != nil {
+			return nodeID, fmt.Errorf("failed to merge inner nodes: %w", err)
+		}
+	}
+
+	id := nodestore.RandomNodeID()
+	if err := mt.Put(ctx, id, node); err != nil {
+		return nodeID, fmt.Errorf("failed to insert node: %w", err)
+	}
+
+	return id, nil
+}
+
+func Merge(ctx context.Context, mt *MemTree, dest TreeReader, trees ...TreeReader) error {
+	if len(trees) == 0 {
+		return errors.New("no trees to merge")
+	}
+
+	// destination tree
+	destRoot := dest.Root()
+
+	// partial trees
+	ids := make([]nodestore.NodeID, 0, len(trees))
+	roots := make([]*nodestore.InnerNode, 0, len(trees))
+
+	for _, tree := range trees {
+		id := tree.Root()
+		root, err := tree.Get(ctx, id)
+		if err != nil {
+			return fmt.Errorf("failed to get root: %w", err)
+		}
+		innerNode, ok := root.(*nodestore.InnerNode)
+		if !ok {
+			return newUnexpectedNodeError(nodestore.Inner, root)
+		}
+		roots = append(roots, innerNode)
+		ids = append(ids, id)
+	}
+
+	for _, root := range roots {
+		if root.Height != roots[0].Height {
+			return MismatchedHeightsError{root.Height, roots[0].Height}
+		}
+	}
+
+	mergedRoot, err := mergeLevel(ctx, mt, dest, &destRoot, ids, trees)
+	if err != nil {
+		return fmt.Errorf("failed to merge: %w", err)
+	}
+	mt.SetRoot(mergedRoot)
+	return nil
 }
 
 // mergeLeaves merges a set of leaf nodes into a single leaf node. Data is
@@ -289,56 +366,6 @@ func mergeLeaves(
 		return nil, fmt.Errorf("failed to merge: %w", err)
 	}
 	return nodestore.NewLeafNode(buf.Bytes()), nil
-}
-
-// mergeLevel recursively merges a set of nodes at the same level in their
-// respective input trees starting at the roots.  If all passed nodes are not of
-// the same type and height (for inner nodes), an error will result. The final
-// merged result is placed into the output tree writer with a random node ID.
-func mergeLevel(
-	ctx context.Context,
-	pt TreeWriter,
-	ids []nodestore.NodeID,
-	trees []TreeReader,
-) (nodeID nodestore.NodeID, err error) {
-	if len(ids) == 0 {
-		return nodeID, errors.New("no nodes to merge")
-	}
-	nodes := make([]nodestore.Node, len(ids))
-	for i, id := range ids {
-		node, err := trees[i].Get(ctx, id)
-		if err != nil {
-			return nodeID, fmt.Errorf("failed to get node: %w", err)
-		}
-		nodes[i] = node
-	}
-	for _, node := range nodes {
-		if node.Type() != nodes[0].Type() {
-			return nodeID, errors.New("mismatched node types")
-		}
-	}
-	var node nodestore.Node
-	switch nodes[0].Type() {
-	case nodestore.Leaf:
-		node, err = mergeLeaves(nodes)
-		if err != nil {
-			return nodeID, fmt.Errorf("failed to merge leaves: %w", err)
-		}
-	case nodestore.Inner:
-		innerNodes := make([]*nodestore.InnerNode, len(nodes))
-		for i, node := range nodes {
-			innerNodes[i] = node.(*nodestore.InnerNode)
-		}
-		node, err = mergeInnerNodes(ctx, pt, innerNodes, trees)
-		if err != nil {
-			return nodeID, fmt.Errorf("failed to merge inner nodes: %w", err)
-		}
-	}
-	id := nodestore.RandomNodeID()
-	if err := pt.Put(ctx, id, node); err != nil {
-		return nodeID, fmt.Errorf("failed to insert node: %w", err)
-	}
-	return id, nil
 }
 
 // // bwidth returns the width of each bucket in seconds.

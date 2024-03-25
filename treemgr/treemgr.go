@@ -308,6 +308,15 @@ func (tm *TreeManager) newRoot(
 
 func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 	trees := make([]tree.TreeReader, 0, len(batch.Addrs)+1)
+
+	// there should be an existing root
+	// If there is an existing root, then we need to add that data to the merge.
+	existingRootID, _, err := tm.rootmap.GetLatest(ctx, batch.ProducerID, batch.Topic)
+	if err != nil && !errors.Is(err, rootmap.StreamNotFoundError{}) {
+		return fmt.Errorf("failed to get root: %w", err)
+	}
+	basereader := tree.NewBYOTreeReader(existingRootID, tm.ns.Get)
+
 	for _, addr := range batch.Addrs {
 		page, err := tm.wal.Get(addr)
 		if err != nil {
@@ -324,18 +333,8 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 		return fmt.Errorf("failed to get next version: %w", err)
 	}
 
-	// If there is an existing root, then we need to add that data to the merge.
-	existingRootID, _, err := tm.rootmap.GetLatest(ctx, batch.ProducerID, batch.Topic)
-	if err != nil && !errors.Is(err, rootmap.StreamNotFoundError{}) {
-		return fmt.Errorf("failed to get root: %w", err)
-	}
-	if err == nil {
-		treedata := tree.NewBYOTreeReader(existingRootID, tm.ns.Get)
-		trees = append(trees, treedata)
-	}
-
 	var merged tree.MemTree
-	if err := tree.Merge(ctx, &merged, trees...); err != nil {
+	if err := tree.Merge(ctx, &merged, basereader, trees...); err != nil {
 		return fmt.Errorf("failed to merge partial trees: %w", err)
 	}
 	data, err := merged.ToBytes(ctx, version)

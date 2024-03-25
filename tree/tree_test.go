@@ -63,7 +63,7 @@ func TestMergeErrors(t *testing.T) {
 		root3 := nodestore.NewInnerNode(2, 0, 4096, 64)
 		tw3 := tree.NewMemTree(nodestore.RandomNodeID(), root3)
 
-		err := tree.Merge(ctx, tw3, tw, tw2)
+		err := tree.Merge(ctx, tw3, tw3, tw, tw2)
 		require.ErrorIs(t, err, tree.MismatchedHeightsError{})
 	})
 
@@ -102,7 +102,7 @@ func TestMergeErrors(t *testing.T) {
 		root3 := nodestore.NewInnerNode(2, 0, 64*64*64, 64)
 		tw3 := tree.NewMemTree(nodestore.RandomNodeID(), root3)
 
-		err := tree.Merge(ctx, tw3, tw, tw2)
+		err := tree.Merge(ctx, tw3, tw3, tw, tw2)
 		require.Error(t, err)
 	})
 
@@ -123,7 +123,7 @@ func TestMergeErrors(t *testing.T) {
 		root3 := nodestore.NewInnerNode(2, 0, 4096, 64)
 		tw3 := tree.NewMemTree(nodestore.RandomNodeID(), root3)
 
-		err := tree.Merge(ctx, tw3, tw, tw2)
+		err := tree.Merge(ctx, tw3, tw3, tw, tw2)
 		require.ErrorIs(t, err, tree.UnexpectedNodeError{})
 	})
 
@@ -136,7 +136,7 @@ func TestMergeErrors(t *testing.T) {
 		root2 := nodestore.NewInnerNode(2, 0, 4096, 64)
 		tw2 := tree.NewMemTree(nodestore.RandomNodeID(), root2)
 
-		err := tree.Merge(ctx, tw2, tw)
+		err := tree.Merge(ctx, tw2, tw2, tw)
 		require.ErrorIs(t, err, nodestore.NodeNotFoundError{})
 	})
 }
@@ -265,6 +265,71 @@ func TestStatRange(t *testing.T) {
 			statrange, err := tree.GetStatRange(ctx, tw, c.start, c.end, c.granularity)
 			require.NoError(t, err)
 			require.Equal(t, c.expected, statrange)
+		})
+	}
+}
+
+func TestMerge(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		assertion string
+		height    uint8
+		prep      [][]uint64
+		inputs    [][]uint64
+		expected  string
+	}{
+		{
+			"merge into empty tree",
+			1,
+			[][]uint64{},
+			[][]uint64{{100}},
+			"[0-4096 [64-128:1 (count=1) [leaf 1 msg]]]",
+		},
+		{
+			"merge into populated tree, nonoverlapping",
+			1,
+			[][]uint64{{33}},
+			[][]uint64{{100}},
+			"[0-4096 [<link> 0-64:1 (count=1) [leaf 1 msg]] [64-128:1 (count=1) [leaf 1 msg]]]",
+		},
+		{
+			"merge into populated tree, overlapping",
+			1,
+			[][]uint64{{33}, {120}},
+			[][]uint64{{100}},
+			"[0-4096 [<link> 0-64:1 (count=1) [leaf 1 msg]] [64-128:1 (count=2) [leaf 2 msgs]]]",
+		},
+		{
+			"merge into a populated tree, multiple overlapping",
+			1,
+			[][]uint64{{33}, {120}},
+			[][]uint64{{39}, {121}},
+			"[0-4096 [0-64:1 (count=2) [leaf 2 msgs]] [64-128:2 (count=2) [leaf 2 msgs]]]",
+		},
+		{
+			"depth 2",
+			2,
+			[][]uint64{{33}, {120}},
+			[][]uint64{{1000}},
+			`[0-262144 [0-4096:1 (count=3) [<link> 0-64:1 (count=1) [leaf 1 msg]]
+			[<link> 64-128:2 (count=1) [leaf 1 msg]] [960-1024:1 (count=1) [leaf 1 msg]]]]`,
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			base := tree.MergeInserts(
+				ctx, t, 0, util.Pow(uint64(64), int(c.height+1)), c.height, 64, c.prep,
+			)
+			partial := tree.MergeInserts(
+				ctx, t, 0, util.Pow(uint64(64), int(c.height+1)), c.height, 64, c.inputs,
+			)
+			rootnode := nodestore.NewInnerNode(c.height, 0, util.Pow(uint64(64), int(c.height+1)), 64)
+			overlay := tree.NewMemTree(nodestore.RandomNodeID(), rootnode)
+			require.NoError(t, tree.Merge(ctx, overlay, base, partial))
+			repr, err := tree.Print(ctx, overlay, base)
+			require.NoError(t, err)
+			assertEqualTrees(t, c.expected, repr)
 		})
 	}
 }
