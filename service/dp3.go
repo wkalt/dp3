@@ -78,6 +78,7 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 		treemgr.WithSyncWorkers(opts.SyncWorkers),
 		treemgr.WithWALOpts(walopts...),
 		treemgr.WithWALDir(waldir),
+		treemgr.WithWALBufferSize(10000),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create tree manager: %w", err)

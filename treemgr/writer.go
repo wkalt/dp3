@@ -116,7 +116,7 @@ func (w *writer) writeChannel(channel *fmcap.Channel) error {
 
 func (w *writer) initialize(ts uint64) (err error) {
 	lower, upper := w.dims.bounds(ts)
-	w.w, err = mcap.NewWriter(w.buf, mcap.WithCompression(fmcap.CompressionNone))
+	w.w, err = mcap.NewWriter(w.buf, mcap.WithCompression(fmcap.CompressionZSTD))
 	if err != nil {
 		return fmt.Errorf("failed to create mcap writer: %w", err)
 	}

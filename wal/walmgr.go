@@ -117,6 +117,8 @@ func NewWALManager(
 // Insert data into the WAL for a producer and topic. The data should be the
 // serialized representation of a memtree, i.e a partial tree.
 func (w *WALManager) Insert(producer string, topic string, data []byte) (Address, error) {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
 	tid := TreeID{producer, topic}
 	bat, ok := w.pendingInserts[tid]
 	if !ok {
@@ -148,8 +150,6 @@ func (w *WALManager) Insert(producer string, topic string, data []byte) (Address
 
 // Get data from the WAL at a given address.
 func (w *WALManager) Get(addr Address) ([]byte, error) {
-	w.mtx.Lock()
-	defer w.mtx.Unlock()
 	f, err := w.openr(addr.object())
 	if err != nil {
 		return nil, fmt.Errorf("failed to open wal file: %w", err)
@@ -193,6 +193,7 @@ func (w *WALManager) Get(addr Address) ([]byte, error) {
 func (w *WALManager) ForceMerge(ctx context.Context) (int, error) {
 	batches := []*Batch{}
 	w.mtx.Lock()
+	defer w.mtx.Unlock()
 
 	keys := maps.Keys(w.pendingInserts)
 	sort.Slice(keys, func(i, j int) bool {
@@ -204,7 +205,6 @@ func (w *WALManager) ForceMerge(ctx context.Context) (int, error) {
 		delete(w.pendingInserts, k)
 		batches = append(batches, batch)
 	}
-	w.mtx.Unlock()
 	c := 0
 	for _, batch := range batches {
 		if err := w.mergeBatch(batch); err != nil {
@@ -244,6 +244,8 @@ func (w *WALManager) Stats() WALStats {
 // internal state. Recover must be called before the WAL manager is ready to
 // use.
 func (w *WALManager) Recover(ctx context.Context) error {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
 	paths, err := listDir(w.waldir)
 	if err != nil {
 		return fmt.Errorf("failed to list wal directory: %w", err)
@@ -314,10 +316,8 @@ func (w *WALManager) mergeBatch(batch *Batch) error {
 	}); err != nil {
 		return err
 	}
-	w.mtx.Lock()
 	delete(w.pendingInserts, TreeID{Producer: batch.ProducerID, Topic: batch.Topic})
 	w.pendingMerges[batch.ID] = batch
-	w.mtx.Unlock()
 	w.merges <- batch
 	return nil
 }
@@ -325,8 +325,9 @@ func (w *WALManager) mergeBatch(batch *Batch) error {
 // merges bounded length queue; bound = 1 in tests?
 
 func (w *WALManager) mergeInactiveBatches(ctx context.Context) error {
-	batches := []*Batch{}
 	w.mtx.Lock()
+	defer w.mtx.Unlock()
+	batches := []*Batch{}
 	keys := maps.Keys(w.pendingInserts)
 	sort.Slice(keys, func(i, j int) bool {
 		return w.pendingInserts[keys[i]].Topic > w.pendingInserts[keys[j]].Topic
@@ -338,7 +339,6 @@ func (w *WALManager) mergeInactiveBatches(ctx context.Context) error {
 			batches = append(batches, batch)
 		}
 	}
-	w.mtx.Unlock()
 	if len(batches) == 0 {
 		return nil
 	}
@@ -383,14 +383,14 @@ func (w *WALManager) openr(path string) (*os.File, error) {
 }
 
 func (w *WALManager) completeMerge(id string) error {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
 	if _, _, err := w.writer.WriteMergeComplete(MergeCompleteRecord{
 		BatchID: id,
 	}); err != nil {
 		return err
 	}
-	w.mtx.Lock()
 	delete(w.pendingMerges, id)
-	w.mtx.Unlock()
 	return nil
 }
 
