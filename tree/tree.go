@@ -177,6 +177,7 @@ func mergeInnerNodes( // nolint: funlen // needs refactor
 			}
 		}
 	}
+
 	// Create a new merged child in the location of each conflict
 	var destInnerNode *nodestore.InnerNode
 	var ok bool
@@ -270,7 +271,6 @@ func mergeLevel(
 			}
 			nodes = append(nodes, destNode)
 		}
-		// needs to handle dest
 		node, err = mergeLeaves(nodes)
 		if err != nil {
 			return nodeID, fmt.Errorf("failed to merge leaves: %w", err)
@@ -294,7 +294,7 @@ func mergeLevel(
 	return id, nil
 }
 
-func Merge(ctx context.Context, mt *MemTree, dest TreeReader, trees ...TreeReader) error {
+func Merge(ctx context.Context, output *MemTree, dest TreeReader, trees ...TreeReader) error {
 	if len(trees) == 0 {
 		return errors.New("no trees to merge")
 	}
@@ -326,11 +326,11 @@ func Merge(ctx context.Context, mt *MemTree, dest TreeReader, trees ...TreeReade
 		}
 	}
 
-	mergedRoot, err := mergeLevel(ctx, mt, dest, &destRoot, ids, trees)
+	mergedRoot, err := mergeLevel(ctx, output, dest, &destRoot, ids, trees)
 	if err != nil {
 		return fmt.Errorf("failed to merge: %w", err)
 	}
-	mt.SetRoot(mergedRoot)
+	output.SetRoot(mergedRoot)
 	return nil
 }
 

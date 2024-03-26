@@ -46,12 +46,6 @@ func MergeInserts(
 	if len(times) == 1 {
 		return trees[0]
 	}
-
-	root2 := nodestore.NewInnerNode(height, start, end, bfactor)
-	base := NewMemTree(nodestore.RandomNodeID(), root2)
-
-	require.NoError(t, Merge(ctx, output, base, trees...))
-
-	// output is now the merged tree.
-	return NewOverlay([]TreeReader{output, base})
+	require.NoError(t, Merge(ctx, output, output, trees...))
+	return output
 }
