@@ -1,6 +1,9 @@
 package routes
 
 import (
+	"errors"
+	"syscall"
+
 	"github.com/gorilla/mux"
 	"github.com/wkalt/dp3/http/mw"
 	"github.com/wkalt/dp3/treemgr"
@@ -14,6 +17,16 @@ decide whether to stick with REST or switch to gRPC.
 */
 
 ////////////////////////////////////////////////////////////////////////////////
+
+func clientError(err error) error {
+	switch {
+	case errors.Is(err, syscall.ECONNRESET):
+		return syscall.ECONNRESET
+	case errors.Is(err, syscall.EPIPE):
+		return syscall.EPIPE
+	}
+	return nil
+}
 
 // MakeRoutes creates a new router with all the routes for the DP3 service.
 func MakeRoutes(tmgr *treemgr.TreeManager) *mux.Router {
