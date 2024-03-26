@@ -5,8 +5,8 @@ import (
 	"syscall"
 
 	"github.com/gorilla/mux"
-	"github.com/wkalt/dp3/http/mw"
 	"github.com/wkalt/dp3/treemgr"
+	"github.com/wkalt/dp3/util/mw"
 )
 
 /*
