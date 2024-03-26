@@ -32,8 +32,11 @@ func newExportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			"end", req.End,
 		)
 		if err := tmgr.GetMessagesLatest(ctx, w, req.Start, req.End, req.ProducerID, req.Topics); err != nil {
+			if err := clientError(err); err != nil {
+				log.Infof(ctx, "Client closed connection: %s", err)
+				return
+			}
 			httputil.InternalServerError(ctx, w, "error getting messages: %s", err)
-			return
 		}
 	}
 }
