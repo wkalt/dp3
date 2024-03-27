@@ -132,7 +132,7 @@ func NewWALManager(
 
 // Insert data into the WAL for a producer and topic. The data should be the
 // serialized representation of a memtree, i.e a partial tree.
-func (w *WALManager) Insert(producer string, topic string, data []byte) (Address, error) {
+func (w *WALManager) Insert(ctx context.Context, producer string, topic string, data []byte) (Address, error) {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
 	tid := TreeID{producer, topic}
@@ -152,6 +152,10 @@ func (w *WALManager) Insert(producer string, topic string, data []byte) (Address
 
 	// if the batch is over a certain size now, merge it.
 	if bat.Size > w.config.mergeSizeThreshold {
+		log.Infow(ctx, "Merging batch",
+			"id", bat.ID,
+			"size", util.HumanBytes(uint64(bat.Size)),
+		)
 		if err := w.mergeBatch(bat); err != nil {
 			return addr, err
 		}
@@ -358,14 +362,12 @@ func (w *WALManager) mergeInactiveBatches(ctx context.Context) error {
 	if len(batches) == 0 {
 		return nil
 	}
-	t0 := time.Now()
 	log.Infof(ctx, "Merging %d inactive batches", len(batches))
 	for _, batch := range batches {
 		if err := w.mergeBatch(batch); err != nil {
 			return err
 		}
 	}
-	log.Infof(ctx, "Merged %d inactive batches in %s", len(batches), time.Since(t0))
 	return nil
 }
 
