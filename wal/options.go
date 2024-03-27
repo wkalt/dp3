@@ -14,6 +14,7 @@ type config struct {
 	targetFileSize      int
 
 	inactiveBatchMergeInterval time.Duration
+	gcInterval                 time.Duration
 }
 
 // Option is a function that modifies the WAL manager configuration.
@@ -25,6 +26,14 @@ type Option func(*config)
 func WithMergeSizeThreshold(size int) Option {
 	return func(c *config) {
 		c.mergeSizeThreshold = size
+	}
+}
+
+// WithGCInterval sets the interval at which the WAL manager will check for
+// stale WAL files to remove.
+func WithGCInterval(d time.Duration) Option {
+	return func(c *config) {
+		c.gcInterval = d
 	}
 }
 
@@ -46,8 +55,8 @@ func WithTargetFileSize(size int) Option {
 }
 
 // WithInactiveBatchMergeInterval sets the polling interval to check for inactive batches.
-func WithInactiveBatchMergeInterval(secs int) Option {
+func WithInactiveBatchMergeInterval(d time.Duration) Option {
 	return func(c *config) {
-		c.inactiveBatchMergeInterval = time.Duration(secs) * time.Second
+		c.inactiveBatchMergeInterval = d
 	}
 }

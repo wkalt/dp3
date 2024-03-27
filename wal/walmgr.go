@@ -8,6 +8,7 @@ import (
 	"hash/crc32"
 	"io"
 	"os"
+	"path"
 	"sort"
 	"strconv"
 	"sync"
@@ -90,6 +91,7 @@ func NewWALManager(
 		staleBatchThreshold:        5 * time.Second,
 		targetFileSize:             2 * gigabyte,
 		inactiveBatchMergeInterval: 0,
+		gcInterval:                 0,
 	}
 	for _, opt := range opts {
 		opt(conf)
@@ -106,7 +108,21 @@ func NewWALManager(
 		go func() {
 			for range time.NewTicker(conf.inactiveBatchMergeInterval).C {
 				if err := wmgr.mergeInactiveBatches(ctx); err != nil {
-					log.Errorf(ctx, "failed to merge inactive batches: %s", err)
+					log.Errorf(ctx, "Failed to merge inactive batches: %s", err)
+				}
+			}
+		}()
+	}
+	if conf.gcInterval > 0 {
+		go func() {
+			for range time.NewTicker(conf.gcInterval).C {
+				n, err := wmgr.RemoveStaleFiles(ctx)
+				if err != nil {
+					log.Errorf(ctx, "Failed to remove stale files: %s", err)
+					continue
+				}
+				if n > 0 {
+					log.Infof(ctx, "Removed %d stale WAL files", n)
 				}
 			}
 		}()
@@ -141,7 +157,7 @@ func (w *WALManager) Insert(producer string, topic string, data []byte) (Address
 		}
 	}
 	if w.writer.size() > int64(w.config.targetFileSize) {
-		if err := w.rotate(); err != nil {
+		if err := w.Rotate(); err != nil {
 			return addr, err
 		}
 	}
@@ -260,7 +276,7 @@ func (w *WALManager) Recover(ctx context.Context) error {
 		ids = append(ids, id)
 	}
 	if len(paths) == 0 {
-		return w.rotate()
+		return w.Rotate()
 	}
 	sort.Slice(ids, func(i, j int) bool {
 		return ids[i] < ids[j]
@@ -394,7 +410,48 @@ func (w *WALManager) completeMerge(id string) error {
 	return nil
 }
 
-func (w *WALManager) rotate() error {
+func (w *WALManager) RemoveStaleFiles(ctx context.Context) (removed int, err error) {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
+	files, err := listDir(w.waldir)
+	if err != nil {
+		return removed, fmt.Errorf("failed to list directory: %w", err)
+	}
+	// get all objects represented in the pending state
+	objects := map[string]struct{}{}
+	for _, batch := range w.pendingInserts {
+		for _, addr := range batch.Addrs {
+			objects[addr.object()] = struct{}{}
+		}
+	}
+	for _, batch := range w.pendingMerges {
+		for _, addr := range batch.Addrs {
+			objects[addr.object()] = struct{}{}
+		}
+	}
+	remove := []string{}
+	currentFile := strconv.FormatUint(w.counter, 10)
+	for _, file := range files {
+		if file == currentFile {
+			continue
+		}
+		if _, ok := objects[file]; !ok {
+			remove = append(remove, file)
+		}
+	}
+	if len(remove) > 0 {
+		log.Infof(ctx, "Removing %d stale WAL files: %v", len(remove), remove)
+		for _, file := range remove {
+			if err := os.Remove(path.Join(w.waldir, file)); err != nil {
+				return removed, fmt.Errorf("failed to remove file: %w", err)
+			}
+			removed++
+		}
+	}
+	return removed, nil
+}
+
+func (w *WALManager) Rotate() error {
 	if w.f != nil {
 		if err := w.f.Close(); err != nil {
 			return fmt.Errorf("failed to close log file: %w", err)
