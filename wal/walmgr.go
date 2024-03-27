@@ -152,10 +152,6 @@ func (w *WALManager) Insert(ctx context.Context, producer string, topic string, 
 
 	// if the batch is over a certain size now, merge it.
 	if bat.Size > w.config.mergeSizeThreshold {
-		log.Infow(ctx, "Merging batch",
-			"id", bat.ID,
-			"size", util.HumanBytes(uint64(bat.Size)),
-		)
 		if err := w.mergeBatch(bat); err != nil {
 			return addr, err
 		}

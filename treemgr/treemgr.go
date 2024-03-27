@@ -57,6 +57,7 @@ func (tm *TreeManager) NewRoot(ctx context.Context, producer string, topic strin
 	if err != nil {
 		return fmt.Errorf("failed to create new root: %w", err)
 	}
+	// todo two inserts can race here and get a unique violation. need to handle that.
 	if err := tm.rootmap.Put(ctx, producer, topic, version, rootID); err != nil {
 		return fmt.Errorf("failed to put root: %w", err)
 	}
@@ -220,9 +221,9 @@ func (tm *TreeManager) GetMessagesLatest(
 		root, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
 		if err != nil {
 			if !errors.Is(err, rootmap.StreamNotFoundError{}) {
-				return fmt.Errorf("failed to get latest root for %s/%s: %w", producerID, topic, err)
+				return fmt.Errorf("failed to get latest root for %s:%s: %w", producerID, topic, err)
 			}
-			log.Debugf(ctx, "no root found for %s/%s - omitting from output", producerID, topic)
+			log.Debugf(ctx, "no root found for %s:%s - omitting from output", producerID, topic)
 			continue
 		}
 		roots = append(roots, root)
@@ -395,13 +396,11 @@ func (tm *TreeManager) spawnWALConsumers(ctx context.Context) {
 			case <-ctx.Done():
 				return
 			case batch := <-tm.merges:
-				start := time.Now()
 				hash := maphash.Hash{}
 				hash.SetSeed(seed)
 				_, _ = hash.WriteString(batch.ProducerID + batch.Topic)
 				bucket := hash.Sum64() % uint64(tm.syncWorkers)
 				mergechans[bucket] <- batch
-				log.Infof(ctx, "Dispatched batch %s to worker %d in %s", batch.ID, bucket, time.Since(start))
 			}
 		}
 	}(ctx)
@@ -412,9 +411,6 @@ func (tm *TreeManager) spawnWALConsumers(ctx context.Context) {
 			ctx = log.AddTags(ctx, "sync worker", i)
 			for batch := range mergechan {
 				start := time.Now()
-				log.Infof(ctx, "Merging batch of %d partial trees for %s/%s",
-					len(batch.Addrs), batch.ProducerID, batch.Topic,
-				)
 				if err := tm.mergeBatch(ctx, batch); err != nil {
 					// todo - retry strategy?
 					log.Errorf(ctx, "failed to merge batch %s: %v", batch.ID, err)
@@ -426,10 +422,10 @@ func (tm *TreeManager) spawnWALConsumers(ctx context.Context) {
 					log.Errorf(ctx, "failed to commit batch success to wal: %s", err)
 					continue
 				}
-
-				log.Infof(
-					ctx, "Merged batch of %d partial trees for %s/%s in %s",
-					len(batch.Addrs), batch.ProducerID, batch.Topic, time.Since(start),
+				log.Infow(ctx, "Merged partial tree",
+					"size", util.HumanBytes(uint64(batch.Size)), "count", len(batch.Addrs),
+					"producer", batch.ProducerID, "topic", batch.Topic, "elapsed", time.Since(start),
+					"age", time.Since(batch.LastUpdate),
 				)
 			}
 		}(ctx)
