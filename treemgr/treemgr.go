@@ -8,6 +8,7 @@ import (
 	"hash/maphash"
 	"io"
 	"sort"
+	"time"
 
 	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/mcap"
@@ -376,39 +377,62 @@ func (tm *TreeManager) drainWAL(ctx context.Context, n int) error {
 func (tm *TreeManager) spawnWALConsumers(ctx context.Context) {
 	mergechans := make([]chan *wal.Batch, tm.syncWorkers)
 	for i := 0; i < tm.syncWorkers; i++ {
-		mergechans[i] = make(chan *wal.Batch)
+		// todo we send data for each producer/topic to the same worker, because
+		// the tree is only safe for one worker to write to at a time. We set a
+		// big buffer here because it is possible that certain topics are much
+		// more expensive to process than others, which can result in the
+		// per-worker channels filling up and blocking the main dispatch. It
+		// would be good to rearchitect this to eliminate that possibility with
+		// a better mechanism than this. It also seems like some of the
+		// computational work (e.g merging of leaves where applicable) should be
+		// parallelizable even if the ultimate commits are not.
+		mergechans[i] = make(chan *wal.Batch, 1000)
 	}
 	seed := maphash.MakeSeed()
-	go func() {
+	go func(ctx context.Context) {
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case batch := <-tm.merges:
+				start := time.Now()
 				hash := maphash.Hash{}
 				hash.SetSeed(seed)
 				_, _ = hash.WriteString(batch.ProducerID + batch.Topic)
 				bucket := hash.Sum64() % uint64(tm.syncWorkers)
 				mergechans[bucket] <- batch
+				log.Infof(ctx, "Dispatched batch %s to worker %d in %s", batch.ID, bucket, time.Since(start))
 			}
 		}
-	}()
+	}(ctx)
 
 	for i := 0; i < tm.syncWorkers; i++ {
 		mergechan := mergechans[i]
-		go func() {
+		go func(ctx context.Context) {
+			ctx = log.AddTags(ctx, "sync worker", i)
 			for batch := range mergechan {
+				start := time.Now()
+				log.Infof(ctx, "Merging batch of %d partial trees for %s/%s",
+					len(batch.Addrs), batch.ProducerID, batch.Topic,
+				)
 				if err := tm.mergeBatch(ctx, batch); err != nil {
 					// todo - retry strategy?
 					log.Errorf(ctx, "failed to merge batch %s: %v", batch.ID, err)
-				} else {
-					if err := batch.Finish(); err != nil {
-						// todo retry strategy
-						log.Errorf(ctx, "failed to commit batch success to wal: %s", err)
-					}
+					continue
 				}
+
+				if err := batch.Finish(); err != nil {
+					// todo retry strategy
+					log.Errorf(ctx, "failed to commit batch success to wal: %s", err)
+					continue
+				}
+
+				log.Infof(
+					ctx, "Merged batch of %d partial trees for %s/%s in %s",
+					len(batch.Addrs), batch.ProducerID, batch.Topic, time.Since(start),
+				)
 			}
-		}()
+		}(ctx)
 	}
 	log.Infof(ctx, "spawned %d WAL consumers", tm.syncWorkers)
 }
@@ -519,7 +543,7 @@ func (tm *TreeManager) insert(
 	if err != nil {
 		return fmt.Errorf("failed to serialize tree: %w", err)
 	}
-	_, err = tm.wal.Insert(producerID, topic, serialized)
+	_, err = tm.wal.Insert(ctx, producerID, topic, serialized)
 	if err != nil {
 		return fmt.Errorf("failed to insert into WAL: %w", err)
 	}
