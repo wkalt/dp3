@@ -34,7 +34,7 @@ func newImportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		defer f.Close()
 		log.Infof(ctx, "Importing file %s for producer %s", req.Path, req.ProducerID)
 		if err := tmgr.Receive(ctx, req.ProducerID, f); err != nil {
-			httputil.BadRequest(ctx, w, "error receiving file: %s", err)
+			httputil.InternalServerError(ctx, w, "error receiving file: %s", err)
 			return
 		}
 		log.Infow(ctx, "Imported", "location", req.Path, "producer_id", req.ProducerID)

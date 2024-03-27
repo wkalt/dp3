@@ -6,51 +6,65 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/wkalt/dp3/client/dp3/util"
 	"github.com/wkalt/dp3/routes"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
-	importProducerID string
+	importProducerID  string
+	importWorkerCount int
 )
 
 // importCmd represents the import command
 var importCmd = &cobra.Command{
 	Use:   "import --producer my-robot [file]",
 	Short: "Import an MCAP file into dp3",
-	Run: func(cmd *cobra.Command, args []string) {
-		if len(args) != 1 {
+	Run: func(cmd *cobra.Command, paths []string) {
+		if len(paths) < 1 {
 			cmd.Usage()
 			return
 		}
-		producerID := importProducerID
-		filename := args[0]
-		abs, err := filepath.Abs(filename)
-		if err != nil {
-			bailf("error getting absolute path: %s", err)
+		g := &errgroup.Group{}
+		g.SetLimit(importWorkerCount)
+		for _, path := range paths {
+			g.Go(func() error {
+				abs, err := filepath.Abs(path)
+				if err != nil {
+					return fmt.Errorf("error getting absolute path: %w", err)
+				}
+				req := &routes.ImportRequest{
+					ProducerID: importProducerID,
+					Path:       abs,
+				}
+				buf := &bytes.Buffer{}
+				if err = json.NewEncoder(buf).Encode(req); err != nil {
+					return fmt.Errorf("error encoding request: %s", err)
+				}
+
+				resp, err := http.Post("http://localhost:8089/import", "application/json", buf)
+				if err != nil {
+					return fmt.Errorf("error calling import: %s", err)
+				}
+				defer resp.Body.Close()
+
+				if resp.StatusCode != http.StatusOK {
+					body, err := io.ReadAll(resp.Body)
+					if err != nil {
+						return fmt.Errorf("unexpected status code: %s", resp.Status)
+					}
+					return fmt.Errorf("failed to import %s: %s", path, body)
+				}
+				return nil
+			})
 		}
-		req := &routes.ImportRequest{
-			ProducerID: producerID,
-			Path:       abs,
-		}
-		buf := &bytes.Buffer{}
-		if err = json.NewEncoder(buf).Encode(req); err != nil {
-			bailf("error encoding request: %s", err)
-		}
-		resp, err := http.Post("http://localhost:8089/import", "application/json", buf)
-		if err != nil {
-			bailf("error calling import: %s", err)
-		}
-		defer resp.Body.Close()
-		util.MustOK(resp)
-		_, err = os.Stdout.ReadFrom(resp.Body)
-		if err != nil {
-			bailf("error reading response: %s", err)
+		if err := g.Wait(); err != nil {
+			bailf("Import error: %s", err)
 		}
 	},
 }
@@ -58,5 +72,6 @@ var importCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(importCmd)
 	importCmd.PersistentFlags().StringVarP(&importProducerID, "producer", "p", "", "Producer ID")
+	importCmd.PersistentFlags().IntVarP(&importWorkerCount, "workers", "w", 1, "Worker count")
 	importCmd.MarkFlagRequired("producer")
 }
