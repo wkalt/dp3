@@ -279,7 +279,39 @@ func TestScenarios(t *testing.T) {
 	})
 
 	t.Run("log pruning does not delete data we need", func(t *testing.T) {
+		ctx := context.Background()
+		tmpdir, err := os.MkdirTemp("", "wal_test")
+		require.NoError(t, err)
+		defer os.RemoveAll(tmpdir)
 
+		wm, await, teardown := testWALManager(ctx, t, tmpdir, 1000, func(batch *wal.Batch) {
+			require.NoError(t, batch.Finish())
+		})
+		require.NoError(t, wm.Recover(ctx))
+		_, err = wm.Insert("producer", "topic", []byte{0x01, 0x02})
+		require.NoError(t, err)
+
+		removed, err := wm.RemoveStaleFiles(ctx)
+		require.NoError(t, err)
+		require.Zero(t, removed)
+
+		n, err := wm.ForceMerge(ctx)
+		require.NoError(t, err)
+		await(n)
+
+		// still zero - it's the active wal file
+		removed, err = wm.RemoveStaleFiles(ctx)
+		require.NoError(t, err)
+		require.Zero(t, removed)
+
+		require.NoError(t, wm.Rotate())
+
+		// File gets removed this time, since it's not active and merges have
+		// been consumed.
+		removed, err = wm.RemoveStaleFiles(ctx)
+		require.NoError(t, err)
+		require.Equal(t, 1, removed)
+		teardown()
 	})
 
 	t.Run("logs rotate based on size", func(t *testing.T) {
