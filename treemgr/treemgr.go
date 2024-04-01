@@ -430,7 +430,7 @@ func (tm *TreeManager) spawnWALConsumers(ctx context.Context) {
 			}
 		}(ctx)
 	}
-	log.Infof(ctx, "spawned %d WAL consumers", tm.syncWorkers)
+	log.Infof(ctx, "Spawned %d WAL consumers", tm.syncWorkers)
 }
 
 func closeAll(ctx context.Context, closers ...*tree.Iterator) {
@@ -442,7 +442,7 @@ func closeAll(ctx context.Context, closers ...*tree.Iterator) {
 	}
 	for _, err := range errs {
 		if err != nil {
-			log.Errorf(ctx, "failed to close iterator: %v", err)
+			log.Errorf(ctx, "Failed to close iterator: %v", err)
 		}
 	}
 }
