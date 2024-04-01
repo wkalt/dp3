@@ -15,23 +15,23 @@ func TestTreeIterator(t *testing.T) {
 
 	cases := []struct {
 		assertion            string
-		times                [][]uint64
+		times                [][]int64
 		expectedMessageCount int
 	}{
 		{
 			"empty tree",
-			[][]uint64{},
+			[][]int64{},
 			0,
 		},
 		{
 			"one message",
-			[][]uint64{{100}},
+			[][]int64{{100}},
 			1,
 		},
 
 		{
 			"three messages",
-			[][]uint64{{100, 1000, 10000}},
+			[][]int64{{100, 1000, 10000}},
 			3,
 		},
 	}

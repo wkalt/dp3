@@ -17,25 +17,25 @@ func TestMemtreeSerialization(t *testing.T) {
 	cases := []struct {
 		assertion  string
 		height     uint8
-		timestamps []uint64
+		timestamps []int64
 		expected   string
 	}{
 		{
 			"two trees",
 			1,
-			[]uint64{100, 120},
+			[]int64{100, 120},
 			"[0-4096 [0-64:1 (count=2) [leaf 2 msgs]]]",
 		},
 		{
 			"tree trees",
 			1,
-			[]uint64{100, 120, 1024 * 1e9},
+			[]int64{100, 120, 1024 * 1e9},
 			"[0-4096 [0-64:1 (count=2) [leaf 2 msgs]] [1024-1088:2 (count=1) [leaf 1 msg]]]",
 		},
 		{
 			"height 2",
 			2,
-			[]uint64{100, 120, 1024 * 1e9},
+			[]int64{100, 120, 1024 * 1e9},
 			"[0-262144 [0-4096:2 (count=3) [0-64:1 (count=2) [leaf 2 msgs]] [1024-1088:2 (count=1) [leaf 1 msg]]]]",
 		},
 	}
@@ -54,8 +54,8 @@ func TestMemtreeSerialization(t *testing.T) {
 			data := &bytes.Buffer{}
 			id := nodestore.RandomNodeID()
 			mt := tree.NewMemTree(id, root)
-			mcap.WriteFile(t, data, []uint64{ts})
-			require.NoError(t, tree.Insert(ctx, mt, version, ts, data.Bytes(), &nodestore.Statistics{
+			mcap.WriteFile(t, data, []int64{ts})
+			require.NoError(t, tree.Insert(ctx, mt, version, uint64(ts), data.Bytes(), &nodestore.Statistics{
 				MessageCount: 1,
 			}))
 

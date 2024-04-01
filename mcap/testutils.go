@@ -32,7 +32,7 @@ func ReadFile(t *testing.T, r io.Reader) []uint64 {
 	return timestamps
 }
 
-func WriteFile(t *testing.T, w io.Writer, timestampsets ...[]uint64) {
+func WriteFile(t *testing.T, w io.Writer, timestampsets ...[]int64) {
 	t.Helper()
 	writer, err := NewWriter(w)
 	require.NoError(t, err)
@@ -58,7 +58,7 @@ func WriteFile(t *testing.T, w io.Writer, timestampsets ...[]uint64) {
 		for _, ts := range timestamps {
 			require.NoError(t, writer.WriteMessage(&mcap.Message{
 				ChannelID: uint16(chanID),
-				LogTime:   ts,
+				LogTime:   uint64(ts),
 				Data:      testutils.Flatten(testutils.U32b(5), []byte("hello"), testutils.U16b(2024)),
 			}))
 		}

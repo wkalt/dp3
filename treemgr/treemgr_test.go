@@ -16,10 +16,8 @@ import (
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/rootmap"
 	"github.com/wkalt/dp3/storage"
-	"github.com/wkalt/dp3/tree"
 	"github.com/wkalt/dp3/treemgr"
 	"github.com/wkalt/dp3/util"
-	"github.com/wkalt/dp3/util/schema"
 	"github.com/wkalt/dp3/versionstore"
 )
 
@@ -27,193 +25,104 @@ func TestGetStatisticsLatest(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
 		assertion   string
-		input       [][]uint64
+		input       [][]int64
 		granularity uint64
 		topics      []string
 		bounds      []uint64
-		ranges      map[string][]tree.StatRange
+		ranges      map[string][]nodestore.StatRange
 	}{
 		{
 			"single topic file",
-			[][]uint64{{10, 100, 1000}},
+			[][]int64{{10, 100, 1000}},
 			600 * 1e9,
 			[]string{"topic-0"},
 			[]uint64{0, 1001},
-			map[string][]tree.StatRange{
+			map[string][]nodestore.StatRange{
 				"topic-0": {
-					{
-						Start: 0,
-						End:   60e9,
-						Statistics: &nodestore.Statistics{
-							Fields: []util.Named[schema.PrimitiveType]{
-								util.NewNamed("data", schema.STRING),
-								util.NewNamed("count", schema.INT16),
-							},
-							TextStats: map[int]*nodestore.TextSummary{
-								0: {
-									Max: "hello",
-									Min: "hello",
-								},
-							},
-							NumStats: map[int]*nodestore.NumericalSummary{
-								1: {
-									Max:  2024,
-									Min:  2024,
-									Sum:  6072,
-									Mean: 2024,
-								},
-							},
-							MessageCount:    3,
-							ByteCount:       33,
-							MaxObservedTime: 1000,
-							MinObservedTime: 10,
-						},
-					},
+					nodestore.NewStatRange(0, 60e9, nodestore.Text, "data", "min", "hello"),
+					nodestore.NewStatRange(0, 60e9, nodestore.Text, "data", "max", "hello"),
+					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "mean", float64(2024)),
+					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "min", float64(2024)),
+					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "max", float64(2024)),
+					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "sum", float64(6072)),
+					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "messageCount", int64(3)),
+					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "byteCount", int64(33)),
+					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "minObservedTime", int64(10)),
+					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "maxObservedTime", int64(1000)),
 				},
 			},
 		},
 		{
 			"multiple buckets",
-			[][]uint64{{10, 100, 1000, 90e9}},
+			[][]int64{{10, 100, 1000, 90e9}},
 			600 * 1e9,
 			[]string{"topic-0"},
 			[]uint64{0, 100e9},
-			map[string][]tree.StatRange{
+			map[string][]nodestore.StatRange{
 				"topic-0": {
-					{
-						Start: 0,
-						End:   60e9,
-						Statistics: &nodestore.Statistics{
-							Fields: []util.Named[schema.PrimitiveType]{
-								util.NewNamed("data", schema.STRING),
-								util.NewNamed("count", schema.INT16),
-							},
-							NumStats: map[int]*nodestore.NumericalSummary{
-								1: {
-									Max:  2024,
-									Min:  2024,
-									Sum:  6072,
-									Mean: 2024,
-								},
-							},
-							TextStats: map[int]*nodestore.TextSummary{
-								0: {
-									Max: "hello",
-									Min: "hello",
-								},
-							},
-							MessageCount:    3,
-							ByteCount:       33,
-							MaxObservedTime: 1000,
-							MinObservedTime: 10,
-						},
-					},
-					{
-						Start: 60e9,
-						End:   120e9,
-						Statistics: &nodestore.Statistics{
-							Fields: []util.Named[schema.PrimitiveType]{
-								util.NewNamed("data", schema.STRING),
-								util.NewNamed("count", schema.INT16),
-							},
-							NumStats: map[int]*nodestore.NumericalSummary{
-								1: {
-									Max:  2024,
-									Min:  2024,
-									Sum:  2024,
-									Mean: 2024,
-								},
-							},
-							TextStats: map[int]*nodestore.TextSummary{
-								0: {
-									Max: "hello",
-									Min: "hello",
-								},
-							},
-							MessageCount:    1,
-							ByteCount:       11,
-							MaxObservedTime: 90e9,
-							MinObservedTime: 90e9,
-						},
-					},
+					nodestore.NewStatRange(0, 60e9, nodestore.Text, "data", "min", "hello"),
+					nodestore.NewStatRange(0, 60e9, nodestore.Text, "data", "max", "hello"),
+					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "mean", float64(2024)),
+					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "min", float64(2024)),
+					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "max", float64(2024)),
+					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "sum", float64(6072)),
+					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "messageCount", int64(3)),
+					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "byteCount", int64(33)),
+					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "minObservedTime", int64(10)),
+					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "maxObservedTime", int64(1000)),
+
+					nodestore.NewStatRange(60e9, 120e9, nodestore.Text, "data", "min", "hello"),
+					nodestore.NewStatRange(60e9, 120e9, nodestore.Text, "data", "max", "hello"),
+					nodestore.NewStatRange(60e9, 120e9, nodestore.Float, "count", "mean", float64(2024)),
+					nodestore.NewStatRange(60e9, 120e9, nodestore.Float, "count", "min", float64(2024)),
+					nodestore.NewStatRange(60e9, 120e9, nodestore.Float, "count", "max", float64(2024)),
+					nodestore.NewStatRange(60e9, 120e9, nodestore.Float, "count", "sum", float64(2024)),
+					nodestore.NewStatRange(60e9, 120e9, nodestore.Int, "", "messageCount", int64(1)),
+					nodestore.NewStatRange(60e9, 120e9, nodestore.Int, "", "byteCount", int64(11)),
+					nodestore.NewStatRange(60e9, 120e9, nodestore.Int, "", "minObservedTime", int64(90e9)),
+					nodestore.NewStatRange(60e9, 120e9, nodestore.Int, "", "maxObservedTime", int64(90e9)),
 				},
 			},
 		},
 		{
 			"multiple buckets, low granularity",
-			[][]uint64{{10, 100, 1000, 90e9}},
+			[][]int64{{10, 100, 1000, 90e9}},
 			64 * 600 * 1e9,
 			[]string{"topic-0"},
 			[]uint64{0, 100e9},
-			map[string][]tree.StatRange{
+			map[string][]nodestore.StatRange{
 				"topic-0": {
-					{
-						Start: 0,
-						End:   3840000000000,
-						Statistics: &nodestore.Statistics{
-							Fields: []util.Named[schema.PrimitiveType]{
-								util.NewNamed("data", schema.STRING),
-								util.NewNamed("count", schema.INT16),
-							},
-							NumStats: map[int]*nodestore.NumericalSummary{
-								1: {
-									Max:  2024,
-									Min:  2024,
-									Sum:  8096,
-									Mean: 2024,
-								},
-							},
-							TextStats: map[int]*nodestore.TextSummary{
-								0: {
-									Max: "hello",
-									Min: "hello",
-								},
-							},
-							MessageCount:    4,
-							ByteCount:       44,
-							MaxObservedTime: 90e9,
-							MinObservedTime: 10,
-						},
-					},
+					nodestore.NewStatRange(0, 3840e9, nodestore.Text, "data", "min", "hello"),
+					nodestore.NewStatRange(0, 3840e9, nodestore.Text, "data", "max", "hello"),
+					nodestore.NewStatRange(0, 3840e9, nodestore.Float, "count", "mean", float64(2024)),
+					nodestore.NewStatRange(0, 3840e9, nodestore.Float, "count", "min", float64(2024)),
+					nodestore.NewStatRange(0, 3840e9, nodestore.Float, "count", "max", float64(2024)),
+					nodestore.NewStatRange(0, 3840e9, nodestore.Float, "count", "sum", float64(8096)),
+					nodestore.NewStatRange(0, 3840e9, nodestore.Int, "", "messageCount", int64(4)),
+					nodestore.NewStatRange(0, 3840e9, nodestore.Int, "", "byteCount", int64(44)),
+					nodestore.NewStatRange(0, 3840e9, nodestore.Int, "", "minObservedTime", int64(10)),
+					nodestore.NewStatRange(0, 3840e9, nodestore.Int, "", "maxObservedTime", int64(90e9)),
 				},
 			},
 		},
 		{
 			"excludes buckets based on [) semantics",
-			[][]uint64{{10, 100, 1000, 90e9}},
+			[][]int64{{10, 100, 1000, 90e9}},
 			600 * 1e9,
 			[]string{"topic-0"},
 			[]uint64{100, 60e9},
-			map[string][]tree.StatRange{
+			map[string][]nodestore.StatRange{
 				"topic-0": {
-					{
-						Start: 0,
-						End:   60e9,
-						Statistics: &nodestore.Statistics{
-							Fields: []util.Named[schema.PrimitiveType]{
-								util.NewNamed("data", schema.STRING),
-								util.NewNamed("count", schema.INT16),
-							},
-							NumStats: map[int]*nodestore.NumericalSummary{
-								1: {
-									Max:  2024,
-									Min:  2024,
-									Sum:  6072,
-									Mean: 2024,
-								},
-							},
-							TextStats: map[int]*nodestore.TextSummary{
-								0: {
-									Max: "hello",
-									Min: "hello",
-								},
-							},
-							MessageCount:    3,
-							ByteCount:       33,
-							MaxObservedTime: 1000,
-							MinObservedTime: 10,
-						},
-					},
+					nodestore.NewStatRange(0, 60e9, nodestore.Text, "data", "min", "hello"),
+					nodestore.NewStatRange(0, 60e9, nodestore.Text, "data", "max", "hello"),
+					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "mean", float64(2024)),
+					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "min", float64(2024)),
+					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "max", float64(2024)),
+					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "sum", float64(6072)),
+					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "messageCount", int64(3)),
+					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "byteCount", int64(33)),
+					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "minObservedTime", int64(10)),
+					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "maxObservedTime", int64(1000)),
 				},
 			},
 		},
@@ -230,7 +139,7 @@ func TestGetStatisticsLatest(t *testing.T) {
 			start := c.bounds[0]
 			end := c.bounds[1]
 
-			result := make(map[string][]tree.StatRange)
+			result := make(map[string][]nodestore.StatRange)
 			for _, topic := range c.topics {
 				ranges, err := tmgr.GetStatisticsLatest(ctx, start, end, "my-device", topic, c.granularity)
 				require.NoError(t, err)
@@ -245,14 +154,14 @@ func TestGetMessagesLatest(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
 		assertion      string
-		input          [][]uint64
+		input          [][]int64
 		topics         []string
 		bounds         []uint64
 		outputMessages map[string][]uint64
 	}{
 		{
 			"single topic file",
-			[][]uint64{{10, 100, 1000}},
+			[][]int64{{10, 100, 1000}},
 			[]string{"topic-0"},
 			[]uint64{0, 1001},
 			map[string][]uint64{
@@ -261,7 +170,7 @@ func TestGetMessagesLatest(t *testing.T) {
 		},
 		{
 			"exhibits [) behavior",
-			[][]uint64{{10, 100, 1000}},
+			[][]int64{{10, 100, 1000}},
 			[]string{"topic-0"},
 			[]uint64{10, 1000},
 			map[string][]uint64{
@@ -270,7 +179,7 @@ func TestGetMessagesLatest(t *testing.T) {
 		},
 		{
 			"respects lower bound",
-			[][]uint64{{10, 100, 1000}},
+			[][]int64{{10, 100, 1000}},
 			[]string{"topic-0"},
 			[]uint64{100, 1001},
 			map[string][]uint64{
@@ -279,14 +188,14 @@ func TestGetMessagesLatest(t *testing.T) {
 		},
 		{
 			"topic that does not exist",
-			[][]uint64{{10, 100, 1000}},
+			[][]int64{{10, 100, 1000}},
 			[]string{"topic-1"},
 			[]uint64{100, 1001},
 			map[string][]uint64{},
 		},
 		{
 			"multiple topics, one queried",
-			[][]uint64{{10, 100, 1000}, {15, 200, 2000}},
+			[][]int64{{10, 100, 1000}, {15, 200, 2000}},
 			[]string{"topic-1"},
 			[]uint64{0, 1001},
 			map[string][]uint64{
@@ -295,7 +204,7 @@ func TestGetMessagesLatest(t *testing.T) {
 		},
 		{
 			"multiple topics, two queried, one not existing",
-			[][]uint64{{10, 100, 1000}, {15, 200, 2000}},
+			[][]int64{{10, 100, 1000}, {15, 200, 2000}},
 			[]string{"topic-1", "topic-2"},
 			[]uint64{0, 1001},
 			map[string][]uint64{
@@ -304,7 +213,7 @@ func TestGetMessagesLatest(t *testing.T) {
 		},
 		{
 			"multiple topics, three queried",
-			[][]uint64{{10, 100, 1000}, {15, 200, 2000}, {20, 300, 3000}},
+			[][]int64{{10, 100, 1000}, {15, 200, 2000}, {20, 300, 3000}},
 			[]string{"topic-0", "topic-1", "topic-2"},
 			[]uint64{0, 1001},
 			map[string][]uint64{
@@ -365,7 +274,7 @@ func assertEqualTrees(t *testing.T, a, b string) {
 func TestStreamingAcrossMultipleReceives(t *testing.T) {
 	ctx := context.Background()
 	buf := &bytes.Buffer{}
-	mcap.WriteFile(t, buf, []uint64{10e9})
+	mcap.WriteFile(t, buf, []int64{10e9})
 
 	tmgr, finish := testTreeManager(ctx, t)
 	defer finish()
@@ -374,13 +283,13 @@ func TestStreamingAcrossMultipleReceives(t *testing.T) {
 
 	// overlapping
 	buf.Reset()
-	mcap.WriteFile(t, buf, []uint64{10e9})
+	mcap.WriteFile(t, buf, []int64{10e9})
 	require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
 	require.NoError(t, tmgr.ForceFlush(ctx))
 
 	// nonoverlapping
 	buf.Reset()
-	mcap.WriteFile(t, buf, []uint64{1000e9})
+	mcap.WriteFile(t, buf, []int64{1000e9})
 	require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
 	require.NoError(t, tmgr.ForceFlush(ctx))
 
@@ -406,12 +315,12 @@ func TestReceive(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
 		assertion string
-		input     [][]uint64
+		input     [][]int64
 		output    []string
 	}{
 		{
 			"single-topic file, single message",
-			[][]uint64{{10e9}},
+			[][]int64{{10e9}},
 			[]string{
 				`[0-64424509440 [0-1006632960:3 (count=1) [0-15728640:3 (count=1)
 				[0-245760:3 (count=1) [0-3840:3 (count=1) [0-60:3 (count=1) [leaf 1 msg]]]]]]]`,
@@ -419,7 +328,7 @@ func TestReceive(t *testing.T) {
 		},
 		{
 			"two topics, single messages, nonoverlapping",
-			[][]uint64{{10e9}, {100e9}},
+			[][]int64{{10e9}, {100e9}},
 			[]string{
 				`[0-64424509440 [0-1006632960:4 (count=1) [0-15728640:4 (count=1)
 				[0-245760:4 (count=1) [0-3840:4 (count=1) [0-60:4 (count=1) [leaf 1 msg]]]]]]]`,
@@ -429,7 +338,7 @@ func TestReceive(t *testing.T) {
 		},
 		{
 			"single-topic file, spanning leaf boundaries",
-			[][]uint64{{10e9, 100e9}},
+			[][]int64{{10e9, 100e9}},
 			[]string{
 				`[0-64424509440 [0-1006632960:4 (count=2) [0-15728640:4 (count=2)
 				[0-245760:4 (count=2) [0-3840:4 (count=2) [0-60:3 (count=1) [leaf 1 msg]]

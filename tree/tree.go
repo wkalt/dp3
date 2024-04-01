@@ -95,13 +95,6 @@ func Insert(
 	return nil
 }
 
-// StatRange is a range of statistics.
-type StatRange struct {
-	Start      uint64                `json:"start"`
-	End        uint64                `json:"end"`
-	Statistics *nodestore.Statistics `json:"statistics"`
-}
-
 // GetStatRange returns the statistics for the given range of time, for the tree
 // rooted at rootID. The granularity parameter is interpreted as a "maximum
 // granularity". The returned granularity is guaranteed to be at least as fine
@@ -113,8 +106,8 @@ func GetStatRange(
 	start uint64,
 	end uint64,
 	granularity uint64,
-) ([]StatRange, error) {
-	ranges := []StatRange{}
+) ([]nodestore.StatRange, error) {
+	ranges := []nodestore.StatRange{}
 	stack := []nodestore.NodeID{tr.Root()}
 	for len(stack) > 0 {
 		nodeID := stack[len(stack)-1]
@@ -125,18 +118,14 @@ func GetStatRange(
 		}
 		switch node := node.(type) {
 		case *nodestore.InnerNode:
-			granularEnough := 1e9*bwidth(node) <= granularity
 			width := bwidth(node)
+			granularEnough := 1e9*width <= granularity
 			for i, child := range node.Children {
 				childStart := 1e9 * (node.Start + width*uint64(i))
 				childEnd := 1e9 * (node.Start + width*uint64(i+1))
 				inRange := child != nil && start <= childEnd && end > childStart
 				if inRange && granularEnough {
-					ranges = append(ranges, StatRange{
-						Start:      childStart,
-						End:        childEnd,
-						Statistics: child.Statistics,
-					})
+					ranges = append(ranges, child.Statistics.Ranges(childStart, childEnd)...)
 					continue
 				}
 				if inRange {

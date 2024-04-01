@@ -24,12 +24,57 @@ give us approximate alternatives.
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type StatType string
+
+const (
+	Float StatType = "float"
+	Int   StatType = "int"
+	Text  StatType = "text"
+)
+
 // NumericalSummary is a statistical summary of a field.
 type NumericalSummary struct {
 	Min  float64 `json:"min"`
 	Max  float64 `json:"max"`
 	Mean float64 `json:"mean"`
 	Sum  float64 `json:"sum"`
+}
+
+func (n *NumericalSummary) ranges(field string, start, end uint64) []StatRange {
+	return []StatRange{
+		{
+			Start: start,
+			End:   end,
+			Type:  Float,
+			Name:  "mean",
+			Field: field,
+			Value: n.Mean,
+		},
+		{
+			Start: start,
+			End:   end,
+			Type:  Float,
+			Name:  "min",
+			Field: field,
+			Value: n.Min,
+		},
+		{
+			Start: start,
+			End:   end,
+			Type:  Float,
+			Name:  "max",
+			Field: field,
+			Value: n.Max,
+		},
+		{
+			Start: start,
+			End:   end,
+			Type:  Float,
+			Name:  "sum",
+			Field: field,
+			Value: n.Sum,
+		},
+	}
 }
 
 // TextSummary is a statistical summary of a text field.
@@ -39,15 +84,112 @@ type TextSummary struct {
 	// todo: bloom filters, trigrams, etc.
 }
 
+func (s *TextSummary) ranges(field string, start, end uint64) []StatRange {
+	return []StatRange{
+		{
+			Start: start,
+			End:   end,
+			Type:  Text,
+			Name:  "min",
+			Field: field,
+			Value: s.Min,
+		},
+		{
+			Start: start,
+			End:   end,
+			Type:  Text,
+			Name:  "max",
+			Field: field,
+			Value: s.Max,
+		},
+	}
+}
+
+// StatRange is a range of statistics.
+type StatRange struct {
+	Start uint64   `json:"start"`
+	End   uint64   `json:"end"`
+	Type  StatType `json:"type"`
+	Field string   `json:"field"`
+	Name  string   `json:"name"`
+	Value any      `json:"value"`
+}
+
+func NewStatRange(
+	start, end uint64,
+	typ StatType,
+	field, name string,
+	value any,
+) StatRange {
+	return StatRange{
+		Start: start,
+		End:   end,
+		Type:  typ,
+		Field: field,
+		Name:  name,
+		Value: value,
+	}
+}
+
 // Statistics represents the statistics we store on each child element of an inner node.
 type Statistics struct {
 	Fields          []util.Named[schema.PrimitiveType] `json:"fields,omitempty"`
 	NumStats        map[int]*NumericalSummary          `json:"numeric,omitempty"`
 	TextStats       map[int]*TextSummary               `json:"text,omitempty"`
-	MessageCount    uint64                             `json:"messageCount"`
-	ByteCount       uint64                             `json:"byteCount"`
-	MaxObservedTime uint64                             `json:"maxObservedTime"`
-	MinObservedTime uint64                             `json:"minObservedTime"`
+	MessageCount    int64                              `json:"messageCount"`
+	ByteCount       int64                              `json:"byteCount"`
+	MaxObservedTime int64                              `json:"maxObservedTime"`
+	MinObservedTime int64                              `json:"minObservedTime"`
+}
+
+// Ranges converts a statistics object into an array of StatRange objects,
+// suitable for returning to a user.
+func (s *Statistics) Ranges(start, end uint64) []StatRange {
+	ranges := make([]StatRange, 0, len(s.NumStats)+len(s.TextStats))
+	for i, field := range s.Fields {
+		if numstat, ok := s.NumStats[i]; ok {
+			ranges = append(ranges, numstat.ranges(field.Name, start, end)...)
+			continue
+		}
+		if textstat, ok := s.TextStats[i]; ok {
+			ranges = append(ranges, textstat.ranges(field.Name, start, end)...)
+		}
+	}
+	ranges = append(ranges, []StatRange{
+		{
+			Start: start,
+			End:   end,
+			Type:  Int,
+			Field: "",
+			Name:  "messageCount",
+			Value: s.MessageCount,
+		},
+		{
+			Start: start,
+			End:   end,
+			Type:  Int,
+			Field: "",
+			Name:  "byteCount",
+			Value: s.ByteCount,
+		},
+		{
+			Start: start,
+			End:   end,
+			Type:  Int,
+			Field: "",
+			Name:  "minObservedTime",
+			Value: s.MinObservedTime,
+		},
+		{
+			Start: start,
+			End:   end,
+			Type:  Int,
+			Field: "",
+			Name:  "maxObservedTime",
+			Value: s.MaxObservedTime,
+		},
+	}...)
+	return ranges
 }
 
 func (s *Statistics) observeNumeric(idx int, v float64) {
@@ -132,12 +274,12 @@ func (s *Statistics) ObserveMessage(message *fmcap.Message, values []any) error 
 		}
 	}
 	s.MessageCount++
-	s.ByteCount += uint64(len(message.Data))
-	if message.LogTime < s.MinObservedTime {
-		s.MinObservedTime = message.LogTime
+	s.ByteCount += int64(len(message.Data))
+	if message.LogTime < uint64(s.MinObservedTime) {
+		s.MinObservedTime = int64(message.LogTime)
 	}
-	if message.LogTime > s.MaxObservedTime {
-		s.MaxObservedTime = message.LogTime
+	if message.LogTime > uint64(s.MaxObservedTime) {
+		s.MaxObservedTime = int64(message.LogTime)
 	}
 	return nil
 }
@@ -148,7 +290,7 @@ func NewStatistics(fields []util.Named[schema.PrimitiveType]) *Statistics {
 		NumStats:        make(map[int]*NumericalSummary),
 		TextStats:       make(map[int]*TextSummary),
 		MessageCount:    0,
-		MinObservedTime: math.MaxUint64,
+		MinObservedTime: math.MaxInt64,
 		MaxObservedTime: 0,
 	}
 }
