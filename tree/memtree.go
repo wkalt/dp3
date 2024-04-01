@@ -154,7 +154,6 @@ func (m *MemTree) ToBytes(ctx context.Context, oid uint64) ([]byte, error) { // 
 		if err != nil {
 			return nil, fmt.Errorf("failed to write node: %w", err)
 		}
-
 		nodeID := nodestore.NewNodeID(oid, uint64(offset), uint64(n))
 		offset += n
 		processed[id] = nodeID
