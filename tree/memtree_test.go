@@ -24,19 +24,19 @@ func TestMemtreeSerialization(t *testing.T) {
 			"two trees",
 			1,
 			[]int64{100, 120},
-			"[0-4096 [0-64:1 (count=2) [leaf 2 msgs]]]",
+			"[0-4096 [0-64:1 (1b count=2) [leaf 2 msgs]]]",
 		},
 		{
 			"tree trees",
 			1,
 			[]int64{100, 120, 1024 * 1e9},
-			"[0-4096 [0-64:1 (count=2) [leaf 2 msgs]] [1024-1088:2 (count=1) [leaf 1 msg]]]",
+			"[0-4096 [0-64:1 (1b count=2) [leaf 2 msgs]] [1024-1088:2 (1b count=1) [leaf 1 msg]]]",
 		},
 		{
 			"height 2",
 			2,
 			[]int64{100, 120, 1024 * 1e9},
-			"[0-262144 [0-4096:2 (count=3) [0-64:1 (count=2) [leaf 2 msgs]] [1024-1088:2 (count=1) [leaf 1 msg]]]]",
+			"[0-262144 [0-4096:2 (1b count=3) [0-64:1 (1b count=2) [leaf 2 msgs]] [1024-1088:2 (1b count=1) [leaf 1 msg]]]]",
 		},
 	}
 
@@ -55,10 +55,12 @@ func TestMemtreeSerialization(t *testing.T) {
 			id := nodestore.RandomNodeID()
 			mt := tree.NewMemTree(id, root)
 			mcap.WriteFile(t, data, []int64{ts})
-			require.NoError(t, tree.Insert(ctx, mt, version, uint64(ts), data.Bytes(), &nodestore.Statistics{
-				MessageCount: 1,
-			}))
-
+			schema := tree.GetSchema(t, bytes.NewReader(data.Bytes()))
+			schemaHash := util.CryptoHash(schema.Data)
+			stats := map[string]*nodestore.Statistics{
+				schemaHash: {MessageCount: 1},
+			}
+			require.NoError(t, tree.Insert(ctx, mt, version, uint64(ts), data.Bytes(), stats))
 			version++
 			trees[i] = mt
 		}

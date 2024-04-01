@@ -517,7 +517,7 @@ func (tm *TreeManager) insert(
 	topic string,
 	time uint64,
 	data []byte,
-	statistics *nodestore.Statistics,
+	statistics map[string]*nodestore.Statistics,
 ) error {
 	rootID, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
 	if err != nil {

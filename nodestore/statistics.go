@@ -40,39 +40,43 @@ type NumericalSummary struct {
 	Sum  float64 `json:"sum"`
 }
 
-func (n *NumericalSummary) ranges(field string, start, end uint64) []StatRange {
+func (n *NumericalSummary) ranges(field string, start, end uint64, schemaHash string) []StatRange {
 	return []StatRange{
 		{
-			Start: start,
-			End:   end,
-			Type:  Float,
-			Name:  "mean",
-			Field: field,
-			Value: n.Mean,
+			Start:      start,
+			End:        end,
+			Type:       Float,
+			Name:       "mean",
+			SchemaHash: schemaHash,
+			Field:      field,
+			Value:      n.Mean,
 		},
 		{
-			Start: start,
-			End:   end,
-			Type:  Float,
-			Name:  "min",
-			Field: field,
-			Value: n.Min,
+			Start:      start,
+			End:        end,
+			Type:       Float,
+			Name:       "min",
+			SchemaHash: schemaHash,
+			Field:      field,
+			Value:      n.Min,
 		},
 		{
-			Start: start,
-			End:   end,
-			Type:  Float,
-			Name:  "max",
-			Field: field,
-			Value: n.Max,
+			Start:      start,
+			End:        end,
+			Type:       Float,
+			Name:       "max",
+			SchemaHash: schemaHash,
+			Field:      field,
+			Value:      n.Max,
 		},
 		{
-			Start: start,
-			End:   end,
-			Type:  Float,
-			Name:  "sum",
-			Field: field,
-			Value: n.Sum,
+			Start:      start,
+			End:        end,
+			Type:       Float,
+			Name:       "sum",
+			SchemaHash: schemaHash,
+			Field:      field,
+			Value:      n.Sum,
 		},
 	}
 }
@@ -84,50 +88,55 @@ type TextSummary struct {
 	// todo: bloom filters, trigrams, etc.
 }
 
-func (s *TextSummary) ranges(field string, start, end uint64) []StatRange {
+func (s *TextSummary) ranges(field string, start, end uint64, schemaHash string) []StatRange {
 	return []StatRange{
 		{
-			Start: start,
-			End:   end,
-			Type:  Text,
-			Name:  "min",
-			Field: field,
-			Value: s.Min,
+			Start:      start,
+			End:        end,
+			Type:       Text,
+			SchemaHash: schemaHash,
+			Name:       "min",
+			Field:      field,
+			Value:      s.Min,
 		},
 		{
-			Start: start,
-			End:   end,
-			Type:  Text,
-			Name:  "max",
-			Field: field,
-			Value: s.Max,
+			Start:      start,
+			End:        end,
+			Type:       Text,
+			SchemaHash: schemaHash,
+			Name:       "max",
+			Field:      field,
+			Value:      s.Max,
 		},
 	}
 }
 
 // StatRange is a range of statistics.
 type StatRange struct {
-	Start uint64   `json:"start"`
-	End   uint64   `json:"end"`
-	Type  StatType `json:"type"`
-	Field string   `json:"field"`
-	Name  string   `json:"name"`
-	Value any      `json:"value"`
+	Start      uint64   `json:"start"`
+	End        uint64   `json:"end"`
+	SchemaHash string   `json:"schemaHash"`
+	Type       StatType `json:"type"`
+	Field      string   `json:"field"`
+	Name       string   `json:"name"`
+	Value      any      `json:"value"`
 }
 
 func NewStatRange(
+	schemaHash string,
 	start, end uint64,
 	typ StatType,
 	field, name string,
 	value any,
 ) StatRange {
 	return StatRange{
-		Start: start,
-		End:   end,
-		Type:  typ,
-		Field: field,
-		Name:  name,
-		Value: value,
+		Start:      start,
+		End:        end,
+		Type:       typ,
+		Field:      field,
+		SchemaHash: schemaHash,
+		Name:       name,
+		Value:      value,
 	}
 }
 
@@ -144,49 +153,53 @@ type Statistics struct {
 
 // Ranges converts a statistics object into an array of StatRange objects,
 // suitable for returning to a user.
-func (s *Statistics) Ranges(start, end uint64) []StatRange {
+func (s *Statistics) Ranges(start, end uint64, schemaHash string) []StatRange {
 	ranges := make([]StatRange, 0, len(s.NumStats)+len(s.TextStats))
 	for i, field := range s.Fields {
 		if numstat, ok := s.NumStats[i]; ok {
-			ranges = append(ranges, numstat.ranges(field.Name, start, end)...)
+			ranges = append(ranges, numstat.ranges(field.Name, start, end, schemaHash)...)
 			continue
 		}
 		if textstat, ok := s.TextStats[i]; ok {
-			ranges = append(ranges, textstat.ranges(field.Name, start, end)...)
+			ranges = append(ranges, textstat.ranges(field.Name, start, end, schemaHash)...)
 		}
 	}
 	ranges = append(ranges, []StatRange{
 		{
-			Start: start,
-			End:   end,
-			Type:  Int,
-			Field: "",
-			Name:  "messageCount",
-			Value: s.MessageCount,
+			Start:      start,
+			End:        end,
+			Type:       Int,
+			Field:      "",
+			SchemaHash: schemaHash,
+			Name:       "messageCount",
+			Value:      s.MessageCount,
 		},
 		{
-			Start: start,
-			End:   end,
-			Type:  Int,
-			Field: "",
-			Name:  "byteCount",
-			Value: s.ByteCount,
+			Start:      start,
+			End:        end,
+			Type:       Int,
+			Field:      "",
+			SchemaHash: schemaHash,
+			Name:       "byteCount",
+			Value:      s.ByteCount,
 		},
 		{
-			Start: start,
-			End:   end,
-			Type:  Int,
-			Field: "",
-			Name:  "minObservedTime",
-			Value: s.MinObservedTime,
+			Start:      start,
+			End:        end,
+			Type:       Int,
+			Field:      "",
+			SchemaHash: schemaHash,
+			Name:       "minObservedTime",
+			Value:      s.MinObservedTime,
 		},
 		{
-			Start: start,
-			End:   end,
-			Type:  Int,
-			Field: "",
-			Name:  "maxObservedTime",
-			Value: s.MaxObservedTime,
+			Start:      start,
+			End:        end,
+			Type:       Int,
+			Field:      "",
+			SchemaHash: schemaHash,
+			Name:       "maxObservedTime",
+			Value:      s.MaxObservedTime,
 		},
 	}...)
 	return ranges
@@ -295,6 +308,30 @@ func NewStatistics(fields []util.Named[schema.PrimitiveType]) *Statistics {
 	}
 }
 
+func (s *Statistics) Clone() *Statistics {
+	fields := make([]util.Named[schema.PrimitiveType], len(s.Fields))
+	copy(fields, s.Fields)
+	numStats := make(map[int]*NumericalSummary, len(s.NumStats))
+	for i, numStat := range s.NumStats {
+		stat := *numStat
+		numStats[i] = &stat
+	}
+	textStats := make(map[int]*TextSummary, len(s.TextStats))
+	for i, textStat := range s.TextStats {
+		stat := *textStat
+		textStats[i] = &stat
+	}
+	return &Statistics{
+		Fields:          fields,
+		NumStats:        numStats,
+		TextStats:       textStats,
+		MessageCount:    s.MessageCount,
+		ByteCount:       s.ByteCount,
+		MinObservedTime: s.MinObservedTime,
+		MaxObservedTime: s.MaxObservedTime,
+	}
+}
+
 // Add adds the statistics from another Statistics object to this one.
 func (s *Statistics) Add(other *Statistics) error {
 	if s.MessageCount == 0 {
@@ -332,5 +369,5 @@ func (s *Statistics) Add(other *Statistics) error {
 
 // String returns a string representation of the statistics.
 func (s *Statistics) String() string {
-	return fmt.Sprintf("(count=%d)", s.MessageCount)
+	return fmt.Sprintf("count=%d", s.MessageCount)
 }

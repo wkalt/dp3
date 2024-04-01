@@ -18,33 +18,37 @@ func TestTreeErrors(t *testing.T) {
 		root := nodestore.NewInnerNode(1, 0, 4096, 64)
 		tw := tree.NewMemTree(nodestore.RandomNodeID(), root)
 		tw.SetRoot(nodestore.RandomNodeID())
-		err := tree.Insert(ctx, tw, 0, 0, []byte{0x01}, &nodestore.Statistics{})
+		stats := map[string]*nodestore.Statistics{}
+		err := tree.Insert(ctx, tw, 0, 0, []byte{0x01}, stats)
 		require.ErrorIs(t, err, nodestore.NodeNotFoundError{})
 	})
 
 	t.Run("root is nil", func(t *testing.T) {
 		tw := tree.NewMemTree(nodestore.RandomNodeID(), nil)
-		require.Error(t, tree.Insert(ctx, tw, 0, 0, []byte{0x01}, &nodestore.Statistics{}))
+		stats := map[string]*nodestore.Statistics{}
+		require.Error(t, tree.Insert(ctx, tw, 0, 0, []byte{0x01}, stats))
 	})
 
 	t.Run("out of bounds insert", func(t *testing.T) {
 		root := nodestore.NewInnerNode(1, 0, 4096, 64)
 		tw := tree.NewMemTree(nodestore.RandomNodeID(), root)
-		err := tree.Insert(ctx, tw, 0, 10000*1e9, []byte{0x01}, &nodestore.Statistics{})
+		stats := map[string]*nodestore.Statistics{}
+		err := tree.Insert(ctx, tw, 0, 10000*1e9, []byte{0x01}, stats)
 		require.ErrorIs(t, err, tree.OutOfBoundsError{})
 	})
 
 	t.Run("root is not an inner node", func(t *testing.T) {
 		root := nodestore.NewInnerNode(1, 0, 4096, 64)
 		tw := tree.NewMemTree(nodestore.RandomNodeID(), root)
-		require.NoError(t, tree.Insert(ctx, tw, 0, 1000*1e9, []byte{0x01}, &nodestore.Statistics{}))
+		stats := map[string]*nodestore.Statistics{}
+		require.NoError(t, tree.Insert(ctx, tw, 0, 1000*1e9, []byte{0x01}, stats))
 
 		leaf := nodestore.NewLeafNode([]byte{0x01})
 		leafid := nodestore.RandomNodeID()
 		require.NoError(t, tw.Put(ctx, leafid, leaf))
 		tw.SetRoot(leafid)
 
-		err := tree.Insert(ctx, tw, 0, 64*1e9, []byte{0x01}, &nodestore.Statistics{})
+		err := tree.Insert(ctx, tw, 0, 64*1e9, []byte{0x01}, stats)
 		require.ErrorIs(t, err, tree.UnexpectedNodeError{})
 	})
 }
@@ -54,11 +58,11 @@ func TestMergeErrors(t *testing.T) {
 	t.Run("merging trees of different height", func(t *testing.T) {
 		root := nodestore.NewInnerNode(1, 0, 4096, 64)
 		tw := tree.NewMemTree(nodestore.RandomNodeID(), root)
-		require.NoError(t, tree.Insert(ctx, tw, 0, 1000*1e9, []byte{0x01}, &nodestore.Statistics{}))
+		require.NoError(t, tree.Insert(ctx, tw, 0, 1000*1e9, []byte{0x01}, nil))
 
 		root2 := nodestore.NewInnerNode(2, 0, 4096, 64)
 		tw2 := tree.NewMemTree(nodestore.RandomNodeID(), root2)
-		require.NoError(t, tree.Insert(ctx, tw2, 0, 64*1e9, []byte{0x01}, &nodestore.Statistics{}))
+		require.NoError(t, tree.Insert(ctx, tw2, 0, 64*1e9, []byte{0x01}, nil))
 
 		root3 := nodestore.NewInnerNode(2, 0, 4096, 64)
 		tw3 := tree.NewMemTree(nodestore.RandomNodeID(), root3)
@@ -78,7 +82,7 @@ func TestMergeErrors(t *testing.T) {
 		child := nodestore.Child{
 			ID:         childid,
 			Version:    0,
-			Statistics: &nodestore.Statistics{},
+			Statistics: nil,
 		}
 		require.NoError(t, tw.Put(ctx, childid, childnode))
 		root.Children[0] = &child
@@ -89,7 +93,7 @@ func TestMergeErrors(t *testing.T) {
 		gchild := nodestore.Child{
 			ID:         gchildid,
 			Version:    0,
-			Statistics: &nodestore.Statistics{},
+			Statistics: nil,
 		}
 		require.NoError(t, tw.Put(ctx, gchildid, gchildnode))
 		childnode.Children[0] = &gchild
@@ -97,7 +101,7 @@ func TestMergeErrors(t *testing.T) {
 		// merge with a correct tree
 		root2 := nodestore.NewInnerNode(2, 0, 64*64*64, 64)
 		tw2 := tree.NewMemTree(nodestore.RandomNodeID(), root2)
-		require.NoError(t, tree.Insert(ctx, tw2, 0, 63*1e9, []byte{0x01}, &nodestore.Statistics{}))
+		require.NoError(t, tree.Insert(ctx, tw2, 0, 63*1e9, []byte{0x01}, nil))
 
 		root3 := nodestore.NewInnerNode(2, 0, 64*64*64, 64)
 		tw3 := tree.NewMemTree(nodestore.RandomNodeID(), root3)
@@ -109,7 +113,7 @@ func TestMergeErrors(t *testing.T) {
 	t.Run("root is not an inner node", func(t *testing.T) {
 		root := nodestore.NewInnerNode(1, 0, 4096, 64)
 		tw := tree.NewMemTree(nodestore.RandomNodeID(), root)
-		require.NoError(t, tree.Insert(ctx, tw, 0, 1000*1e9, []byte{0x01}, &nodestore.Statistics{}))
+		require.NoError(t, tree.Insert(ctx, tw, 0, 1000*1e9, []byte{0x01}, nil))
 
 		leaf := nodestore.NewLeafNode([]byte{0x01})
 		leafid := nodestore.RandomNodeID()
@@ -118,7 +122,7 @@ func TestMergeErrors(t *testing.T) {
 
 		root2 := nodestore.NewInnerNode(2, 0, 4096, 64)
 		tw2 := tree.NewMemTree(nodestore.RandomNodeID(), root2)
-		require.NoError(t, tree.Insert(ctx, tw2, 0, 64*1e9, []byte{0x01}, &nodestore.Statistics{}))
+		require.NoError(t, tree.Insert(ctx, tw2, 0, 64*1e9, []byte{0x01}, nil))
 
 		root3 := nodestore.NewInnerNode(2, 0, 4096, 64)
 		tw3 := tree.NewMemTree(nodestore.RandomNodeID(), root3)
@@ -130,7 +134,7 @@ func TestMergeErrors(t *testing.T) {
 	t.Run("root does not exist", func(t *testing.T) {
 		root := nodestore.NewInnerNode(1, 0, 4096, 64)
 		tw := tree.NewMemTree(nodestore.RandomNodeID(), root)
-		require.NoError(t, tree.Insert(ctx, tw, 0, 1000*1e9, []byte{0x01}, &nodestore.Statistics{}))
+		require.NoError(t, tree.Insert(ctx, tw, 0, 1000*1e9, []byte{0x01}, nil))
 		tw.SetRoot(nodestore.RandomNodeID())
 
 		root2 := nodestore.NewInnerNode(2, 0, 4096, 64)
@@ -159,26 +163,26 @@ func TestTreeInsert(t *testing.T) {
 			"single insert",
 			1,
 			[][]int64{{10}},
-			"[0-4096 [0-64:1 (count=1) [leaf 1 msg]]]",
+			"[0-4096 [0-64:1 (1b count=1) [leaf 1 msg]]]",
 		},
 		{
 			"height 2",
 			2,
 			[][]int64{{10}},
-			"[0-262144 [0-4096:1 (count=1) [0-64:1 (count=1) [leaf 1 msg]]]]",
+			"[0-262144 [0-4096:1 (1b count=1) [0-64:1 (1b count=1) [leaf 1 msg]]]]",
 		},
 		{
 			"two inserts into same bucket are merged",
 			1,
 			[][]int64{{10}, {20}},
-			"[0-4096 [0-64:2 (count=2) [leaf 2 msgs]]]",
+			"[0-4096 [0-64:2 (1b count=2) [leaf 2 msgs]]]",
 		},
 		{
 			"inserts into different buckets",
 			1,
 			[][]int64{{10}, {100}, {256}, {1000}},
-			`[0-4096 [0-64:1 (count=1) [leaf 1 msg]] [64-128:2 (count=1) [leaf 1 msg]]
-			[256-320:3 (count=1) [leaf 1 msg]] [960-1024:4 (count=1) [leaf 1 msg]]]`,
+			`[0-4096 [0-64:1 (1b count=1) [leaf 1 msg]] [64-128:2 (1b count=1) [leaf 1 msg]]
+			[256-320:3 (1b count=1) [leaf 1 msg]] [960-1024:4 (1b count=1) [leaf 1 msg]]]`,
 		},
 	}
 	for _, c := range cases {
@@ -205,6 +209,7 @@ func removeSpace(s string) string {
 
 func TestStatRange(t *testing.T) {
 	ctx := context.Background()
+	testhash := "1ba234e59378bc656d587c45c4191bfc24c2c657e871f148faa552350738c470"
 	cases := []struct {
 		assertion   string
 		messages    [][]int64
@@ -228,10 +233,10 @@ func TestStatRange(t *testing.T) {
 			100e9,
 			600e9,
 			[]nodestore.StatRange{
-				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "messageCount", int64(1)),
-				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "byteCount", int64(0)),
-				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "minObservedTime", int64(100)),
-				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "maxObservedTime", int64(100)),
+				nodestore.NewStatRange(testhash, 64e9, 128e9, nodestore.Int, "", "messageCount", int64(1)),
+				nodestore.NewStatRange(testhash, 64e9, 128e9, nodestore.Int, "", "byteCount", int64(0)),
+				nodestore.NewStatRange(testhash, 64e9, 128e9, nodestore.Int, "", "minObservedTime", int64(100)),
+				nodestore.NewStatRange(testhash, 64e9, 128e9, nodestore.Int, "", "maxObservedTime", int64(100)),
 			},
 		},
 		{
@@ -241,14 +246,14 @@ func TestStatRange(t *testing.T) {
 			5000e9,
 			600e9,
 			[]nodestore.StatRange{
-				nodestore.NewStatRange(4096e9, 4160e9, nodestore.Int, "", "messageCount", int64(1)),
-				nodestore.NewStatRange(4096e9, 4160e9, nodestore.Int, "", "byteCount", int64(0)),
-				nodestore.NewStatRange(4096e9, 4160e9, nodestore.Int, "", "minObservedTime", int64(4097)),
-				nodestore.NewStatRange(4096e9, 4160e9, nodestore.Int, "", "maxObservedTime", int64(4097)),
-				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "messageCount", int64(1)),
-				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "byteCount", int64(0)),
-				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "minObservedTime", int64(100)),
-				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "maxObservedTime", int64(100)),
+				nodestore.NewStatRange(testhash, 4096e9, 4160e9, nodestore.Int, "", "messageCount", int64(1)),
+				nodestore.NewStatRange(testhash, 4096e9, 4160e9, nodestore.Int, "", "byteCount", int64(0)),
+				nodestore.NewStatRange(testhash, 4096e9, 4160e9, nodestore.Int, "", "minObservedTime", int64(4097)),
+				nodestore.NewStatRange(testhash, 4096e9, 4160e9, nodestore.Int, "", "maxObservedTime", int64(4097)),
+				nodestore.NewStatRange(testhash, 64e9, 128e9, nodestore.Int, "", "messageCount", int64(1)),
+				nodestore.NewStatRange(testhash, 64e9, 128e9, nodestore.Int, "", "byteCount", int64(0)),
+				nodestore.NewStatRange(testhash, 64e9, 128e9, nodestore.Int, "", "minObservedTime", int64(100)),
+				nodestore.NewStatRange(testhash, 64e9, 128e9, nodestore.Int, "", "maxObservedTime", int64(100)),
 			},
 		},
 		{
@@ -258,14 +263,14 @@ func TestStatRange(t *testing.T) {
 			math.MaxInt64,
 			600e9,
 			[]nodestore.StatRange{
-				nodestore.NewStatRange(262080e9, 262144e9, nodestore.Int, "", "messageCount", int64(1)),
-				nodestore.NewStatRange(262080e9, 262144e9, nodestore.Int, "", "byteCount", int64(0)),
-				nodestore.NewStatRange(262080e9, 262144e9, nodestore.Int, "", "minObservedTime", int64(262143)),
-				nodestore.NewStatRange(262080e9, 262144e9, nodestore.Int, "", "maxObservedTime", int64(262143)),
-				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "messageCount", int64(1)),
-				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "byteCount", int64(0)),
-				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "minObservedTime", int64(100)),
-				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "maxObservedTime", int64(100)),
+				nodestore.NewStatRange(testhash, 262080e9, 262144e9, nodestore.Int, "", "messageCount", int64(1)),
+				nodestore.NewStatRange(testhash, 262080e9, 262144e9, nodestore.Int, "", "byteCount", int64(0)),
+				nodestore.NewStatRange(testhash, 262080e9, 262144e9, nodestore.Int, "", "minObservedTime", int64(262143)),
+				nodestore.NewStatRange(testhash, 262080e9, 262144e9, nodestore.Int, "", "maxObservedTime", int64(262143)),
+				nodestore.NewStatRange(testhash, 64e9, 128e9, nodestore.Int, "", "messageCount", int64(1)),
+				nodestore.NewStatRange(testhash, 64e9, 128e9, nodestore.Int, "", "byteCount", int64(0)),
+				nodestore.NewStatRange(testhash, 64e9, 128e9, nodestore.Int, "", "minObservedTime", int64(100)),
+				nodestore.NewStatRange(testhash, 64e9, 128e9, nodestore.Int, "", "maxObservedTime", int64(100)),
 			},
 		},
 	}
@@ -293,36 +298,36 @@ func TestMerge(t *testing.T) {
 			1,
 			[][]int64{},
 			[][]int64{{100}},
-			"[0-4096 [64-128:1 (count=1) [leaf 1 msg]]]",
+			"[0-4096 [64-128:1 (1b count=1) [leaf 1 msg]]]",
 		},
 		{
 			"merge into populated tree, nonoverlapping",
 			1,
 			[][]int64{{33}},
 			[][]int64{{100}},
-			"[0-4096 [<link> 0-64:1 (count=1) [leaf 1 msg]] [64-128:1 (count=1) [leaf 1 msg]]]",
+			"[0-4096 [<link> 0-64:1 (1b count=1) [leaf 1 msg]] [64-128:1 (1b count=1) [leaf 1 msg]]]",
 		},
 		{
 			"merge into populated tree, overlapping",
 			1,
 			[][]int64{{33}, {120}},
 			[][]int64{{100}},
-			"[0-4096 [<link> 0-64:1 (count=1) [leaf 1 msg]] [64-128:1 (count=2) [leaf 2 msgs]]]",
+			"[0-4096 [<link> 0-64:1 (1b count=1) [leaf 1 msg]] [64-128:1 (1b count=2) [leaf 2 msgs]]]",
 		},
 		{
 			"merge into a populated tree, multiple overlapping",
 			1,
 			[][]int64{{33}, {120}},
 			[][]int64{{39}, {121}},
-			"[0-4096 [0-64:1 (count=2) [leaf 2 msgs]] [64-128:2 (count=2) [leaf 2 msgs]]]",
+			"[0-4096 [0-64:1 (1b count=2) [leaf 2 msgs]] [64-128:2 (1b count=2) [leaf 2 msgs]]]",
 		},
 		{
 			"depth 2",
 			2,
 			[][]int64{{33}, {120}},
 			[][]int64{{1000}},
-			`[0-262144 [0-4096:1 (count=3) [<link> 0-64:1 (count=1) [leaf 1 msg]]
-			[<link> 64-128:2 (count=1) [leaf 1 msg]] [960-1024:1 (count=1) [leaf 1 msg]]]]`,
+			`[0-262144 [0-4096:1 (1b count=3) [<link> 0-64:1 (1b count=1) [leaf 1 msg]]
+			[<link> 64-128:2 (1b count=1) [leaf 1 msg]] [960-1024:1 (1b count=1) [leaf 1 msg]]]]`,
 		},
 	}
 

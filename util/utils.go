@@ -3,6 +3,7 @@ package util
 import (
 	"cmp"
 	"crypto/md5"
+	"crypto/sha256"
 	"encoding/hex"
 	"slices"
 	"strconv"
@@ -110,4 +111,12 @@ func Min[T cmp.Ordered](a, b T) T {
 		return a
 	}
 	return b
+}
+
+// CryptoHash returns a stable hex-encoded cryptographic hash for use in the
+// project.
+func CryptoHash(data []byte) string {
+	h := sha256.New()
+	h.Write(data)
+	return hex.EncodeToString(h.Sum(nil))
 }

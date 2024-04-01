@@ -9,9 +9,9 @@ import (
 	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
+	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/log"
 	"github.com/wkalt/dp3/util/ros1msg"
-	"golang.org/x/exp/maps"
 )
 
 /*
@@ -44,9 +44,10 @@ type writer struct {
 	schemas  map[uint16]*fmcap.Schema
 	channels map[uint16]*fmcap.Channel
 
-	schemaStats map[uint16]*nodestore.Statistics
-	parsers     map[uint16]ros1msg.Parser
-	values      map[uint16][]any
+	schemaStats  map[uint16]*nodestore.Statistics
+	schemaHashes map[uint16]string
+	parsers      map[uint16]ros1msg.Parser
+	values       map[uint16][]any
 
 	initialized bool
 
@@ -73,11 +74,12 @@ func newWriter(ctx context.Context, tmgr *TreeManager, producerID string, topic 
 		w:           nil,
 		dims:        dims,
 
-		producerID:  producerID,
-		topic:       topic,
-		schemaStats: map[uint16]*nodestore.Statistics{},
-		parsers:     map[uint16]ros1msg.Parser{},
-		values:      map[uint16][]any{},
+		producerID:   producerID,
+		topic:        topic,
+		schemaStats:  map[uint16]*nodestore.Statistics{},
+		schemaHashes: map[uint16]string{},
+		parsers:      map[uint16]ros1msg.Parser{},
+		values:       map[uint16][]any{},
 	}, nil
 }
 
@@ -143,6 +145,7 @@ func (w *writer) initialize(ts uint64) (err error) {
 		w.parsers[schema.ID] = parser
 		fields := ros1msg.AnalyzeSchema(*msgdef)
 		w.schemaStats[schema.ID] = nodestore.NewStatistics(fields)
+		w.schemaHashes[schema.ID] = util.CryptoHash(schema.Data)
 	}
 	for _, channel := range w.channels {
 		if err := w.w.WriteChannel(channel); err != nil {
@@ -157,13 +160,15 @@ func (w *writer) flush(ctx context.Context) error {
 	if err := w.w.Close(); err != nil {
 		return fmt.Errorf("failed to close mcap writer: %w", err)
 	}
-
-	// todo: this is wrong and assumes one schema per tree, which has not been
-	// totally nailed down yet. If we go that route then schemaStats won't need
-	// to be a map.
-	stats := maps.Values(w.schemaStats)[0]
-
-	if err := w.tmgr.insert(ctx, w.producerID, w.topic, w.lower*1e9, w.buf.Bytes(), stats); err != nil {
+	statistics := make(map[string]*nodestore.Statistics)
+	for schemaID, stats := range w.schemaStats {
+		schemaHash, ok := w.schemaHashes[schemaID]
+		if !ok {
+			return fmt.Errorf("missing schema hash for schema ID: %d", schemaID)
+		}
+		statistics[schemaHash] = stats
+	}
+	if err := w.tmgr.insert(ctx, w.producerID, w.topic, w.lower*1e9, w.buf.Bytes(), statistics); err != nil {
 		return fmt.Errorf("failed to insert %d bytes data for stream %s/%s at time %d: %w",
 			w.buf.Len(), w.producerID, w.topic, w.lower, err)
 	}

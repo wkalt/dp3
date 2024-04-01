@@ -38,7 +38,7 @@ func Insert(
 	version uint64,
 	timestamp uint64,
 	data []byte,
-	statistics *nodestore.Statistics,
+	statistics map[string]*nodestore.Statistics,
 ) error {
 	oldRootID := tw.Root()
 	oldRootNode, err := tw.Get(ctx, oldRootID)
@@ -125,7 +125,9 @@ func GetStatRange(
 				childEnd := 1e9 * (node.Start + width*uint64(i+1))
 				inRange := child != nil && start <= childEnd && end > childStart
 				if inRange && granularEnough {
-					ranges = append(ranges, child.Statistics.Ranges(childStart, childEnd)...)
+					for schemaHash, statistics := range child.Statistics {
+						ranges = append(ranges, statistics.Ranges(childStart, childEnd, schemaHash)...)
+					}
 					continue
 				}
 				if inRange {
@@ -188,17 +190,16 @@ func mergeInnerNodes( // nolint: funlen // needs refactor
 	for _, conflict := range conflicts {
 		conflictedNodes := make([]nodestore.NodeID, 0, len(trees))
 		conflictedTrees := make([]TreeReader, 0, len(trees))
-		stats := &nodestore.Statistics{}
+		statistics := map[string]*nodestore.Statistics{}
 		maxVersion := uint64(0)
 		var destChild *nodestore.NodeID
-
 		if destInnerNode != nil && destInnerNode.Children[conflict] != nil {
-			destChild = &destInnerNode.Children[conflict].ID
-			if err := stats.Add(destInnerNode.Children[conflict].Statistics); err != nil {
-				return nil, fmt.Errorf("failed to add statistics: %w", err)
+			child := destInnerNode.Children[conflict]
+			for schemaHash, stats := range child.Statistics {
+				statistics[schemaHash] = stats.Clone()
 			}
+			destChild = &child.ID
 		}
-
 		for i, node := range nodes {
 			child := node.Children[conflict]
 			if child == nil {
@@ -209,8 +210,14 @@ func mergeInnerNodes( // nolint: funlen // needs refactor
 			}
 			conflictedNodes = append(conflictedNodes, child.ID)
 			conflictedTrees = append(conflictedTrees, trees[i])
-			if err := stats.Add(child.Statistics); err != nil {
-				return nil, fmt.Errorf("failed to add statistics: %w", err)
+			for schemaHash, stats := range child.Statistics {
+				if existing, ok := statistics[schemaHash]; ok {
+					if err := existing.Add(stats); err != nil {
+						return nil, fmt.Errorf("failed to add statistics: %w", err)
+					}
+				} else {
+					statistics[schemaHash] = stats.Clone()
+				}
 			}
 		}
 		merged, err := mergeLevel(ctx, pt, dest, destChild, conflictedNodes, conflictedTrees)
@@ -220,7 +227,7 @@ func mergeInnerNodes( // nolint: funlen // needs refactor
 		newInner.Children[conflict] = &nodestore.Child{
 			ID:         merged,
 			Version:    maxVersion,
-			Statistics: stats,
+			Statistics: statistics,
 		}
 	}
 	return newInner, nil

@@ -60,13 +60,14 @@ var statrangeCmd = &cobra.Command{
 			bailf("error decoding response: %s", err)
 		}
 
-		headers := []string{"Start", "End", "Type", "Field", "Name", "Value"}
+		headers := []string{"Start", "End", "Schema", "Type", "Field", "Name", "Value"}
 		data := [][]string{}
 		for _, record := range response {
 			start := time.Unix(0, int64(record.Start)).Format(time.RFC3339)
 			end := time.Unix(0, int64(record.End)).Format(time.RFC3339)
+			schema := record.SchemaHash[:7]
 			data = append(data, []string{
-				start, end, string(record.Type), record.Field, record.Name, fmt.Sprintf("%v", record.Value)},
+				start, end, schema, string(record.Type), record.Field, record.Name, fmt.Sprintf("%v", record.Value)},
 			)
 		}
 
