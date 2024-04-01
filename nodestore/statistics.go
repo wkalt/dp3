@@ -206,6 +206,14 @@ func (s *Statistics) Ranges(start, end uint64, schemaHash string) []StatRange {
 }
 
 func (s *Statistics) observeNumeric(idx int, v float64) {
+	// if we get a NaN or an inf, skip it but still create a summary.
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		if _, ok := s.NumStats[idx]; !ok {
+			s.NumStats[idx] = &NumericalSummary{}
+		}
+		return
+	}
+
 	summary, ok := s.NumStats[idx]
 	if !ok {
 		summary = &NumericalSummary{Min: v, Max: v, Mean: v, Sum: v}
