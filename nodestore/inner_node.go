@@ -37,9 +37,9 @@ type InnerNode struct {
 
 // Child represents a child of an inner node.
 type Child struct {
-	ID         NodeID      `json:"id"`
-	Version    uint64      `json:"version"`
-	Statistics *Statistics `json:"statistics"`
+	ID         NodeID                 `json:"id"`
+	Version    uint64                 `json:"version"`
+	Statistics map[string]*Statistics `json:"statistics"`
 }
 
 // Size returns the size of the node in bytes.
@@ -71,7 +71,7 @@ func (n *InnerNode) FromBytes(data []byte) error {
 }
 
 // PlaceChild sets the child at the given index to the given ID and version.
-func (n *InnerNode) PlaceChild(index uint64, id NodeID, version uint64, statistics *Statistics) {
+func (n *InnerNode) PlaceChild(index uint64, id NodeID, version uint64, statistics map[string]*Statistics) {
 	n.Children[index] = &Child{
 		ID:         id,
 		Version:    version,

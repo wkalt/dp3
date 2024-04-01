@@ -53,19 +53,36 @@ func Print(ctx context.Context, readers ...TreeReader) (string, error) {
 	return printInnerNode(ctx, false, readers, node.(*nodestore.InnerNode), 0, nil)
 }
 
+func printStats(stats map[string]*nodestore.Statistics) string {
+	sb := &strings.Builder{}
+	sb.WriteString("(")
+	first := true
+	for _, schemaHash := range util.Okeys(stats) {
+		if !first {
+			sb.WriteString(" ")
+		}
+		statistics := stats[schemaHash]
+		prefix := schemaHash[:2]
+		sb.WriteString(fmt.Sprintf("%s %s", prefix, statistics))
+		first = false
+	}
+	sb.WriteString(")")
+	return sb.String()
+}
+
 func printInnerNode(
 	ctx context.Context,
 	remote bool,
 	readers []TreeReader,
 	node *nodestore.InnerNode,
 	version uint64,
-	stats *nodestore.Statistics,
+	stats map[string]*nodestore.Statistics,
 ) (string, error) {
 	sb := &strings.Builder{}
 	remotestr := util.When(remote, "<link> ", "")
 	sb.WriteString(fmt.Sprintf("[%s%d-%d", remotestr, node.Start, node.End))
 	if version > 0 {
-		sb.WriteString(fmt.Sprintf(":%d %s", version, stats))
+		sb.WriteString(fmt.Sprintf(":%d %s", version, printStats(stats)))
 	}
 	for i, child := range node.Children {
 		if child == nil {
@@ -103,7 +120,7 @@ func printInnerNode(
 				node.Start+uint64(i)*width,
 				node.Start+uint64(i+1)*width,
 				child.Version,
-				child.Statistics,
+				printStats(child.Statistics),
 				body,
 			))
 		}

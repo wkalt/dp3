@@ -32,6 +32,46 @@ func ReadFile(t *testing.T, r io.Reader) []uint64 {
 	return timestamps
 }
 
+func WriteFileExtended(t *testing.T, w io.Writer, fieldCount int, timestampsets ...[]int64) {
+	t.Helper()
+	writer, err := NewWriter(w)
+	require.NoError(t, err)
+	require.NoError(t, writer.WriteHeader(&mcap.Header{}))
+
+	schema := ""
+	for i := range fieldCount {
+		schema += fmt.Sprintf("string data%d\n", i)
+	}
+	require.NoError(t, writer.WriteSchema(&mcap.Schema{
+		ID:       1,
+		Name:     "test",
+		Encoding: "ros1msg",
+		Data:     []byte(schema),
+	}))
+	for i := range timestampsets {
+		require.NoError(t, writer.WriteChannel(&mcap.Channel{
+			ID:       uint16(i),
+			SchemaID: 1,
+			Topic:    fmt.Sprintf("topic-%d", i),
+		}))
+	}
+	for chanID, timestamps := range timestampsets {
+		for _, ts := range timestamps {
+			data := []byte{}
+			for i := 0; i < fieldCount; i++ {
+				data = append(data, testutils.U32b(5)...)
+				data = append(data, []byte("hello")...)
+			}
+			require.NoError(t, writer.WriteMessage(&mcap.Message{
+				ChannelID: uint16(chanID),
+				LogTime:   uint64(ts),
+				Data:      data,
+			}))
+		}
+	}
+	require.NoError(t, writer.Close())
+}
+
 func WriteFile(t *testing.T, w io.Writer, timestampsets ...[]int64) {
 	t.Helper()
 	writer, err := NewWriter(w)

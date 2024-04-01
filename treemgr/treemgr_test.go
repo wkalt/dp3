@@ -21,8 +21,10 @@ import (
 	"github.com/wkalt/dp3/versionstore"
 )
 
+// nolint:dupl
 func TestGetStatisticsLatest(t *testing.T) {
 	ctx := context.Background()
+	testhash := "1ba234e59378bc656d587c45c4191bfc24c2c657e871f148faa552350738c470"
 	cases := []struct {
 		assertion   string
 		input       [][]int64
@@ -39,19 +41,20 @@ func TestGetStatisticsLatest(t *testing.T) {
 			[]uint64{0, 1001},
 			map[string][]nodestore.StatRange{
 				"topic-0": {
-					nodestore.NewStatRange(0, 60e9, nodestore.Text, "data", "min", "hello"),
-					nodestore.NewStatRange(0, 60e9, nodestore.Text, "data", "max", "hello"),
-					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "mean", float64(2024)),
-					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "min", float64(2024)),
-					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "max", float64(2024)),
-					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "sum", float64(6072)),
-					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "messageCount", int64(3)),
-					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "byteCount", int64(33)),
-					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "minObservedTime", int64(10)),
-					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "maxObservedTime", int64(1000)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Text, "data", "min", "hello"),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Text, "data", "max", "hello"),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Float, "count", "mean", float64(2024)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Float, "count", "min", float64(2024)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Float, "count", "max", float64(2024)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Float, "count", "sum", float64(6072)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Int, "", "messageCount", int64(3)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Int, "", "byteCount", int64(33)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Int, "", "minObservedTime", int64(10)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Int, "", "maxObservedTime", int64(1000)),
 				},
 			},
 		},
+
 		{
 			"multiple buckets",
 			[][]int64{{10, 100, 1000, 90e9}},
@@ -60,27 +63,27 @@ func TestGetStatisticsLatest(t *testing.T) {
 			[]uint64{0, 100e9},
 			map[string][]nodestore.StatRange{
 				"topic-0": {
-					nodestore.NewStatRange(0, 60e9, nodestore.Text, "data", "min", "hello"),
-					nodestore.NewStatRange(0, 60e9, nodestore.Text, "data", "max", "hello"),
-					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "mean", float64(2024)),
-					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "min", float64(2024)),
-					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "max", float64(2024)),
-					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "sum", float64(6072)),
-					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "messageCount", int64(3)),
-					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "byteCount", int64(33)),
-					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "minObservedTime", int64(10)),
-					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "maxObservedTime", int64(1000)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Text, "data", "min", "hello"),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Text, "data", "max", "hello"),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Float, "count", "mean", float64(2024)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Float, "count", "min", float64(2024)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Float, "count", "max", float64(2024)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Float, "count", "sum", float64(6072)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Int, "", "messageCount", int64(3)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Int, "", "byteCount", int64(33)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Int, "", "minObservedTime", int64(10)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Int, "", "maxObservedTime", int64(1000)),
 
-					nodestore.NewStatRange(60e9, 120e9, nodestore.Text, "data", "min", "hello"),
-					nodestore.NewStatRange(60e9, 120e9, nodestore.Text, "data", "max", "hello"),
-					nodestore.NewStatRange(60e9, 120e9, nodestore.Float, "count", "mean", float64(2024)),
-					nodestore.NewStatRange(60e9, 120e9, nodestore.Float, "count", "min", float64(2024)),
-					nodestore.NewStatRange(60e9, 120e9, nodestore.Float, "count", "max", float64(2024)),
-					nodestore.NewStatRange(60e9, 120e9, nodestore.Float, "count", "sum", float64(2024)),
-					nodestore.NewStatRange(60e9, 120e9, nodestore.Int, "", "messageCount", int64(1)),
-					nodestore.NewStatRange(60e9, 120e9, nodestore.Int, "", "byteCount", int64(11)),
-					nodestore.NewStatRange(60e9, 120e9, nodestore.Int, "", "minObservedTime", int64(90e9)),
-					nodestore.NewStatRange(60e9, 120e9, nodestore.Int, "", "maxObservedTime", int64(90e9)),
+					nodestore.NewStatRange(testhash, 60e9, 120e9, nodestore.Text, "data", "min", "hello"),
+					nodestore.NewStatRange(testhash, 60e9, 120e9, nodestore.Text, "data", "max", "hello"),
+					nodestore.NewStatRange(testhash, 60e9, 120e9, nodestore.Float, "count", "mean", float64(2024)),
+					nodestore.NewStatRange(testhash, 60e9, 120e9, nodestore.Float, "count", "min", float64(2024)),
+					nodestore.NewStatRange(testhash, 60e9, 120e9, nodestore.Float, "count", "max", float64(2024)),
+					nodestore.NewStatRange(testhash, 60e9, 120e9, nodestore.Float, "count", "sum", float64(2024)),
+					nodestore.NewStatRange(testhash, 60e9, 120e9, nodestore.Int, "", "messageCount", int64(1)),
+					nodestore.NewStatRange(testhash, 60e9, 120e9, nodestore.Int, "", "byteCount", int64(11)),
+					nodestore.NewStatRange(testhash, 60e9, 120e9, nodestore.Int, "", "minObservedTime", int64(90e9)),
+					nodestore.NewStatRange(testhash, 60e9, 120e9, nodestore.Int, "", "maxObservedTime", int64(90e9)),
 				},
 			},
 		},
@@ -92,16 +95,16 @@ func TestGetStatisticsLatest(t *testing.T) {
 			[]uint64{0, 100e9},
 			map[string][]nodestore.StatRange{
 				"topic-0": {
-					nodestore.NewStatRange(0, 3840e9, nodestore.Text, "data", "min", "hello"),
-					nodestore.NewStatRange(0, 3840e9, nodestore.Text, "data", "max", "hello"),
-					nodestore.NewStatRange(0, 3840e9, nodestore.Float, "count", "mean", float64(2024)),
-					nodestore.NewStatRange(0, 3840e9, nodestore.Float, "count", "min", float64(2024)),
-					nodestore.NewStatRange(0, 3840e9, nodestore.Float, "count", "max", float64(2024)),
-					nodestore.NewStatRange(0, 3840e9, nodestore.Float, "count", "sum", float64(8096)),
-					nodestore.NewStatRange(0, 3840e9, nodestore.Int, "", "messageCount", int64(4)),
-					nodestore.NewStatRange(0, 3840e9, nodestore.Int, "", "byteCount", int64(44)),
-					nodestore.NewStatRange(0, 3840e9, nodestore.Int, "", "minObservedTime", int64(10)),
-					nodestore.NewStatRange(0, 3840e9, nodestore.Int, "", "maxObservedTime", int64(90e9)),
+					nodestore.NewStatRange(testhash, 0, 3840e9, nodestore.Text, "data", "min", "hello"),
+					nodestore.NewStatRange(testhash, 0, 3840e9, nodestore.Text, "data", "max", "hello"),
+					nodestore.NewStatRange(testhash, 0, 3840e9, nodestore.Float, "count", "mean", float64(2024)),
+					nodestore.NewStatRange(testhash, 0, 3840e9, nodestore.Float, "count", "min", float64(2024)),
+					nodestore.NewStatRange(testhash, 0, 3840e9, nodestore.Float, "count", "max", float64(2024)),
+					nodestore.NewStatRange(testhash, 0, 3840e9, nodestore.Float, "count", "sum", float64(8096)),
+					nodestore.NewStatRange(testhash, 0, 3840e9, nodestore.Int, "", "messageCount", int64(4)),
+					nodestore.NewStatRange(testhash, 0, 3840e9, nodestore.Int, "", "byteCount", int64(44)),
+					nodestore.NewStatRange(testhash, 0, 3840e9, nodestore.Int, "", "minObservedTime", int64(10)),
+					nodestore.NewStatRange(testhash, 0, 3840e9, nodestore.Int, "", "maxObservedTime", int64(90e9)),
 				},
 			},
 		},
@@ -113,16 +116,16 @@ func TestGetStatisticsLatest(t *testing.T) {
 			[]uint64{100, 60e9},
 			map[string][]nodestore.StatRange{
 				"topic-0": {
-					nodestore.NewStatRange(0, 60e9, nodestore.Text, "data", "min", "hello"),
-					nodestore.NewStatRange(0, 60e9, nodestore.Text, "data", "max", "hello"),
-					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "mean", float64(2024)),
-					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "min", float64(2024)),
-					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "max", float64(2024)),
-					nodestore.NewStatRange(0, 60e9, nodestore.Float, "count", "sum", float64(6072)),
-					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "messageCount", int64(3)),
-					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "byteCount", int64(33)),
-					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "minObservedTime", int64(10)),
-					nodestore.NewStatRange(0, 60e9, nodestore.Int, "", "maxObservedTime", int64(1000)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Text, "data", "min", "hello"),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Text, "data", "max", "hello"),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Float, "count", "mean", float64(2024)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Float, "count", "min", float64(2024)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Float, "count", "max", float64(2024)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Float, "count", "sum", float64(6072)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Int, "", "messageCount", int64(3)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Int, "", "byteCount", int64(33)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Int, "", "minObservedTime", int64(10)),
+					nodestore.NewStatRange(testhash, 0, 60e9, nodestore.Int, "", "maxObservedTime", int64(1000)),
 				},
 			},
 		},
@@ -311,6 +314,33 @@ func TestStreamingAcrossMultipleReceives(t *testing.T) {
 	}
 }
 
+func TestReceiveDifferentSchemas(t *testing.T) {
+	ctx := context.Background()
+	t.Run("field added", func(t *testing.T) {
+		tmgr, finish := testTreeManager(ctx, t)
+		defer finish()
+
+		buf := &bytes.Buffer{}
+
+		mcap.WriteFileExtended(t, buf, 1, []int64{10e9})
+		require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
+		require.NoError(t, tmgr.ForceFlush(ctx))
+
+		buf.Reset()
+
+		mcap.WriteFileExtended(t, buf, 2, []int64{100e9})
+		require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
+		require.NoError(t, tmgr.ForceFlush(ctx))
+
+		expected := `[0-64424509440 [0-1006632960:5 (12 count=1 13 count=1)
+		[0-15728640:5 (12 count=1 13 count=1) [0-245760:5 (12 count=1 13 count=1) [0-3840:5 (12 count=1 13 count=1)
+		[0-60:3 (13 count=1) [leaf 1 msg]] [60-120:5 (12 count=1) [leaf 1 msg]]]]]]]`
+
+		str := tmgr.PrintStream(ctx, "my-device", "topic-0")
+		assertEqualTrees(t, expected, str)
+	})
+}
+
 func TestReceive(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
@@ -322,27 +352,27 @@ func TestReceive(t *testing.T) {
 			"single-topic file, single message",
 			[][]int64{{10e9}},
 			[]string{
-				`[0-64424509440 [0-1006632960:3 (count=1) [0-15728640:3 (count=1)
-				[0-245760:3 (count=1) [0-3840:3 (count=1) [0-60:3 (count=1) [leaf 1 msg]]]]]]]`,
+				`[0-64424509440 [0-1006632960:3 (1b count=1) [0-15728640:3 (1b count=1)
+				[0-245760:3 (1b count=1) [0-3840:3 (1b count=1) [0-60:3 (1b count=1) [leaf 1 msg]]]]]]]`,
 			},
 		},
 		{
 			"two topics, single messages, nonoverlapping",
 			[][]int64{{10e9}, {100e9}},
 			[]string{
-				`[0-64424509440 [0-1006632960:4 (count=1) [0-15728640:4 (count=1)
-				[0-245760:4 (count=1) [0-3840:4 (count=1) [0-60:4 (count=1) [leaf 1 msg]]]]]]]`,
-				`[0-64424509440 [0-1006632960:5 (count=1) [0-15728640:5 (count=1)
-				[0-245760:5 (count=1) [0-3840:5 (count=1) [60-120:5 (count=1) [leaf 1 msg]]]]]]]`,
+				`[0-64424509440 [0-1006632960:4 (1b count=1) [0-15728640:4 (1b count=1)
+				[0-245760:4 (1b count=1) [0-3840:4 (1b count=1) [0-60:4 (1b count=1) [leaf 1 msg]]]]]]]`,
+				`[0-64424509440 [0-1006632960:5 (1b count=1) [0-15728640:5 (1b count=1)
+				[0-245760:5 (1b count=1) [0-3840:5 (1b count=1) [60-120:5 (1b count=1) [leaf 1 msg]]]]]]]`,
 			},
 		},
 		{
 			"single-topic file, spanning leaf boundaries",
 			[][]int64{{10e9, 100e9}},
 			[]string{
-				`[0-64424509440 [0-1006632960:4 (count=2) [0-15728640:4 (count=2)
-				[0-245760:4 (count=2) [0-3840:4 (count=2) [0-60:3 (count=1) [leaf 1 msg]]
-				[60-120:4 (count=1) [leaf 1 msg]]]]]]]`,
+				`[0-64424509440 [0-1006632960:4 (1b count=2) [0-15728640:4 (1b count=2)
+				[0-245760:4 (1b count=2) [0-3840:4 (1b count=2) [0-60:3 (1b count=1) [leaf 1 msg]]
+				[60-120:4 (1b count=1) [leaf 1 msg]]]]]]]`,
 			},
 		},
 	}

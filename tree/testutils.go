@@ -3,14 +3,27 @@ package tree
 import (
 	"bytes"
 	"context"
+	"io"
 	"math"
 	"testing"
 
+	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/stretchr/testify/require"
 	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/util"
+	"golang.org/x/exp/maps"
 )
+
+func GetSchema(t *testing.T, r io.ReadSeeker) *fmcap.Schema {
+	t.Helper()
+	reader, err := mcap.NewReader(r)
+	require.NoError(t, err)
+	info, err := reader.Info()
+	require.NoError(t, err)
+	require.Len(t, info.Schemas, 1)
+	return maps.Values(info.Schemas)[0]
+}
 
 // MergeInserts executes a list of inserts and then merges the resulting partial
 // trees into a single tree. Times are expected in seconds.
@@ -32,14 +45,17 @@ func MergeInserts(
 		tmp := NewMemTree(id, root)
 		buf := &bytes.Buffer{}
 		mcap.WriteFile(t, buf, batch)
-		require.NoError(t, Insert(
-			ctx, tmp, version, uint64(batch[0]*1e9), buf.Bytes(), &nodestore.Statistics{
+		schema := GetSchema(t, bytes.NewReader(buf.Bytes()))
+		hash := util.CryptoHash(schema.Data)
+		stats := map[string]*nodestore.Statistics{
+			hash: {
 				MessageCount:    int64(len(batch)),
-				ByteCount:       0,
 				MaxObservedTime: util.Reduce(util.Max, 0, batch),
 				MinObservedTime: util.Reduce(util.Min, math.MaxInt64, batch),
 			},
-		))
+		}
+
+		require.NoError(t, Insert(ctx, tmp, version, uint64(batch[0]*1e9), buf.Bytes(), stats))
 		version++
 		trees[i] = tmp
 	}
