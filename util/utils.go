@@ -78,21 +78,35 @@ func HumanBytes(n uint64) string {
 	return strconv.FormatUint(n, 10) + " " + suffix[i]
 }
 
-// HumanFrequency returns a human-readable representation of a frequency
-// supplied in Hz.
-func HumanFrequency(n float64) string {
-	suffix := []string{"Hz", "kHz", "MHz", "GHz", "THz", "PHz", "EHz"}
-	i := 0
-	for n >= 1000 && i < len(suffix)-1 {
-		n /= 1000
-		i++
-	}
-	return strconv.FormatFloat(n, 'f', -1, 64) + " " + suffix[i]
-}
-
 // When returns a if cond is true, otherwise b.
 func When[T any](cond bool, a, b T) T {
 	if cond {
+		return a
+	}
+	return b
+}
+
+// Reduce applies a function to each element of a slice, accumulating the
+// results.
+func Reduce[T any, U any](f func(U, T) U, init U, xs []T) U {
+	acc := init
+	for _, x := range xs {
+		acc = f(acc, x)
+	}
+	return acc
+}
+
+// Max returns the maximum of a and b.
+func Max[T cmp.Ordered](a, b T) T {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// Min returns the minimum of a and b.
+func Min[T cmp.Ordered](a, b T) T {
+	if a < b {
 		return a
 	}
 	return b

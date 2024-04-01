@@ -70,3 +70,66 @@ func TestHumanBytes(t *testing.T) {
 		assert.Equal(t, c.expected, util.HumanBytes(c.input), c.assertion)
 	}
 }
+
+func TestWhen(t *testing.T) {
+	cases := []struct {
+		assertion string
+		cond      bool
+		a         int
+		b         int
+		expected  int
+	}{
+		{"true", true, 1, 2, 1},
+		{"false", false, 1, 2, 2},
+	}
+	for _, c := range cases {
+		assert.Equal(t, c.expected, util.When(c.cond, c.a, c.b), c.assertion)
+	}
+}
+
+func TestReduce(t *testing.T) {
+	cases := []struct {
+		assertion string
+		input     []int
+		expected  int
+	}{
+		{"empty", []int{}, 0},
+		{"single", []int{1}, 1},
+		{"multiple", []int{1, 2, 3, 4, 5}, 15},
+	}
+	for _, c := range cases {
+		assert.Equal(t, c.expected, util.Reduce(func(a, b int) int { return a + b }, 0, c.input), c.assertion)
+	}
+}
+
+func TestMax(t *testing.T) {
+	cases := []struct {
+		assertion string
+		a         int
+		b         int
+		expected  int
+	}{
+		{"a > b", 2, 1, 2},
+		{"a < b", 1, 2, 2},
+		{"a = b", 1, 1, 1},
+	}
+	for _, c := range cases {
+		assert.Equal(t, c.expected, util.Max(c.a, c.b), c.assertion)
+	}
+}
+
+func TestMin(t *testing.T) {
+	cases := []struct {
+		assertion string
+		a         int
+		b         int
+		expected  int
+	}{
+		{"a > b", 2, 1, 1},
+		{"a < b", 1, 2, 1},
+		{"a = b", 1, 1, 1},
+	}
+	for _, c := range cases {
+		assert.Equal(t, c.expected, util.Min(c.a, c.b), c.assertion)
+	}
+}

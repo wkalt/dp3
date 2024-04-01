@@ -20,8 +20,8 @@ func TestMerge(t *testing.T) {
 	buf1 := &bytes.Buffer{}
 	buf2 := &bytes.Buffer{}
 
-	mcap.WriteFile(t, buf1, []uint64{0, 1, 20, 30})
-	mcap.WriteFile(t, buf2, []uint64{10, 11, 22, 35})
+	mcap.WriteFile(t, buf1, []int64{0, 1, 20, 30})
+	mcap.WriteFile(t, buf2, []int64{10, 11, 22, 35})
 
 	require.NoError(t, os.WriteFile("a.mcap", buf1.Bytes(), 0600))
 
@@ -218,37 +218,37 @@ func TestIdenticalSchemas(t *testing.T) {
 func TestNMerge(t *testing.T) {
 	cases := []struct {
 		assertion string
-		input     [][]uint64
+		input     [][]int64
 		messages  []int
 	}{
 		{
 			"single-topic file, single message",
-			[][]uint64{{10}},
+			[][]int64{{10}},
 			[]int{10},
 		},
 		{
 			"single-topic file, multiple messages",
-			[][]uint64{{10, 20, 30}},
+			[][]int64{{10, 20, 30}},
 			[]int{10, 20, 30},
 		},
 		{
 			"multiple files, single message",
-			[][]uint64{{10}, {20}, {30}},
+			[][]int64{{10}, {20}, {30}},
 			[]int{10, 20, 30},
 		},
 		{
 			"multiple files, multiple messages",
-			[][]uint64{{10, 20, 30}, {40, 50, 60}, {70, 80, 90}},
+			[][]int64{{10, 20, 30}, {40, 50, 60}, {70, 80, 90}},
 			[]int{10, 20, 30, 40, 50, 60, 70, 80, 90},
 		},
 		{
 			"multiple files, overlapping",
-			[][]uint64{{10, 20, 30}, {21, 31, 41}, {32, 42, 52}},
+			[][]int64{{10, 20, 30}, {21, 31, 41}, {32, 42, 52}},
 			[]int{10, 20, 21, 30, 31, 32, 41, 42, 52},
 		},
 		{
 			"multiple files, including empty file",
-			[][]uint64{{10, 20, 30}, {}, {40, 50, 60}},
+			[][]int64{{10, 20, 30}, {}, {40, 50, 60}},
 			[]int{10, 20, 30, 40, 50, 60},
 		},
 	}

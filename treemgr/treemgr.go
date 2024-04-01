@@ -195,7 +195,7 @@ func (tm *TreeManager) GetStatistics(
 	topic string,
 	version uint64,
 	granularity uint64,
-) ([]tree.StatRange, error) {
+) ([]nodestore.StatRange, error) {
 	rootID, err := tm.rootmap.Get(ctx, producerID, topic, version)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest root: %w", err)
@@ -241,7 +241,7 @@ func (tm *TreeManager) GetStatisticsLatest(
 	producerID string,
 	topic string,
 	granularity uint64,
-) ([]tree.StatRange, error) {
+) ([]nodestore.StatRange, error) {
 	rootID, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest root: %w", err)

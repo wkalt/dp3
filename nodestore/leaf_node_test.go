@@ -13,7 +13,7 @@ import (
 
 func TestLeafNode(t *testing.T) {
 	buf := &bytes.Buffer{}
-	mcap.WriteFile(t, buf, []uint64{1, 2, 3})
+	mcap.WriteFile(t, buf, []int64{1, 2, 3})
 	t.Run("serialization", func(t *testing.T) {
 		node := nodestore.NewLeafNode(buf.Bytes())
 		expected := append([]byte{1 + 128}, buf.Bytes()...)
@@ -34,20 +34,20 @@ func TestLeafNode(t *testing.T) {
 	})
 	t.Run("merging leaf nodes", func(t *testing.T) {
 		buf1 := &bytes.Buffer{}
-		mcap.WriteFile(t, buf1, []uint64{1, 2, 10})
+		mcap.WriteFile(t, buf1, []int64{1, 2, 10})
 		node1 := nodestore.NewLeafNode(buf1.Bytes())
 		buf2 := &bytes.Buffer{}
-		mcap.WriteFile(t, buf2, []uint64{4, 5, 6})
+		mcap.WriteFile(t, buf2, []int64{4, 5, 6})
 		node2, err := node1.Merge(buf2.Bytes())
 		require.NoError(t, err)
 		assert.Equal(t, []uint64{1, 2, 4, 5, 6, 10}, mcap.ReadFile(t, node2.Data()))
 	})
 	t.Run("merging garbage", func(t *testing.T) {
 		buf1 := &bytes.Buffer{}
-		mcap.WriteFile(t, buf1, []uint64{1, 2, 10})
+		mcap.WriteFile(t, buf1, []int64{1, 2, 10})
 		node1 := nodestore.NewLeafNode(buf1.Bytes())
 		buf2 := &bytes.Buffer{}
-		mcap.WriteFile(t, buf2, []uint64{4, 5, 6})
+		mcap.WriteFile(t, buf2, []int64{4, 5, 6})
 		_, err := node1.Merge([]byte{0, 1, 2, 3, 4})
 		require.Error(t, err)
 	})
@@ -59,7 +59,7 @@ func TestLeafNode(t *testing.T) {
 		node := nodestore.NewLeafNode([]byte{})
 		assert.Equal(t, "[leaf <unknown 0 bytes>]", node.String())
 		buf := &bytes.Buffer{}
-		mcap.WriteFile(t, buf, []uint64{1, 2, 3})
+		mcap.WriteFile(t, buf, []int64{1, 2, 3})
 		node = nodestore.NewLeafNode(buf.Bytes())
 		assert.Equal(t, "[leaf 3 msgs]", node.String())
 	})

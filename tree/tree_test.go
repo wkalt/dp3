@@ -146,37 +146,37 @@ func TestTreeInsert(t *testing.T) {
 	cases := []struct {
 		assertion string
 		height    uint8
-		times     [][]uint64
+		times     [][]int64
 		repr      string
 	}{
 		{
 			"empty tree",
 			1,
-			[][]uint64{},
+			[][]int64{},
 			"[0-4096]",
 		},
 		{
 			"single insert",
 			1,
-			[][]uint64{{10}},
+			[][]int64{{10}},
 			"[0-4096 [0-64:1 (count=1) [leaf 1 msg]]]",
 		},
 		{
 			"height 2",
 			2,
-			[][]uint64{{10}},
+			[][]int64{{10}},
 			"[0-262144 [0-4096:1 (count=1) [0-64:1 (count=1) [leaf 1 msg]]]]",
 		},
 		{
 			"two inserts into same bucket are merged",
 			1,
-			[][]uint64{{10}, {20}},
+			[][]int64{{10}, {20}},
 			"[0-4096 [0-64:2 (count=2) [leaf 2 msgs]]]",
 		},
 		{
 			"inserts into different buckets",
 			1,
-			[][]uint64{{10}, {100}, {256}, {1000}},
+			[][]int64{{10}, {100}, {256}, {1000}},
 			`[0-4096 [0-64:1 (count=1) [leaf 1 msg]] [64-128:2 (count=1) [leaf 1 msg]]
 			[256-320:3 (count=1) [leaf 1 msg]] [960-1024:4 (count=1) [leaf 1 msg]]]`,
 		},
@@ -207,61 +207,71 @@ func TestStatRange(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
 		assertion   string
-		messages    [][]uint64
+		messages    [][]int64
 		start       uint64
 		end         uint64
 		granularity uint64
-		expected    []tree.StatRange
+		expected    []nodestore.StatRange
 	}{
 		{
 			"empty tree",
-			[][]uint64{},
+			[][]int64{},
 			0,
 			100e9,
 			1e9,
-			[]tree.StatRange{},
+			[]nodestore.StatRange{},
 		},
 		{
 			"single insert",
-			[][]uint64{{100}},
+			[][]int64{{100}},
 			0,
 			100e9,
 			600e9,
-			[]tree.StatRange{
-				{
-					Start:      64e9,
-					End:        128e9,
-					Statistics: &nodestore.Statistics{MessageCount: 1},
-				},
+			[]nodestore.StatRange{
+				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "messageCount", int64(1)),
+				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "byteCount", int64(0)),
+				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "minObservedTime", int64(100)),
+				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "maxObservedTime", int64(100)),
 			},
 		},
 		{
 			"inserts spanning buckets",
-			[][]uint64{{100}, {4097}},
+			[][]int64{{100}, {4097}},
 			0,
 			5000e9,
 			600e9,
-			[]tree.StatRange{
-				{Start: 4096000000000, End: 4160000000000, Statistics: &nodestore.Statistics{MessageCount: 1}},
-				{Start: 64000000000, End: 128000000000, Statistics: &nodestore.Statistics{MessageCount: 1}},
+			[]nodestore.StatRange{
+				nodestore.NewStatRange(4096e9, 4160e9, nodestore.Int, "", "messageCount", int64(1)),
+				nodestore.NewStatRange(4096e9, 4160e9, nodestore.Int, "", "byteCount", int64(0)),
+				nodestore.NewStatRange(4096e9, 4160e9, nodestore.Int, "", "minObservedTime", int64(4097)),
+				nodestore.NewStatRange(4096e9, 4160e9, nodestore.Int, "", "maxObservedTime", int64(4097)),
+				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "messageCount", int64(1)),
+				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "byteCount", int64(0)),
+				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "minObservedTime", int64(100)),
+				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "maxObservedTime", int64(100)),
 			},
 		},
 		{
 			"inserts spanning disjoint buckets",
-			[][]uint64{{100}, {262143}},
+			[][]int64{{100}, {262143}},
 			0,
-			math.MaxUint64,
+			math.MaxInt64,
 			600e9,
-			[]tree.StatRange{
-				{Start: 262080000000000, End: 262144000000000, Statistics: &nodestore.Statistics{MessageCount: 1}},
-				{Start: 64000000000, End: 128000000000, Statistics: &nodestore.Statistics{MessageCount: 1}},
+			[]nodestore.StatRange{
+				nodestore.NewStatRange(262080e9, 262144e9, nodestore.Int, "", "messageCount", int64(1)),
+				nodestore.NewStatRange(262080e9, 262144e9, nodestore.Int, "", "byteCount", int64(0)),
+				nodestore.NewStatRange(262080e9, 262144e9, nodestore.Int, "", "minObservedTime", int64(262143)),
+				nodestore.NewStatRange(262080e9, 262144e9, nodestore.Int, "", "maxObservedTime", int64(262143)),
+				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "messageCount", int64(1)),
+				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "byteCount", int64(0)),
+				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "minObservedTime", int64(100)),
+				nodestore.NewStatRange(64e9, 128e9, nodestore.Int, "", "maxObservedTime", int64(100)),
 			},
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
 			tw := tree.MergeInserts(ctx, t, 0, 64*64*64, 2, 64, c.messages)
-
 			statrange, err := tree.GetStatRange(ctx, tw, c.start, c.end, c.granularity)
 			require.NoError(t, err)
 			require.Equal(t, c.expected, statrange)
@@ -274,43 +284,43 @@ func TestMerge(t *testing.T) {
 	cases := []struct {
 		assertion string
 		height    uint8
-		prep      [][]uint64
-		inputs    [][]uint64
+		prep      [][]int64
+		inputs    [][]int64
 		expected  string
 	}{
 		{
 			"merge into empty tree",
 			1,
-			[][]uint64{},
-			[][]uint64{{100}},
+			[][]int64{},
+			[][]int64{{100}},
 			"[0-4096 [64-128:1 (count=1) [leaf 1 msg]]]",
 		},
 		{
 			"merge into populated tree, nonoverlapping",
 			1,
-			[][]uint64{{33}},
-			[][]uint64{{100}},
+			[][]int64{{33}},
+			[][]int64{{100}},
 			"[0-4096 [<link> 0-64:1 (count=1) [leaf 1 msg]] [64-128:1 (count=1) [leaf 1 msg]]]",
 		},
 		{
 			"merge into populated tree, overlapping",
 			1,
-			[][]uint64{{33}, {120}},
-			[][]uint64{{100}},
+			[][]int64{{33}, {120}},
+			[][]int64{{100}},
 			"[0-4096 [<link> 0-64:1 (count=1) [leaf 1 msg]] [64-128:1 (count=2) [leaf 2 msgs]]]",
 		},
 		{
 			"merge into a populated tree, multiple overlapping",
 			1,
-			[][]uint64{{33}, {120}},
-			[][]uint64{{39}, {121}},
+			[][]int64{{33}, {120}},
+			[][]int64{{39}, {121}},
 			"[0-4096 [0-64:1 (count=2) [leaf 2 msgs]] [64-128:2 (count=2) [leaf 2 msgs]]]",
 		},
 		{
 			"depth 2",
 			2,
-			[][]uint64{{33}, {120}},
-			[][]uint64{{1000}},
+			[][]int64{{33}, {120}},
+			[][]int64{{1000}},
 			`[0-262144 [0-4096:1 (count=3) [<link> 0-64:1 (count=1) [leaf 1 msg]]
 			[<link> 64-128:2 (count=1) [leaf 1 msg]] [960-1024:1 (count=1) [leaf 1 msg]]]]`,
 		},
