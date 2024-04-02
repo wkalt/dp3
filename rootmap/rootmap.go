@@ -20,6 +20,7 @@ recover.
 
 type Rootmap interface {
 	GetLatest(ctx context.Context, producerID string, topic string) (nodestore.NodeID, uint64, error)
+	GetLatestByTopic(ctx context.Context, producerID string, topics []string) ([]nodestore.NodeID, uint64, error)
 	Get(ctx context.Context, producerID string, topic string, version uint64) (nodestore.NodeID, error)
 	Put(ctx context.Context, producerID string, topic string, version uint64, nodeID nodestore.NodeID) error
 }
