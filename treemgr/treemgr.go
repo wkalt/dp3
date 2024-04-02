@@ -20,6 +20,7 @@ import (
 	"github.com/wkalt/dp3/versionstore"
 	"github.com/wkalt/dp3/wal"
 	"golang.org/x/exp/maps"
+	"golang.org/x/sync/errgroup"
 )
 
 /*
@@ -216,17 +217,9 @@ func (tm *TreeManager) GetMessagesLatest(
 	producerID string,
 	topics []string,
 ) error {
-	roots := make([]nodestore.NodeID, 0, len(topics))
-	for _, topic := range topics {
-		root, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
-		if err != nil {
-			if !errors.Is(err, rootmap.StreamNotFoundError{}) {
-				return fmt.Errorf("failed to get latest root for %s:%s: %w", producerID, topic, err)
-			}
-			log.Debugf(ctx, "no root found for %s:%s - omitting from output", producerID, topic)
-			continue
-		}
-		roots = append(roots, root)
+	roots, _, err := tm.rootmap.GetLatestByTopic(ctx, producerID, topics)
+	if err != nil {
+		return fmt.Errorf("failed to get latest roots: %w", err)
 	}
 	if err := tm.getMessages(ctx, w, start, end, roots); err != nil {
 		return fmt.Errorf("failed to get messages for %s: %w", producerID, err)
@@ -447,20 +440,43 @@ func closeAll(ctx context.Context, closers ...*tree.Iterator) {
 	}
 }
 
+func (tm *TreeManager) loadIterators(
+	ctx context.Context,
+	roots []nodestore.NodeID,
+	start, end uint64,
+) ([]*tree.Iterator, error) {
+	ch := make(chan *tree.Iterator, len(roots))
+	g := errgroup.Group{}
+	iterators := make([]*tree.Iterator, 0, len(roots))
+	for _, root := range roots {
+		g.Go(func() error {
+			tr := tree.NewBYOTreeReader(root, tm.ns.Get)
+			it, err := tree.NewTreeIterator(ctx, tr, start, end)
+			if err != nil {
+				return fmt.Errorf("failed to create iterator for %s: %w", root, err)
+			}
+			ch <- it
+			return nil
+		})
+	}
+	if err := g.Wait(); err != nil {
+		return nil, fmt.Errorf("failed to get iterators: %w", err)
+	}
+	for range roots {
+		iterators = append(iterators, <-ch)
+	}
+	return iterators, nil
+}
+
 func (tm *TreeManager) getMessages(
 	ctx context.Context,
 	w io.Writer,
 	start, end uint64,
 	roots []nodestore.NodeID,
 ) error {
-	iterators := make([]*tree.Iterator, 0, len(roots))
-	for _, root := range roots {
-		tr := tree.NewBYOTreeReader(root, tm.ns.Get)
-		it, err := tree.NewTreeIterator(ctx, tr, start, end)
-		if err != nil {
-			return fmt.Errorf("failed to create iterator for %s: %w", root, err)
-		}
-		iterators = append(iterators, it)
+	iterators, err := tm.loadIterators(ctx, roots, start, end)
+	if err != nil {
+		return fmt.Errorf("failed to load iterators: %w", err)
 	}
 	defer closeAll(ctx, iterators...)
 

@@ -2,6 +2,7 @@ package rootmap
 
 import (
 	"context"
+	"slices"
 
 	"github.com/wkalt/dp3/nodestore"
 )
@@ -28,6 +29,39 @@ func NewMemRootmap() Rootmap {
 	return &memrootmap{
 		roots: []root{},
 	}
+}
+
+func (rm *memrootmap) GetLatestByTopic(
+	ctx context.Context,
+	producerID string,
+	topics []string,
+) ([]nodestore.NodeID, uint64, error) {
+	groups := make(map[string][]root)
+	for i := len(rm.roots) - 1; i >= 0; i-- {
+		root := rm.roots[i]
+		if root.producerID == producerID && slices.Contains(topics, root.topic) {
+			groups[root.topic] = append(groups[root.topic], root)
+		}
+	}
+	var maxVersion uint64
+	maxes := []root{}
+	for _, group := range groups {
+		max := group[0]
+		for _, item := range group {
+			if item.version > max.version {
+				max = item
+			}
+			if item.version > maxVersion {
+				maxVersion = item.version
+			}
+		}
+		maxes = append(maxes, max)
+	}
+	maxIDs := make([]nodestore.NodeID, len(maxes))
+	for i, max := range maxes {
+		maxIDs[i] = max.nodeID
+	}
+	return maxIDs, maxVersion, nil
 }
 
 func (rm *memrootmap) GetLatest(

@@ -64,6 +64,19 @@ func TestRootmaps(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, node2, nodeID)
 			})
+			t.Run("get latest by topic", func(t *testing.T) {
+				node1 := randNodeID()
+				err := rm.Put(ctx, "my-device", "topic1", 40, node1)
+				require.NoError(t, err)
+
+				node2 := randNodeID()
+				err = rm.Put(ctx, "my-device", "topic2", 50, node2)
+				require.NoError(t, err)
+
+				nodeIDs, _, err := rm.GetLatestByTopic(ctx, "my-device", []string{"topic1", "topic2"})
+				require.NoError(t, err)
+				require.ElementsMatch(t, []nodestore.NodeID{node1, node2}, nodeIDs)
+			})
 			t.Run("get version that does not exist", func(t *testing.T) {
 				_, err := rm.Get(ctx, "fake-device", "my-topic", 1e9)
 				require.ErrorIs(t, err, rootmap.StreamNotFoundError{})
@@ -77,7 +90,7 @@ func TestRootmaps(t *testing.T) {
 }
 
 func randNodeID() nodestore.NodeID {
-	buf := make([]byte, 16)
+	buf := make([]byte, 24)
 	_, _ = rand.Read(buf)
 	var id nodestore.NodeID
 	copy(id[:], buf)
