@@ -8,6 +8,7 @@ import (
 	"hash/maphash"
 	"io"
 	"sort"
+	"sync"
 	"time"
 
 	fmcap "github.com/foxglove/mcap/go/mcap"
@@ -442,19 +443,33 @@ func closeAll(ctx context.Context, closers ...*tree.Iterator) {
 
 func (tm *TreeManager) loadIterators(
 	ctx context.Context,
+	pq *util.PriorityQueue[record, uint64],
 	roots []nodestore.NodeID,
 	start, end uint64,
 ) ([]*tree.Iterator, error) {
 	ch := make(chan *tree.Iterator, len(roots))
 	g := errgroup.Group{}
 	iterators := make([]*tree.Iterator, 0, len(roots))
-	for _, root := range roots {
+	mtx := &sync.Mutex{}
+	for i, root := range roots {
 		g.Go(func() error {
 			tr := tree.NewBYOTreeReader(root, tm.ns.Get)
-			it, err := tree.NewTreeIterator(ctx, tr, start, end)
+			it := tree.NewTreeIterator(ctx, tr, start, end)
+			schema, channel, message, err := it.Next(ctx)
 			if err != nil {
-				return fmt.Errorf("failed to create iterator for %s: %w", root, err)
+				if errors.Is(err, io.EOF) {
+					ch <- nil
+					return nil
+				}
+				return fmt.Errorf("failed to get next message: %w", err)
 			}
+			item := util.Item[record, uint64]{
+				Value:    record{schema, channel, message, i},
+				Priority: message.LogTime,
+			}
+			mtx.Lock()
+			heap.Push(pq, &item)
+			mtx.Unlock()
 			ch <- it
 			return nil
 		})
@@ -463,7 +478,9 @@ func (tm *TreeManager) loadIterators(
 		return nil, fmt.Errorf("failed to get iterators: %w", err)
 	}
 	for range roots {
-		iterators = append(iterators, <-ch)
+		if it := <-ch; it != nil {
+			iterators = append(iterators, it)
+		}
 	}
 	return iterators, nil
 }
@@ -474,28 +491,18 @@ func (tm *TreeManager) getMessages(
 	start, end uint64,
 	roots []nodestore.NodeID,
 ) error {
-	iterators, err := tm.loadIterators(ctx, roots, start, end)
+	pq := util.NewPriorityQueue[record, uint64]()
+	heap.Init(pq)
+	// with one goroutine per root, construct a tree iterator and push the first
+	// message onto the heap. Loading the first message will do the initial
+	// traversal down to the first covered leaf and decompress the first chunk,
+	// i.e it'll do some initial io.
+	iterators, err := tm.loadIterators(ctx, pq, roots, start, end)
 	if err != nil {
 		return fmt.Errorf("failed to load iterators: %w", err)
 	}
 	defer closeAll(ctx, iterators...)
 
-	// pop one message from each iterator and push it onto the priority queue
-	pq := util.NewPriorityQueue[record, uint64]()
-	heap.Init(pq)
-	for i, it := range iterators {
-		if it.More() {
-			schema, channel, message, err := it.Next(ctx)
-			if err != nil {
-				return fmt.Errorf("failed to get next message: %w", err)
-			}
-			item := util.Item[record, uint64]{
-				Value:    record{schema, channel, message, i},
-				Priority: message.LogTime,
-			}
-			heap.Push(pq, &item)
-		}
-	}
 	writer, err := mcap.NewWriter(w)
 	if err != nil {
 		return fmt.Errorf("failed to create mcap writer: %w", err)
