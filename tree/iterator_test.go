@@ -40,8 +40,7 @@ func TestTreeIterator(t *testing.T) {
 		t.Run(c.assertion, func(t *testing.T) {
 			tr := tree.MergeInserts(ctx, t, 0, 128*1e9, 2, 64, c.times)
 
-			it, err := tree.NewTreeIterator(ctx, tr, 0, 128*1e9)
-			require.NoError(t, err)
+			it := tree.NewTreeIterator(ctx, tr, 0, 128*1e9)
 			var count int
 			for {
 				_, _, _, err := it.Next(ctx)
