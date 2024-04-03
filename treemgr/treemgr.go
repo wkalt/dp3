@@ -210,22 +210,28 @@ func (tm *TreeManager) GetStatistics(
 	return ranges, nil
 }
 
-// GetMessagesLatest returns a stream of messages for the given time range.
-func (tm *TreeManager) GetMessagesLatest(
+func (tm *TreeManager) GetMessages(
 	ctx context.Context,
 	w io.Writer,
 	start, end uint64,
-	producerID string,
-	topics []string,
+	roots []rootmap.RootListing,
 ) error {
-	roots, _, err := tm.rootmap.GetLatestByTopic(ctx, producerID, topics)
-	if err != nil {
-		return fmt.Errorf("failed to get latest roots: %w", err)
-	}
 	if err := tm.getMessages(ctx, w, start, end, roots); err != nil {
-		return fmt.Errorf("failed to get messages for %s: %w", producerID, err)
+		return fmt.Errorf("failed to get messages: %w", err)
 	}
 	return nil
+}
+
+func (tm *TreeManager) GetLatestRoots(
+	ctx context.Context,
+	producerID string,
+	topics map[string]uint64,
+) ([]rootmap.RootListing, error) {
+	listing, err := tm.rootmap.GetLatestByTopic(ctx, producerID, topics)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest roots: %w", err)
+	}
+	return listing, nil
 }
 
 // GetStatisticsLatest returns a summary of statistics for the given time range.
@@ -444,7 +450,7 @@ func closeAll(ctx context.Context, closers ...*tree.Iterator) {
 func (tm *TreeManager) loadIterators(
 	ctx context.Context,
 	pq *util.PriorityQueue[record, uint64],
-	roots []nodestore.NodeID,
+	roots []rootmap.RootListing,
 	start, end uint64,
 ) ([]*tree.Iterator, error) {
 	ch := make(chan *tree.Iterator, len(roots))
@@ -453,8 +459,8 @@ func (tm *TreeManager) loadIterators(
 	mtx := &sync.Mutex{}
 	for i, root := range roots {
 		g.Go(func() error {
-			tr := tree.NewBYOTreeReader(root, tm.ns.Get)
-			it := tree.NewTreeIterator(ctx, tr, start, end)
+			tr := tree.NewBYOTreeReader(root.NodeID, tm.ns.Get)
+			it := tree.NewTreeIterator(ctx, tr, start, end, root.RequestedMinVersion)
 			schema, channel, message, err := it.Next(ctx)
 			if err != nil {
 				if errors.Is(err, io.EOF) {
@@ -489,7 +495,7 @@ func (tm *TreeManager) getMessages(
 	ctx context.Context,
 	w io.Writer,
 	start, end uint64,
-	roots []nodestore.NodeID,
+	roots []rootmap.RootListing,
 ) error {
 	pq := util.NewPriorityQueue[record, uint64]()
 	heap.Init(pq)

@@ -11,10 +11,10 @@ import (
 
 // ExportRequest is the request body for the export endpoint.
 type ExportRequest struct {
-	ProducerID string   `json:"producerId"`
-	Topics     []string `json:"topics"`
-	Start      uint64   `json:"start"`
-	End        uint64   `json:"end"`
+	ProducerID string            `json:"producerId"`
+	Topics     map[string]uint64 `json:"topics"`
+	Start      uint64            `json:"start"`
+	End        uint64            `json:"end"`
 }
 
 func newExportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
@@ -31,7 +31,31 @@ func newExportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			"start", req.Start,
 			"end", req.End,
 		)
-		if err := tmgr.GetMessagesLatest(ctx, w, req.Start, req.End, req.ProducerID, req.Topics); err != nil {
+
+		// negotiate request -> versioned roots
+		roots, err := tmgr.GetLatestRoots(ctx, req.ProducerID, req.Topics)
+		if err != nil {
+			httputil.InternalServerError(ctx, w, "error getting latest roots: %s", err)
+			return
+		}
+
+		// send back an argument in the headers that the client can use to poll
+		header := make(map[string]uint64)
+		for _, root := range roots {
+			header[root.Topic] = root.NewMinVersion
+		}
+		headerData, err := json.Marshal(header)
+		if err != nil {
+			httputil.InternalServerError(ctx, w, "error encoding header: %s", err)
+			return
+		}
+		w.Header().Add("X-Topics", string(headerData))
+
+		if len(roots) == 0 {
+			w.WriteHeader(http.StatusAccepted) // todo: status code abuse
+		}
+
+		if err := tmgr.GetMessages(ctx, w, req.Start, req.End, roots); err != nil {
 			if err := clientError(err); err != nil {
 				log.Infof(ctx, "Client closed connection: %s", err)
 				return

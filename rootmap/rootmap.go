@@ -18,9 +18,16 @@ recover.
 
 ////////////////////////////////////////////////////////////////////////////////
 
+type RootListing struct {
+	Topic               string
+	NodeID              nodestore.NodeID
+	NewMinVersion       uint64
+	RequestedMinVersion uint64
+}
+
 type Rootmap interface {
 	GetLatest(ctx context.Context, producerID string, topic string) (nodestore.NodeID, uint64, error)
-	GetLatestByTopic(ctx context.Context, producerID string, topics []string) ([]nodestore.NodeID, uint64, error)
+	GetLatestByTopic(ctx context.Context, producerID string, topics map[string]uint64) ([]RootListing, error)
 	Get(ctx context.Context, producerID string, topic string, version uint64) (nodestore.NodeID, error)
 	Put(ctx context.Context, producerID string, topic string, version uint64, nodeID nodestore.NodeID) error
 }

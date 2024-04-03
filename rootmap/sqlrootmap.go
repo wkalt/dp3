@@ -10,6 +10,7 @@ import (
 	"sync"
 
 	"github.com/wkalt/dp3/nodestore"
+	"golang.org/x/exp/maps"
 )
 
 /*
@@ -72,12 +73,12 @@ func (rm *sqlRootmap) Put(
 func (rm *sqlRootmap) GetLatestByTopic(
 	ctx context.Context,
 	producerID string,
-	topics []string,
-) ([]nodestore.NodeID, uint64, error) {
+	topics map[string]uint64,
+) ([]RootListing, error) {
 	sb := strings.Builder{}
 	params := []any{producerID}
 	sb.WriteString(`
-	select r1.node_id, r1.version
+	select r1.topic, r1.node_id, r1.version
 	from rootmap r1 left join rootmap r2
 	on (r1.topic = r2.topic and r1.producer_id = r2.producer_id and r1.version < r2.version)
 	where r2.rowid is null
@@ -85,7 +86,7 @@ func (rm *sqlRootmap) GetLatestByTopic(
 	`)
 	if len(topics) > 0 {
 		sb.WriteString(" and r1.topic in (")
-		for i, topic := range topics {
+		for i, topic := range maps.Keys(topics) {
 			if i > 0 {
 				sb.WriteString(", ")
 			}
@@ -97,33 +98,35 @@ func (rm *sqlRootmap) GetLatestByTopic(
 	var maxVersion uint64
 	rows, err := rm.db.QueryContext(ctx, sb.String(), params...)
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to read from rootmap: %w", err)
+		return nil, fmt.Errorf("failed to read from rootmap: %w", err)
 	}
 	defer rows.Close()
-	nodeIDs := make([]string, 0, len(topics))
+
+	listings := make([]RootListing, 0, len(topics))
 	for rows.Next() {
 		var nodeID string
 		var version uint64
-		if err := rows.Scan(&nodeID, &version); err != nil {
-			return nil, 0, fmt.Errorf("failed to read from rootmap: %w", err)
+		var topic string
+		if err := rows.Scan(&topic, &nodeID, &version); err != nil {
+			return nil, fmt.Errorf("failed to read from rootmap: %w", err)
 		}
 		if version > maxVersion {
 			maxVersion = version
 		}
-		nodeIDs = append(nodeIDs, nodeID)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, 0, fmt.Errorf("failed to read from rootmap: %w", err)
-	}
-	result := make([]nodestore.NodeID, 0, len(nodeIDs))
-	for _, nodeID := range nodeIDs {
 		decoded, err := hex.DecodeString(nodeID)
 		if err != nil {
-			return nil, 0, fmt.Errorf("failed to decode node ID: %w", err)
+			return nil, fmt.Errorf("failed to decode node ID: %w", err)
 		}
-		result = append(result, nodestore.NodeID(decoded))
+		if version > topics[topic] {
+			listings = append(listings, RootListing{
+				topic, nodestore.NodeID(decoded), version, topics[topic],
+			})
+		}
 	}
-	return result, maxVersion, nil
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read from rootmap: %w", err)
+	}
+	return listings, nil
 }
 
 func (rm *sqlRootmap) GetLatest(

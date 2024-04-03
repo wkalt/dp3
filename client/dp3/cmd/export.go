@@ -39,12 +39,15 @@ var exportCmd = &cobra.Command{
 		if err != nil {
 			bailf("error parsing end date: %s", err)
 		}
-
+		topics := make(map[string]uint64)
+		for _, topic := range exportTopics {
+			topics[topic] = 0
+		}
 		messageRequest := &routes.ExportRequest{
 			Start:      uint64(start.UnixNano()),
 			End:        uint64(end.UnixNano()),
 			ProducerID: exportProducerID,
-			Topics:     exportTopics,
+			Topics:     topics,
 		}
 		buf := &bytes.Buffer{}
 		if err := json.NewEncoder(buf).Encode(messageRequest); err != nil {

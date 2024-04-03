@@ -18,7 +18,7 @@ func TestExportHandler(t *testing.T) {
 	defer done()
 	requestBody := ExportRequest{
 		ProducerID: "sampleProducerID",
-		Topics:     []string{"topic1", "topic2"},
+		Topics:     map[string]uint64{"topic1": 0, "topic2": 0},
 		Start:      123,
 		End:        456,
 	}
@@ -31,7 +31,7 @@ func TestExportHandler(t *testing.T) {
 	rr := httptest.NewRecorder()
 	handler := newExportHandler(tmgr)
 	handler.ServeHTTP(rr, req)
-	if rr.Code != http.StatusOK {
+	if rr.Code != http.StatusAccepted {
 		t.Errorf("Expected status code %d, but got %d", http.StatusOK, rr.Code)
 	}
 }
