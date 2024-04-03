@@ -52,7 +52,7 @@ func (b *byteTree) Get(ctx context.Context, id nodestore.NodeID) (nodestore.Node
 		return nil, fmt.Errorf("failed to read node data: %w", err)
 	}
 	if isLeaf(buf) {
-		node := nodestore.NewLeafNode(nil)
+		node := nodestore.NewLeafNode(nil, nil, nil)
 		if err := node.FromBytes(buf); err != nil {
 			return nil, fmt.Errorf("failed to deserialize leaf node: %w", err)
 		}

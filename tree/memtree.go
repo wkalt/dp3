@@ -37,16 +37,19 @@ func (m *MemTree) Get(ctx context.Context, id nodestore.NodeID) (nodestore.Node,
 }
 
 // GetLeafData returns the data for a leaf node.
-func (m *MemTree) GetLeafData(ctx context.Context, id nodestore.NodeID) (io.ReadSeekCloser, error) {
+func (m *MemTree) GetLeafData(
+	ctx context.Context, id nodestore.NodeID,
+) (nodestore.NodeID, io.ReadSeekCloser, error) {
+	var ancestor nodestore.NodeID
 	node, err := m.Get(ctx, id)
 	if err != nil {
-		return nil, err
+		return ancestor, nil, err
 	}
 	leaf, ok := node.(*nodestore.LeafNode)
 	if !ok {
-		return nil, errors.New("node is not a leaf")
+		return ancestor, nil, errors.New("node is not a leaf")
 	}
-	return util.NewReadSeekNopCloser(leaf.Data()), nil
+	return leaf.Ancestor(), util.NewReadSeekNopCloser(leaf.Data()), nil
 }
 
 // Put inserts a node into the MemTree.

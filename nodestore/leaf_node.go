@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"io"
 
-	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/mcap"
+	"github.com/wkalt/dp3/util"
 )
 
 /*
@@ -23,15 +23,19 @@ are serialized as MCAP files.
 const leafNodeVersion = uint8(1)
 
 type LeafNode struct {
-	version uint8
-	data    []byte
+	leafNodeVersion uint8
+	ancestorVersion uint64
+	ancestor        NodeID
+	data            []byte
 }
 
 // ToBytes serializes the node to a byte slice.
 func (n *LeafNode) ToBytes() []byte {
-	buf := make([]byte, len(n.data)+1)
-	buf[0] = n.version + 128
-	copy(buf[1:], n.data)
+	buf := make([]byte, len(n.data)+1+8+24)
+	offset := util.U8(buf, n.leafNodeVersion+128)
+	offset += util.U64(buf[offset:], n.ancestorVersion)
+	offset += copy(buf[offset:], n.ancestor[:])
+	copy(buf[offset:], n.data)
 	return buf
 }
 
@@ -42,12 +46,18 @@ func (n *LeafNode) Size() uint64 {
 
 // FromBytes deserializes the node from a byte slice.
 func (n *LeafNode) FromBytes(data []byte) error {
-	version := data[0]
+	var version uint8
+	var ancestorVersion uint64
+	offset := util.ReadU8(data, &version)
+	offset += util.ReadU64(data[offset:], &ancestorVersion)
+	ancestor := NodeID(data[offset : offset+24])
+
 	if version < 128 {
 		return errors.New("not a leaf node")
 	}
-	n.version = version - 128
-	n.data = data[1:]
+	n.leafNodeVersion = version - 128
+	n.ancestor = ancestor
+	n.data = data[offset+24:]
 	return nil
 }
 
@@ -58,7 +68,7 @@ func (n *LeafNode) Merge(data []byte) (*LeafNode, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to merge leaf node: %w", err)
 	}
-	return NewLeafNode(buf.Bytes()), nil
+	return NewLeafNode(buf.Bytes(), &n.ancestor, &n.ancestorVersion), nil
 }
 
 // Data returns the data of the node.
@@ -71,26 +81,32 @@ func (n *LeafNode) Type() NodeType {
 	return Leaf
 }
 
-// String returns a string representation of the node.
-func (n *LeafNode) String() string {
-	reader, err := fmcap.NewReader(bytes.NewReader(n.data))
-	if err != nil {
-		return fmt.Sprintf("[leaf <unknown %d bytes>]", len(n.data))
-	}
-	info, err := reader.Info()
-	if err != nil {
-		return fmt.Sprintf("[leaf <unknown %d bytes>]", len(n.data))
-	}
-	if info.Statistics.MessageCount == 1 {
-		return "[leaf 1 msg]"
-	}
-	return fmt.Sprintf("[leaf %d msgs]", info.Statistics.MessageCount)
+func (n *LeafNode) Ancestor() NodeID {
+	return n.ancestor
+}
+
+func (n *LeafNode) AncestorVersion() uint64 {
+	return n.ancestorVersion
 }
 
 // NewLeafNode creates a new leaf node with the given data.
-func NewLeafNode(data []byte) *LeafNode {
+func NewLeafNode(data []byte, ancestor *NodeID, ancestorVersion *uint64) *LeafNode {
 	if data == nil {
 		data = []byte{}
 	}
-	return &LeafNode{data: data, version: leafNodeVersion}
+	ancID := NodeID{}
+	if ancestor != nil {
+		ancID = *ancestor
+	}
+
+	var ancVersion uint64
+	if ancestorVersion != nil {
+		ancVersion = *ancestorVersion
+	}
+	return &LeafNode{
+		leafNodeVersion: leafNodeVersion,
+		ancestor:        ancID,
+		ancestorVersion: ancVersion,
+		data:            data,
+	}
 }

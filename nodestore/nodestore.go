@@ -102,16 +102,22 @@ func (n *Nodestore) Get(ctx context.Context, id NodeID) (Node, error) {
 // GetLeaf retrieves a leaf node from the nodestore. It returns a ReadSeekCloser
 // over the leaf data, the closing of which is the caller's responsibility. It
 // does not cache data.
-func (n *Nodestore) GetLeafData(ctx context.Context, id NodeID) (io.ReadSeekCloser, error) {
-	// NB: Add one to the offset to skip the type byte.
-	reader, err := n.store.GetRange(ctx, id.OID(), int(id.Offset())+1, int(id.Length())-1)
+func (n *Nodestore) GetLeafData(ctx context.Context, id NodeID) (
+	ancestor NodeID, reader io.ReadSeekCloser, err error,
+) {
+	reader, err = n.store.GetRange(ctx, id.OID(), int(id.Offset()), int(id.Length()))
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotFound) {
-			return nil, NodeNotFoundError{id}
+			return ancestor, nil, NodeNotFoundError{id}
 		}
-		return nil, fmt.Errorf("failed to get node %s: %w", id, err)
+		return ancestor, nil, fmt.Errorf("failed to get node %s: %w", id, err)
 	}
-	return reader, nil
+	buf := make([]byte, 1+8+24)
+	if _, err := io.ReadFull(reader, buf); err != nil {
+		return ancestor, nil, fmt.Errorf("failed to read leaf node: %w", err)
+	}
+	ancestor = NodeID(buf[1+8:])
+	return ancestor, reader, nil
 }
 
 func isLeaf(data []byte) bool {
@@ -120,7 +126,7 @@ func isLeaf(data []byte) bool {
 
 func (n *Nodestore) BytesToNode(value []byte) (Node, error) {
 	if isLeaf(value) {
-		node := NewLeafNode(nil)
+		node := NewLeafNode(nil, nil, nil)
 		if err := node.FromBytes(value); err != nil {
 			return nil, fmt.Errorf("failed to parse leaf node: %w", err)
 		}
