@@ -26,7 +26,7 @@ func GetOpenPort() (int, error) {
 
 // Flatten concatenates slices of the same type.
 func Flatten[T any](slices ...[]T) []T {
-	var result []T
+	var result = []T{}
 	for _, s := range slices {
 		result = append(result, s...)
 	}
