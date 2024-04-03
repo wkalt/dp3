@@ -27,6 +27,7 @@ type Iterator struct {
 	closers     []io.Closer
 	msgIterator fmcap.MessageIterator
 	tr          TreeReader
+	minVersion  uint64
 
 	stack []nodestore.NodeID
 }
@@ -37,8 +38,9 @@ func NewTreeIterator(
 	tr TreeReader,
 	start uint64,
 	end uint64,
+	minVersion uint64,
 ) *Iterator {
-	it := &Iterator{start: start, end: end, tr: tr}
+	it := &Iterator{start: start, end: end, tr: tr, minVersion: minVersion}
 	it.stack = []nodestore.NodeID{tr.Root()}
 	return it
 }
@@ -128,7 +130,7 @@ func (ti *Iterator) getNextLeaf(ctx context.Context) (nodeID nodestore.NodeID, e
 		left := inner.Start
 		right := inner.Start + step
 		for _, child := range inner.Children {
-			if child != nil {
+			if child != nil && child.Version > ti.minVersion {
 				if ti.start < right*1e9 && ti.end >= left*1e9 {
 					ti.stack = append(ti.stack, child.ID)
 				}

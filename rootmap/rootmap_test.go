@@ -73,9 +73,13 @@ func TestRootmaps(t *testing.T) {
 				err = rm.Put(ctx, "my-device", "topic2", 50, node2)
 				require.NoError(t, err)
 
-				nodeIDs, _, err := rm.GetLatestByTopic(ctx, "my-device", []string{"topic1", "topic2"})
+				listings, err := rm.GetLatestByTopic(ctx, "my-device", map[string]uint64{"topic1": 0, "topic2": 0})
 				require.NoError(t, err)
-				require.ElementsMatch(t, []nodestore.NodeID{node1, node2}, nodeIDs)
+
+				require.ElementsMatch(t, []rootmap.RootListing{
+					{"topic1", node1, 40, 0},
+					{"topic2", node2, 50, 0},
+				}, listings)
 			})
 			t.Run("get version that does not exist", func(t *testing.T) {
 				_, err := rm.Get(ctx, "fake-device", "my-topic", 1e9)

@@ -148,7 +148,7 @@ func TestGetStatisticsLatest(t *testing.T) {
 	}
 }
 
-func TestGetMessagesLatest(t *testing.T) {
+func TestGetMessages(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
 		assertion      string
@@ -234,7 +234,14 @@ func TestGetMessagesLatest(t *testing.T) {
 			output := &bytes.Buffer{}
 			start := c.bounds[0]
 			end := c.bounds[1]
-			require.NoError(t, tmgr.GetMessagesLatest(ctx, output, start, end, "my-device", c.topics))
+			topics := map[string]uint64{}
+			for _, topic := range c.topics {
+				topics[topic] = 0
+			}
+			roots, err := tmgr.GetLatestRoots(ctx, "my-device", topics)
+			require.NoError(t, err)
+
+			require.NoError(t, tmgr.GetMessages(ctx, output, start, end, roots))
 
 			reader, err := mcap.NewReader(bytes.NewReader(output.Bytes()))
 			require.NoError(t, err)
@@ -292,7 +299,10 @@ func TestStreamingAcrossMultipleReceives(t *testing.T) {
 	require.NoError(t, tmgr.ForceFlush(ctx))
 
 	output := &bytes.Buffer{}
-	require.NoError(t, tmgr.GetMessagesLatest(ctx, output, 0, 100000e9, "my-device", []string{"topic-0"}))
+	roots, err := tmgr.GetLatestRoots(ctx, "my-device", map[string]uint64{"topic-0": 0})
+	require.NoError(t, err)
+
+	require.NoError(t, tmgr.GetMessages(ctx, output, 0, 100000e9, roots))
 
 	reader, err := mcap.NewReader(bytes.NewReader(output.Bytes()))
 	require.NoError(t, err)
