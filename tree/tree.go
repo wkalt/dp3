@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 
 	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/mcap"
@@ -86,7 +87,7 @@ func Insert(
 	// now at the parent of the leaf
 	nodeID := ids[len(ids)-1]
 	bucket := bucket(timestamp, current)
-	node := nodestore.NewLeafNode(data)
+	node := nodestore.NewLeafNode(data, nil, nil)
 	if err := tw.Put(ctx, nodeID, node); err != nil {
 		return fmt.Errorf("failed to store leaf node: %w", err)
 	}
@@ -193,12 +194,14 @@ func mergeInnerNodes( // nolint: funlen // needs refactor
 		statistics := map[string]*nodestore.Statistics{}
 		maxVersion := uint64(0)
 		var destChild *nodestore.NodeID
+		var destChildVersion *uint64
 		if destInnerNode != nil && destInnerNode.Children[conflict] != nil {
 			child := destInnerNode.Children[conflict]
 			for schemaHash, stats := range child.Statistics {
 				statistics[schemaHash] = stats.Clone()
 			}
 			destChild = &child.ID
+			destChildVersion = &child.Version
 		}
 		for i, node := range nodes {
 			child := node.Children[conflict]
@@ -220,7 +223,7 @@ func mergeInnerNodes( // nolint: funlen // needs refactor
 				}
 			}
 		}
-		merged, err := mergeLevel(ctx, pt, dest, destChild, conflictedNodes, conflictedTrees)
+		merged, err := mergeLevel(ctx, pt, dest, destChild, destChildVersion, conflictedNodes, conflictedTrees)
 		if err != nil {
 			return nil, err
 		}
@@ -238,6 +241,7 @@ func mergeLevel(
 	mt TreeWriter,
 	dest TreeReader,
 	destID *nodestore.NodeID,
+	destVersion *uint64,
 	ids []nodestore.NodeID,
 	trees []TreeReader,
 ) (nodeID nodestore.NodeID, err error) {
@@ -260,14 +264,7 @@ func mergeLevel(
 	var node nodestore.Node
 	switch nodes[0].Type() {
 	case nodestore.Leaf:
-		if destID != nil {
-			destNode, err := dest.Get(ctx, *destID)
-			if err != nil {
-				return nodeID, fmt.Errorf("failed to get dest node: %w", err)
-			}
-			nodes = append(nodes, destNode)
-		}
-		node, err = mergeLeaves(nodes)
+		node, err = mergeLeaves(destID, destVersion, nodes)
 		if err != nil {
 			return nodeID, fmt.Errorf("failed to merge leaves: %w", err)
 		}
@@ -294,14 +291,9 @@ func Merge(ctx context.Context, output *MemTree, dest TreeReader, trees ...TreeR
 	if len(trees) == 0 {
 		return errors.New("no trees to merge")
 	}
-
-	// destination tree
 	destRoot := dest.Root()
-
-	// partial trees
 	ids := make([]nodestore.NodeID, 0, len(trees))
 	roots := make([]*nodestore.InnerNode, 0, len(trees))
-
 	for _, tree := range trees {
 		id := tree.Root()
 		root, err := tree.Get(ctx, id)
@@ -315,14 +307,12 @@ func Merge(ctx context.Context, output *MemTree, dest TreeReader, trees ...TreeR
 		roots = append(roots, innerNode)
 		ids = append(ids, id)
 	}
-
 	for _, root := range roots {
 		if root.Height != roots[0].Height {
 			return MismatchedHeightsError{root.Height, roots[0].Height}
 		}
 	}
-
-	mergedRoot, err := mergeLevel(ctx, output, dest, &destRoot, ids, trees)
+	mergedRoot, err := mergeLevel(ctx, output, dest, &destRoot, nil, ids, trees)
 	if err != nil {
 		return fmt.Errorf("failed to merge: %w", err)
 	}
@@ -333,13 +323,23 @@ func Merge(ctx context.Context, output *MemTree, dest TreeReader, trees ...TreeR
 // mergeLeaves merges a set of leaf nodes into a single leaf node. Data is
 // merged in timestamp order.
 func mergeLeaves(
+	ancestorNodeID *nodestore.NodeID,
+	ancestorVersion *uint64,
 	leaves []nodestore.Node,
 ) (nodestore.Node, error) {
 	if len(leaves) == 0 {
 		return nil, errors.New("no leaves to merge")
 	}
 	if len(leaves) == 1 {
-		return leaves[0], nil
+		leaf, ok := leaves[0].(*nodestore.LeafNode)
+		if !ok {
+			return nil, newUnexpectedNodeError(nodestore.Leaf, leaf)
+		}
+		data, err := io.ReadAll(leaf.Data())
+		if err != nil {
+			return nil, fmt.Errorf("failed to read data: %w", err)
+		}
+		return nodestore.NewLeafNode(data, ancestorNodeID, ancestorVersion), nil
 	}
 	iterators := make([]fmcap.MessageIterator, len(leaves))
 	for i, leaf := range leaves {
@@ -361,7 +361,7 @@ func mergeLeaves(
 	if err := mcap.Nmerge(buf, iterators...); err != nil {
 		return nil, fmt.Errorf("failed to merge: %w", err)
 	}
-	return nodestore.NewLeafNode(buf.Bytes()), nil
+	return nodestore.NewLeafNode(buf.Bytes(), ancestorNodeID, ancestorVersion), nil
 }
 
 // // bwidth returns the width of each bucket in seconds.

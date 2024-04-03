@@ -6,7 +6,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/foxglove/mcap/go/mcap"
+	fmcap "github.com/foxglove/mcap/go/mcap"
+	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
 )
 
@@ -22,9 +23,9 @@ type Iterator struct {
 	start uint64
 	end   uint64
 
-	reader      *mcap.Reader
-	rsc         io.ReadSeekCloser
-	msgIterator mcap.MessageIterator
+	readers     []*fmcap.Reader
+	closers     []io.Closer
+	msgIterator fmcap.MessageIterator
 	tr          TreeReader
 
 	stack []nodestore.NodeID
@@ -44,31 +45,38 @@ func NewTreeIterator(
 
 // Close closes the iterator if it has not already been exhausted.
 func (ti *Iterator) Close() error {
-	if ti.reader != nil {
-		ti.reader.Close()
-	}
-	if ti.rsc != nil {
-		if err := ti.rsc.Close(); err != nil {
-			return fmt.Errorf("failed to close reader: %w", err)
-		}
-	}
-	return nil
+	return ti.closeActiveReaders()
 }
 
 // More returns true if there are more elements in the iteration.
 func (ti *Iterator) More() bool {
-	return ti.reader != nil || len(ti.stack) > 0
+	return len(ti.readers) > 0 || len(ti.stack) > 0
+}
+
+func (ti *Iterator) closeActiveReaders() error {
+	for _, reader := range ti.readers {
+		reader.Close()
+	}
+	errs := make([]error, 0, len(ti.closers))
+	for _, closer := range ti.closers {
+		if err := closer.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("failed to close %d closers: %v", len(errs), errs)
+	}
+	return nil
 }
 
 // advance moves the iterator to the next leaf. If there are no more leaves, it
 // will return a wrapped io.EOF.
 func (ti *Iterator) advance(ctx context.Context) error {
-	ti.reader.Close()
-	if err := ti.rsc.Close(); err != nil {
+	if err := ti.closeActiveReaders(); err != nil {
 		return fmt.Errorf("failed to close leaf reader: %w", err)
 	}
-	ti.reader = nil
-	ti.rsc = nil
+	ti.readers = nil
+	ti.closers = nil
 	ti.msgIterator = nil
 	if err := ti.openNextLeaf(ctx); err != nil {
 		return fmt.Errorf("failed to open next leaf: %w", err)
@@ -77,7 +85,7 @@ func (ti *Iterator) advance(ctx context.Context) error {
 }
 
 // Next returns the next element in the iteration.
-func (ti *Iterator) Next(ctx context.Context) (*mcap.Schema, *mcap.Channel, *mcap.Message, error) {
+func (ti *Iterator) Next(ctx context.Context) (*fmcap.Schema, *fmcap.Channel, *fmcap.Message, error) {
 	for {
 		// first call sets the state
 		if ti.msgIterator == nil {
@@ -132,26 +140,52 @@ func (ti *Iterator) getNextLeaf(ctx context.Context) (nodeID nodestore.NodeID, e
 	return nodeID, io.EOF
 }
 
+func (ti *Iterator) openLeaf(ctx context.Context, nodeID nodestore.NodeID) (
+	nodestore.NodeID, fmcap.MessageIterator, error,
+) {
+	ancestor, rsc, err := ti.tr.GetLeafData(ctx, nodeID)
+	if err != nil {
+		return ancestor, nil, fmt.Errorf("failed to get reader: %w", err)
+	}
+	reader, err := mcap.NewReader(rsc)
+	if err != nil {
+		return ancestor, nil, fmt.Errorf("failed to create reader: %w", err)
+	}
+	it, err := reader.Messages(fmcap.AfterNanos(ti.start), fmcap.BeforeNanos(ti.end))
+	if err != nil {
+		return ancestor, nil, fmt.Errorf("failed to create message iterator: %w", err)
+	}
+	ti.readers = append(ti.readers, reader)
+	ti.closers = append(ti.closers, rsc)
+	return ancestor, it, nil
+}
+
 // openNextLeaf opens the next leaf in the iterator.
 func (ti *Iterator) openNextLeaf(ctx context.Context) error {
 	leafID, err := ti.getNextLeaf(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get next leaf: %w", err)
 	}
-	rsc, err := ti.tr.GetLeafData(ctx, leafID)
+	// merge iterator of mcap iterators, or just the singleton.
+	ancestor, it, err := ti.openLeaf(ctx, leafID)
 	if err != nil {
-		return fmt.Errorf("failed to get reader: %w", err)
+		return fmt.Errorf("failed to open leaf: %w", err)
 	}
-	reader, err := mcap.NewReader(rsc)
-	if err != nil {
-		return fmt.Errorf("failed to create reader: %w", err)
+	iterators := []fmcap.MessageIterator{it}
+	for (ancestor != nodestore.NodeID{}) {
+		ancestor, it, err = ti.openLeaf(ctx, ancestor)
+		if err != nil {
+			return fmt.Errorf("failed to get ancestor: %w", err)
+		}
+		iterators = append(iterators, it)
 	}
-	it, err := reader.Messages(mcap.AfterNanos(ti.start), mcap.BeforeNanos(ti.end))
-	if err != nil {
-		return fmt.Errorf("failed to create message iterator: %w", err)
+	if len(iterators) == 1 {
+		ti.msgIterator = iterators[0]
+	} else {
+		ti.msgIterator, err = mcap.NmergeIterator(iterators...)
+		if err != nil {
+			return fmt.Errorf("failed to merge iterators: %w", err)
+		}
 	}
-	ti.msgIterator = it
-	ti.reader = reader
-	ti.rsc = rsc
 	return nil
 }

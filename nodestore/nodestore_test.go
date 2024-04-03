@@ -18,7 +18,7 @@ func TestNodestore(t *testing.T) {
 		store := storage.NewMemStore()
 		cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1024)
 		ns := nodestore.NewNodestore(store, cache)
-		node := nodestore.NewLeafNode([]byte("test"))
+		node := nodestore.NewLeafNode([]byte("test"), nil, nil)
 		bytes := node.ToBytes()
 		require.NoError(t, ns.Put(ctx, 1, bytes))
 	})
@@ -34,7 +34,7 @@ func TestNodestore(t *testing.T) {
 		ns := nodestore.NewNodestore(store, cache)
 
 		data := []byte("hello")
-		node := nodestore.NewLeafNode(data)
+		node := nodestore.NewLeafNode(data, nil, nil)
 		bytes := node.ToBytes()
 		_, err = buf.Write(bytes)
 		require.NoError(t, err)

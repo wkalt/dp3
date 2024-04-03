@@ -43,7 +43,7 @@ func TestTreeErrors(t *testing.T) {
 		stats := map[string]*nodestore.Statistics{}
 		require.NoError(t, tree.Insert(ctx, tw, 0, 1000*1e9, []byte{0x01}, stats))
 
-		leaf := nodestore.NewLeafNode([]byte{0x01})
+		leaf := nodestore.NewLeafNode([]byte{0x01}, nil, nil)
 		leafid := nodestore.RandomNodeID()
 		require.NoError(t, tw.Put(ctx, leafid, leaf))
 		tw.SetRoot(leafid)
@@ -115,7 +115,7 @@ func TestMergeErrors(t *testing.T) {
 		tw := tree.NewMemTree(nodestore.RandomNodeID(), root)
 		require.NoError(t, tree.Insert(ctx, tw, 0, 1000*1e9, []byte{0x01}, nil))
 
-		leaf := nodestore.NewLeafNode([]byte{0x01})
+		leaf := nodestore.NewLeafNode([]byte{0x01}, nil, nil)
 		leafid := nodestore.RandomNodeID()
 		require.NoError(t, tw.Put(ctx, leafid, leaf))
 		tw.SetRoot(leafid)
@@ -312,14 +312,14 @@ func TestMerge(t *testing.T) {
 			1,
 			[][]int64{{33}, {120}},
 			[][]int64{{100}},
-			"[0-4096 [<link> 0-64:1 (1b count=1) [leaf 1 msg]] [64-128:1 (1b count=2) [leaf 2 msgs]]]",
+			"[0-4096 [<link> 0-64:1 (1b count=1) [leaf 1 msg]] [64-128:1 (1b count=2) [leaf 1 msg]->[leaf 1 msg]]]",
 		},
 		{
 			"merge into a populated tree, multiple overlapping",
 			1,
 			[][]int64{{33}, {120}},
 			[][]int64{{39}, {121}},
-			"[0-4096 [0-64:1 (1b count=2) [leaf 2 msgs]] [64-128:2 (1b count=2) [leaf 2 msgs]]]",
+			"[0-4096 [0-64:1 (1b count=2) [leaf 1 msg]->[leaf 1 msg]] [64-128:2 (1b count=2) [leaf 1 msg]->[leaf 1 msg]]]",
 		},
 		{
 			"depth 2",
