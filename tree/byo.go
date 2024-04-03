@@ -40,7 +40,7 @@ func (t *byoTreeReader) GetLeafData(ctx context.Context, id nodestore.NodeID) (
 
 	leaf, ok := node.(*nodestore.LeafNode)
 	if !ok {
-		return ancestor, nil, newUnexpectedNodeError(nodestore.Leaf, node)
+		return ancestor, nil, NewUnexpectedNodeError(nodestore.Leaf, node)
 	}
 	return leaf.Ancestor(), util.NewReadSeekNopCloser(leaf.Data()), nil
 }

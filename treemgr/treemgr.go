@@ -312,7 +312,7 @@ func (tm *TreeManager) newRoot(
 }
 
 func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
-	trees := make([]tree.TreeReader, 0, len(batch.Addrs)+1)
+	trees := make([]*tree.MemTree, 0, len(batch.Addrs)+1)
 
 	// there should be an existing root
 	// If there is an existing root, then we need to add that data to the merge.
@@ -338,8 +338,8 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 		return fmt.Errorf("failed to get next version: %w", err)
 	}
 
-	var merged tree.MemTree
-	if err := tree.Merge(ctx, &merged, basereader, trees...); err != nil {
+	merged, err := tree.Merge(ctx, basereader, trees...)
+	if err != nil {
 		return fmt.Errorf("failed to merge partial trees: %w", err)
 	}
 	data, err := merged.ToBytes(ctx, version)
@@ -570,8 +570,12 @@ func (tm *TreeManager) insert(
 	if err != nil {
 		return fmt.Errorf("failed to get root: %w", err)
 	}
-	mt := tree.NewMemTree(rootID, currentRoot.(*nodestore.InnerNode))
-	if err := tree.Insert(ctx, mt, version, time, data, statistics); err != nil {
+	currentRootNode, ok := currentRoot.(*nodestore.InnerNode)
+	if !ok {
+		return fmt.Errorf("unexpected node type: %w", tree.NewUnexpectedNodeError(nodestore.Inner, currentRoot))
+	}
+	mt, err := tree.Insert(ctx, currentRootNode, version, time, data, statistics)
+	if err != nil {
 		return fmt.Errorf("insertion failure: %w", err)
 	}
 	serialized, err := mt.ToBytes(ctx, 0) // zero is a temporary oid

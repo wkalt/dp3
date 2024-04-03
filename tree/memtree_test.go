@@ -49,26 +49,25 @@ func TestMemtreeSerialization(t *testing.T) {
 		)
 		version := uint64(0)
 
-		trees := make([]tree.TreeReader, len(c.timestamps))
+		trees := make([]*tree.MemTree, len(c.timestamps))
 		for i, ts := range c.timestamps {
 			data := &bytes.Buffer{}
-			id := nodestore.RandomNodeID()
-			mt := tree.NewMemTree(id, root)
 			mcap.WriteFile(t, data, []int64{ts})
 			schema := tree.GetSchema(t, bytes.NewReader(data.Bytes()))
 			schemaHash := util.CryptoHash(schema.Data)
 			stats := map[string]*nodestore.Statistics{
 				schemaHash: {MessageCount: 1},
 			}
-			require.NoError(t, tree.Insert(ctx, mt, version, uint64(ts), data.Bytes(), stats))
+			mt, err := tree.Insert(ctx, root, version, uint64(ts), data.Bytes(), stats)
+			require.NoError(t, err)
 			version++
 			trees[i] = mt
 		}
 
 		rootnode := nodestore.NewInnerNode(c.height, 0, util.Pow(uint64(64), int(c.height+1)), 64)
-		merged := tree.NewMemTree(nodestore.RandomNodeID(), rootnode)
-
-		require.NoError(t, tree.Merge(ctx, merged, merged, trees...))
+		dest := tree.NewMemTree(nodestore.RandomNodeID(), rootnode)
+		merged, err := tree.Merge(ctx, dest, trees...)
+		require.NoError(t, err)
 
 		s1, err := tree.Print(ctx, merged)
 		require.NoError(t, err)

@@ -24,7 +24,7 @@ change, and we will be in a better position to design a compact format.
 // bytes 0-128 and leaf nodes get 129-256.
 const innerNodeVersion = uint8(1)
 
-// InnerNode represents an interior node in the tree, with slots for 64
+// InnerNode represents an interior node in the tree, with slots for branchingFactor
 // children.
 type InnerNode struct {
 	Start    uint64   `json:"start"`
@@ -76,6 +76,15 @@ func (n *InnerNode) PlaceChild(index uint64, id NodeID, version uint64, statisti
 		ID:         id,
 		Version:    version,
 		Statistics: statistics,
+	}
+}
+
+// PlaceTombstoneChild inserts a tombstone for the child at the given index with the given version.
+func (n *InnerNode) PlaceTombstoneChild(index uint64, version uint64) {
+	n.Children[index] = &Child{
+		ID:         NodeID{},
+		Version:    version,
+		Statistics: nil,
 	}
 }
 

@@ -30,7 +30,7 @@ func (e UnexpectedNodeError) Is(target error) bool {
 	return ok
 }
 
-func newUnexpectedNodeError(expected nodestore.NodeType, found nodestore.Node) error {
+func NewUnexpectedNodeError(expected nodestore.NodeType, found nodestore.Node) error {
 	return UnexpectedNodeError{
 		expected: expected,
 		found:    found,

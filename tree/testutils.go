@@ -35,14 +35,12 @@ func MergeInserts(
 	height uint8,
 	bfactor int,
 	times [][]int64,
-) TreeReader {
+) *MemTree {
 	t.Helper()
 	version := uint64(1)
-	trees := make([]TreeReader, len(times))
+	trees := make([]*MemTree, len(times))
 	for i, batch := range times {
 		root := nodestore.NewInnerNode(height, start, end, bfactor)
-		id := nodestore.RandomNodeID()
-		tmp := NewMemTree(id, root)
 		buf := &bytes.Buffer{}
 		mcap.WriteFile(t, buf, batch)
 		schema := GetSchema(t, bytes.NewReader(buf.Bytes()))
@@ -54,19 +52,20 @@ func MergeInserts(
 				MinObservedTime: util.Reduce(util.Min, math.MaxInt64, batch),
 			},
 		}
-
-		require.NoError(t, Insert(ctx, tmp, version, uint64(batch[0]*1e9), buf.Bytes(), stats))
+		tmp, err := Insert(ctx, root, version, uint64(batch[0]*1e9), buf.Bytes(), stats)
+		require.NoError(t, err)
 		version++
 		trees[i] = tmp
 	}
 	root := nodestore.NewInnerNode(height, start, end, bfactor)
-	output := NewMemTree(nodestore.RandomNodeID(), root)
+	dest := NewMemTree(nodestore.RandomNodeID(), root)
 	if len(times) == 0 {
-		return output
+		return dest
 	}
 	if len(times) == 1 {
 		return trees[0]
 	}
-	require.NoError(t, Merge(ctx, output, output, trees...))
+	output, err := Merge(ctx, dest, trees...)
+	require.NoError(t, err)
 	return output
 }
