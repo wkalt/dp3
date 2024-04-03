@@ -2,6 +2,7 @@ package rootmap
 
 import (
 	"context"
+	"errors"
 
 	"github.com/wkalt/dp3/nodestore"
 )
@@ -17,6 +18,8 @@ recover.
 */
 
 ////////////////////////////////////////////////////////////////////////////////
+
+var ErrRootAlreadyExists = errors.New("root already exists")
 
 type RootListing struct {
 	Topic               string

@@ -153,7 +153,10 @@ func (tm *TreeManager) Receive(ctx context.Context, producerID string, data io.R
 			if _, _, err := tm.rootmap.GetLatest(ctx, producerID, channel.Topic); err != nil {
 				switch {
 				case errors.Is(err, rootmap.StreamNotFoundError{}):
-					if err := tm.NewRoot(ctx, producerID, channel.Topic); err != nil {
+					if err := tm.NewRoot(ctx,
+						producerID,
+						channel.Topic,
+					); err != nil && !errors.Is(err, rootmap.ErrRootAlreadyExists) {
 						return fmt.Errorf("failed to create new root: %w", err)
 					}
 				default:
