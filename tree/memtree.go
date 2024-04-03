@@ -105,7 +105,7 @@ func (m *MemTree) ToBytes(ctx context.Context, oid uint64) ([]byte, error) { // 
 	}
 	node, ok := root.(*nodestore.InnerNode)
 	if !ok {
-		return nil, newUnexpectedNodeError(nodestore.Inner, root)
+		return nil, NewUnexpectedNodeError(nodestore.Inner, root)
 	}
 	path := []nodestore.NodeID{m.root}
 	nodes := []*nodestore.InnerNode{node}
