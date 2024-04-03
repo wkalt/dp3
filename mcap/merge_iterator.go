@@ -15,19 +15,14 @@ type mergeIterator struct {
 
 	iterators []mcap.MessageIterator
 
-	schemaHashes  map[uint64]numkey
-	channelHashes map[uint64]numkey
+	schemaHashes  map[uint64]util.Pair[int, uint16]
+	channelHashes map[uint64]util.Pair[int, uint16]
 
-	channels map[numkey]*mcap.Channel
-	schemas  map[numkey]*mcap.Schema
+	channels map[util.Pair[int, uint16]]*mcap.Channel
+	schemas  map[util.Pair[int, uint16]]*mcap.Schema
 
 	nextSchemaID  uint16
 	nextChannelID uint16
-}
-
-type numkey struct {
-	idx int
-	id  uint16
 }
 
 func (mi *mergeIterator) remap(
@@ -36,12 +31,12 @@ func (mi *mergeIterator) remap(
 	channel *mcap.Channel,
 	message *mcap.Message,
 ) (*mcap.Schema, *mcap.Channel, *mcap.Message) {
-	skey := numkey{idx, schema.ID}
-	newSchema, ok := mi.schemas[skey]
+	schemaKey := util.NewPair(idx, schema.ID)
+	newSchema, ok := mi.schemas[schemaKey]
 	if !ok {
 		schemaHash := hashSchema(schema)
 		if mapped, ok := mi.schemaHashes[schemaHash]; ok {
-			mi.schemas[skey] = mi.schemas[mapped]
+			mi.schemas[schemaKey] = mi.schemas[mapped]
 			newSchema = mi.schemas[mapped]
 		} else {
 			schemaID := mi.nextSchemaID
@@ -51,17 +46,17 @@ func (mi *mergeIterator) remap(
 				Encoding: schema.Encoding,
 				Data:     schema.Data,
 			}
-			mi.schemas[skey] = schema
-			mi.schemaHashes[schemaHash] = skey
+			mi.schemas[schemaKey] = schema
+			mi.schemaHashes[schemaHash] = schemaKey
 			mi.nextSchemaID++
 		}
 	}
-	ckey := numkey{idx, channel.ID}
-	newChannel, ok := mi.channels[ckey]
+	channelKey := util.NewPair(idx, channel.ID)
+	newChannel, ok := mi.channels[channelKey]
 	if !ok {
 		channelHash := hashChannel(channel)
 		if mapped, ok := mi.channelHashes[channelHash]; ok {
-			mi.channels[ckey] = mi.channels[mapped]
+			mi.channels[channelKey] = mi.channels[mapped]
 			newChannel = mi.channels[mapped]
 		} else {
 			newChannel = &mcap.Channel{
@@ -71,8 +66,8 @@ func (mi *mergeIterator) remap(
 				MessageEncoding: channel.MessageEncoding,
 				Metadata:        channel.Metadata,
 			}
-			mi.channels[ckey] = newChannel
-			mi.channelHashes[channelHash] = ckey
+			mi.channels[channelKey] = newChannel
+			mi.channelHashes[channelHash] = channelKey
 			mi.nextChannelID++
 		}
 	}
@@ -127,10 +122,10 @@ func NmergeIterator(iterators ...mcap.MessageIterator) (mcap.MessageIterator, er
 	return &mergeIterator{
 		pq:            pq,
 		iterators:     iterators,
-		schemaHashes:  map[uint64]numkey{},
-		channelHashes: map[uint64]numkey{},
-		channels:      map[numkey]*mcap.Channel{},
-		schemas:       map[numkey]*mcap.Schema{},
+		schemaHashes:  map[uint64]util.Pair[int, uint16]{},
+		channelHashes: map[uint64]util.Pair[int, uint16]{},
+		channels:      map[util.Pair[int, uint16]]*mcap.Channel{},
+		schemas:       map[util.Pair[int, uint16]]*mcap.Schema{},
 		nextSchemaID:  1,
 		nextChannelID: 0,
 	}, nil
