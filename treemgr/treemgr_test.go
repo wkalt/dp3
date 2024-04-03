@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"testing"
 
@@ -14,11 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
-	"github.com/wkalt/dp3/rootmap"
-	"github.com/wkalt/dp3/storage"
 	"github.com/wkalt/dp3/treemgr"
-	"github.com/wkalt/dp3/util"
-	"github.com/wkalt/dp3/versionstore"
 )
 
 // nolint:dupl
@@ -135,7 +130,7 @@ func TestGetStatisticsLatest(t *testing.T) {
 		t.Run(c.assertion, func(t *testing.T) {
 			buf := &bytes.Buffer{}
 			mcap.WriteFile(t, buf, c.input...)
-			tmgr, finish := testTreeManager(ctx, t)
+			tmgr, finish := treemgr.TestTreeManager(ctx, t)
 			defer finish()
 			require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
 			require.NoError(t, tmgr.ForceFlush(ctx))
@@ -231,7 +226,7 @@ func TestGetMessagesLatest(t *testing.T) {
 		t.Run(c.assertion, func(t *testing.T) {
 			buf := &bytes.Buffer{}
 			mcap.WriteFile(t, buf, c.input...)
-			tmgr, finish := testTreeManager(ctx, t)
+			tmgr, finish := treemgr.TestTreeManager(ctx, t)
 			defer finish()
 			require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
 			require.NoError(t, tmgr.ForceFlush(ctx))
@@ -279,7 +274,7 @@ func TestStreamingAcrossMultipleReceives(t *testing.T) {
 	buf := &bytes.Buffer{}
 	mcap.WriteFile(t, buf, []int64{10e9})
 
-	tmgr, finish := testTreeManager(ctx, t)
+	tmgr, finish := treemgr.TestTreeManager(ctx, t)
 	defer finish()
 	require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
 	require.NoError(t, tmgr.ForceFlush(ctx))
@@ -317,7 +312,7 @@ func TestStreamingAcrossMultipleReceives(t *testing.T) {
 func TestReceiveDifferentSchemas(t *testing.T) {
 	ctx := context.Background()
 	t.Run("field added", func(t *testing.T) {
-		tmgr, finish := testTreeManager(ctx, t)
+		tmgr, finish := treemgr.TestTreeManager(ctx, t)
 		defer finish()
 
 		buf := &bytes.Buffer{}
@@ -381,7 +376,7 @@ func TestReceive(t *testing.T) {
 			buf := &bytes.Buffer{}
 			buf.Reset()
 			mcap.WriteFile(t, buf, c.input...)
-			tmgr, finish := testTreeManager(ctx, t)
+			tmgr, finish := treemgr.TestTreeManager(ctx, t)
 			defer finish()
 			require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
 			require.NoError(t, tmgr.ForceFlush(ctx))
@@ -394,29 +389,5 @@ func TestReceive(t *testing.T) {
 				})
 			}
 		})
-	}
-}
-
-func testTreeManager(ctx context.Context, tb testing.TB) (*treemgr.TreeManager, func()) {
-	tb.Helper()
-	store := storage.NewMemStore()
-	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1000)
-	ns := nodestore.NewNodestore(store, cache)
-	vs := versionstore.NewMemVersionStore()
-	rm := rootmap.NewMemRootmap()
-	tmpdir, err := os.MkdirTemp("", "dp3-test")
-	require.NoError(tb, err)
-	tmgr, err := treemgr.NewTreeManager(
-		ctx,
-		ns,
-		vs,
-		rm,
-		treemgr.WithWALBufferSize(100),
-		treemgr.WithSyncWorkers(0), // control syncing manually
-		treemgr.WithWALDir(tmpdir),
-	)
-	require.NoError(tb, err)
-	return tmgr, func() {
-		os.RemoveAll(tmpdir)
 	}
 }
