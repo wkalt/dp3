@@ -456,9 +456,9 @@ func (tm *TreeManager) loadIterators(
 	roots []rootmap.RootListing,
 	start, end uint64,
 ) ([]*tree.Iterator, error) {
-	ch := make(chan *tree.Iterator, len(roots))
+	ch := make(chan util.Pair[int, *tree.Iterator], len(roots))
 	g := errgroup.Group{}
-	iterators := make([]*tree.Iterator, 0, len(roots))
+	iterators := make([]util.Pair[int, *tree.Iterator], 0, len(roots))
 	mtx := &sync.Mutex{}
 	for i, root := range roots {
 		g.Go(func() error {
@@ -467,7 +467,7 @@ func (tm *TreeManager) loadIterators(
 			schema, channel, message, err := it.Next(ctx)
 			if err != nil {
 				if errors.Is(err, io.EOF) {
-					ch <- nil
+					ch <- util.NewPair[int, *tree.Iterator](i, nil)
 					return nil
 				}
 				return fmt.Errorf("failed to get next message: %w", err)
@@ -479,7 +479,7 @@ func (tm *TreeManager) loadIterators(
 			mtx.Lock()
 			heap.Push(pq, &item)
 			mtx.Unlock()
-			ch <- it
+			ch <- util.NewPair(i, it)
 			return nil
 		})
 	}
@@ -487,11 +487,16 @@ func (tm *TreeManager) loadIterators(
 		return nil, fmt.Errorf("failed to get iterators: %w", err)
 	}
 	for range roots {
-		if it := <-ch; it != nil {
-			iterators = append(iterators, it)
+		if e := <-ch; e.Second != nil {
+			iterators = append(iterators, e)
 		}
 	}
-	return iterators, nil
+	sort.Slice(iterators, func(i, j int) bool {
+		return iterators[i].First < iterators[j].First
+	})
+	return util.Map(func(p util.Pair[int, *tree.Iterator]) *tree.Iterator {
+		return p.Second
+	}, iterators), nil
 }
 
 func (tm *TreeManager) getMessages(

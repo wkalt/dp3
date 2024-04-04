@@ -97,6 +97,15 @@ func Reduce[T any, U any](f func(U, T) U, init U, xs []T) U {
 	return acc
 }
 
+// Map applies a function to each element of a slice, returning a new slice.
+func Map[T any, U any](f func(T) U, xs []T) []U {
+	ys := make([]U, len(xs))
+	for i, x := range xs {
+		ys[i] = f(x)
+	}
+	return ys
+}
+
 // Max returns the maximum of a and b.
 func Max[T cmp.Ordered](a, b T) T {
 	if a > b {
