@@ -31,6 +31,11 @@ var exportCmd = &cobra.Command{
 		if exportEndDate == "" {
 			exportEndDate = "2050-01-01"
 		}
+
+		if !exportJSON && !util.StdoutRedirected() {
+			bailf("Binary output can screw up your terminal. Redirect to a file or use --json.")
+		}
+
 		start, err := iso8601.Parse([]byte(exportStartDate))
 		if err != nil {
 			bailf("error parsing start date: %s", err)
