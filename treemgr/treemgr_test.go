@@ -210,6 +210,15 @@ func TestGetMessages(t *testing.T) {
 			},
 		},
 		{
+			"two topics, both queried, one with data in leaf but not in requested range",
+			[][]int64{{10, 100, 1000}, {15, 200, 2000}},
+			[]string{"topic-0", "topic-1"},
+			[]uint64{13, 16},
+			map[string][]uint64{
+				"topic-1": {15},
+			},
+		},
+		{
 			"multiple topics, three queried",
 			[][]int64{{10, 100, 1000}, {15, 200, 2000}, {20, 300, 3000}},
 			[]string{"topic-0", "topic-1", "topic-2"},
