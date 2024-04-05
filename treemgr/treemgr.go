@@ -439,6 +439,10 @@ func (tm *TreeManager) spawnWALConsumers(ctx context.Context) {
 func closeAll(ctx context.Context, closers ...*tree.Iterator) {
 	var errs []error
 	for _, closer := range closers {
+		// Nil closer for iterators that had no initial message in range.
+		if closer == nil {
+			continue
+		}
 		if err := closer.Close(); err != nil {
 			errs = append(errs, closer.Close())
 		}
@@ -487,9 +491,7 @@ func (tm *TreeManager) loadIterators(
 		return nil, fmt.Errorf("failed to get iterators: %w", err)
 	}
 	for range roots {
-		if e := <-ch; e.Second != nil {
-			iterators = append(iterators, e)
-		}
+		iterators = append(iterators, <-ch)
 	}
 	sort.Slice(iterators, func(i, j int) bool {
 		return iterators[i].First < iterators[j].First
