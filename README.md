@@ -131,7 +131,7 @@ Multimodal log data may be characterized by,
 * Highly variable message sizes and schemas (images, pointclouds, text logs,
   numeric measurements, compressed video, ...)
 * Various different message encodings (protobuf, ros1msg, cdr, flatbuffers, ...)
-* Timeseries oriented
+* Timeseries orientation
 
 Common workloads on the data are,
 * Stream data in time order at a point in time, for a particular device or
@@ -159,16 +159,17 @@ dp3 attempts to address all three of these in a single easy-to-administer
 solution.
 
 ## Architecture
-The architecture of dp3 is substantially inspired by
+The architecture of dp3 is inspired by
 [btrdb](https://www.usenix.org/system/files/conference/fast16/fast16-papers-andersen.pdf).
-It differs in support for multimodal data and multiplexed playback, and in
-drawing a slightly different contract with its consumers, based on "topics" and
-"producer IDs" rather than "stream IDs".
+It differs in that it supports for multimodal data and multiplexed playback,
+and in drawing a slightly different contract with its consumers -- one based on
+"topics" and "producer IDs" rather than "stream IDs".
 
 In large deployments, dp3 is envisioned as a component within a greater
 domain-specific data infrastructure. However, in smaller deployments the hope
 of dp3 is that incorporation of topics and producers in the core data model
-will enable orgs to make use of dp3 "off the bat" without secondary indicies.
+will enable orgs to make use of dp3 "right off the bat" without secondary
+indicies.
 
 ### Glossary
 * **Producer ID**: a unique identifier assigned by the user to the producer of some
