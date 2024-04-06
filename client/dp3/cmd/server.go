@@ -79,7 +79,7 @@ var serverCmd = &cobra.Command{
 			service.WithStorageProvider(store),
 		}
 		if err := svc.Start(ctx, opts...); err != nil {
-			bailf("error starting server: %s", err)
+			bailf("Shutdown error: %s", err)
 		}
 	},
 }
