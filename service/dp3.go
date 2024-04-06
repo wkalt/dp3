@@ -89,8 +89,12 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 		Addr:    fmt.Sprintf(":%d", opts.Port),
 		Handler: r,
 	}
-	done := make(chan os.Signal, 1)
-	signal.Notify(done, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+
+	sigint := make(chan os.Signal, 1)
+	sigterm := make(chan os.Signal, 1)
+	signal.Notify(sigint, syscall.SIGINT)
+	signal.Notify(sigterm, syscall.SIGTERM)
+
 	go func() {
 		log.Infow(ctx, "Starting server",
 			"port", opts.Port, "cache", util.HumanBytes(opts.CacheSizeBytes), "storage", store)
@@ -105,17 +109,37 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 		}
 	}()
 
-	<-done
+	select {
+	case <-sigint:
+		log.Infof(ctx, "Received SIGINT")
+	case <-sigterm:
+		log.Infof(ctx, "Received SIGTERM")
+	}
+
 	log.Infof(ctx, "Allowing 10 seconds for existing connections to close")
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer func() {
-		cancel()
+	defer cancel()
+
+	errs := make(chan error)
+	success := make(chan bool)
+
+	go func() {
+		if err := srv.Shutdown(ctx); err != nil {
+			errs <- err
+		} else {
+			log.Infof(ctx, "Server stopped")
+			success <- true
+		}
 	}()
-	if err := srv.Shutdown(ctx); err != nil {
-		return fmt.Errorf("failed to shut down server: %w", err)
+
+	select {
+	case <-sigint:
+		return errors.New("forceful shutdown on second interrupt")
+	case err := <-errs:
+		return fmt.Errorf("server shutdown failed: %w", err)
+	case <-success:
+		return nil
 	}
-	log.Infof(ctx, "Server stopped")
-	return nil
 }
 
 func readOpts(opts ...DP3Option) (*DP3Options, error) {
