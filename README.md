@@ -161,8 +161,8 @@ solution.
 ## Architecture
 The architecture of dp3 is inspired by
 [btrdb](https://www.usenix.org/system/files/conference/fast16/fast16-papers-andersen.pdf).
-It differs in that it supports for multimodal data and multiplexed playback,
-and in drawing a slightly different contract with its consumers -- one based on
+It differs in that it supports multimodal data and multiplexed playback, and in
+drawing a slightly different contract with its consumers -- one based on
 "topics" and "producer IDs" rather than "stream IDs".
 
 In large deployments, dp3 is envisioned as a component within a greater
