@@ -129,3 +129,8 @@ func CryptoHash(data []byte) string {
 	h.Write(data)
 	return hex.EncodeToString(h.Sum(nil))
 }
+
+// Pointer returns a pointer to x.
+func Pointer[T any](x T) *T {
+	return &x
+}
