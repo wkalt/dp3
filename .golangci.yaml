@@ -8,7 +8,10 @@ issues:
       text: "is too long"
       linters:
         - funlen
-
+    - path: "grammar.go$"
+      linters:
+        - tagalign
+        - govet
 
 linters:
   # Disable all linters.
