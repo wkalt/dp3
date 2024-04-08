@@ -454,6 +454,20 @@ func closeAll(ctx context.Context, closers ...*tree.Iterator) {
 	}
 }
 
+func (tm *TreeManager) NewTreeIterator(
+	ctx context.Context,
+	producer string,
+	topic string,
+	start, end uint64,
+) (*tree.Iterator, error) {
+	rootID, _, err := tm.rootmap.GetLatest(ctx, producer, topic)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest root: %w", err)
+	}
+	tr := tree.NewBYOTreeReader(rootID, tm.ns.Get)
+	return tree.NewTreeIterator(ctx, tr, start, end, 0), nil
+}
+
 func (tm *TreeManager) loadIterators(
 	ctx context.Context,
 	pq *util.PriorityQueue[record, uint64],
