@@ -657,9 +657,10 @@ func newValue(x any) *ql.Value {
 }
 
 // newAJ returns a new as-of join.
-func newAJ(keyword string, sel ql.Select, constraint *ql.AsOfConstraint) *ql.AJ {
+func newAJ(keyword string, immediate bool, sel ql.Select, constraint *ql.AsOfConstraint) *ql.AJ {
 	return &ql.AJ{
 		Keyword:    keyword,
+		Immediate:  immediate,
 		Select:     sel,
 		Constraint: constraint,
 	}
