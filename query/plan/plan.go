@@ -3,7 +3,6 @@ package plan
 import (
 	"fmt"
 	"math"
-	"strconv"
 	"strings"
 
 	"github.com/wkalt/dp3/query/ql"
@@ -67,7 +66,7 @@ func (n NodeType) String() string {
 // Node represents a plan node.
 type Node struct {
 	Type     NodeType
-	Args     []string
+	Args     []any
 	Children []*Node
 
 	BinaryOp      *string
@@ -105,10 +104,15 @@ func (n Node) String() string {
 	for i, c := range n.Children {
 		children[i] = c.String()
 	}
-
 	args := ""
 	if len(n.Args) > 0 {
-		args = fmt.Sprintf(" (%s)", strings.Join(n.Args, " "))
+		for i, arg := range n.Args {
+			if i > 0 {
+				args += " "
+			}
+			args += fmt.Sprintf("%v", arg)
+		}
+		args = fmt.Sprintf(" (%s)", args)
 	}
 	childrenTerm := ""
 	if len(children) > 0 {
@@ -161,13 +165,13 @@ func wrapWithPaging(node *Node, paging []ql.PagingTerm) *Node {
 // compileAJ compiles an AST as-of join to a plan node.
 func compileAJ(left *Node, ast ql.AJ) *Node {
 	right := compileSelect(ast.Select)
-	args := []string{
+	args := []any{
 		ast.Keyword,
 	}
 	if ast.Constraint != nil {
 		args = append(args,
 			ast.Constraint.Units,
-			strconv.Itoa(ast.Constraint.Quantity),
+			ast.Constraint.Quantity,
 		)
 	}
 	return &Node{
@@ -190,7 +194,7 @@ func compileMJ(left *Node, ast ql.MJ) *Node {
 func compileSelect(ast ql.Select) *Node {
 	base := &Node{
 		Type: Scan,
-		Args: []string{ast.Entity},
+		Args: []any{ast.Entity},
 	}
 	if ast.AJ != nil {
 		return compileAJ(base, *ast.AJ)
@@ -227,7 +231,7 @@ func CompileQuery(ast ql.Query) (*Node, error) {
 		table := n.Args[0]
 		for _, where := range ast.Where {
 			for _, binexp := range where.AndExprs {
-				if strings.HasPrefix(binexp.Left, table+".") {
+				if strings.HasPrefix(binexp.Left, fmt.Sprint(table)+".") {
 					n.Children = append(n.Children, compileBinaryExpr(binexp))
 				}
 			}
@@ -236,7 +240,7 @@ func CompileQuery(ast ql.Query) (*Node, error) {
 		if start == 0 && end == math.MaxInt64 {
 			n.Args = append(n.Args, "all-time")
 		} else {
-			n.Args = append(n.Args, strconv.FormatInt(start, 10), strconv.FormatInt(end, 10))
+			n.Args = append(n.Args, uint64(start), uint64(end))
 		}
 	})
 	if len(ast.PagingClause) > 0 {
