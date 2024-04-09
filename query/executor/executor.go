@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"strconv"
 
 	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/mcap"
@@ -118,25 +117,31 @@ func compileAsofJoin(ctx context.Context, node *plan.Node, sf ScanFactory) (Node
 		return nil, fmt.Errorf("expected 1 or 3 arguments, got %d", l)
 	}
 	var threshold uint64
-	keyword := node.Args[0]
 	if len(node.Args) > 1 {
-		units := node.Args[1]
-		quantity, err := strconv.ParseUint(node.Args[2], 10, 64)
-		if err != nil {
+		units, ok := node.Args[1].(string)
+		if !ok {
+			return nil, errors.New("expected string units")
+		}
+		quantity, ok := node.Args[2].(int)
+		if !ok {
 			return nil, fmt.Errorf("failed to parse quantity: %w", err)
 		}
 		switch units {
 		case "nanoseconds":
-			threshold = quantity
+			threshold = uint64(quantity)
 		case "microseconds":
-			threshold = quantity * 1e3
+			threshold = uint64(quantity) * 1e3
 		case "milliseconds":
-			threshold = quantity * 1e6
+			threshold = uint64(quantity) * 1e6
 		case "seconds":
-			threshold = quantity * 1e9
+			threshold = uint64(quantity) * 1e9
 		case "minutes":
-			threshold = quantity * 60 * 1e9
+			threshold = uint64(quantity) * 60 * 1e9
 		}
+	}
+	keyword, ok := node.Args[0].(string)
+	if !ok {
+		return nil, errors.New("expected string keyword")
 	}
 	switch keyword {
 	case "precedes":
@@ -167,21 +172,27 @@ func compileOffset(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, 
 }
 
 func compileScan(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, error) {
-	table := node.Args[0]
-	producer := node.Args[1]
+	table, ok := node.Args[0].(string)
+	if !ok {
+		return nil, fmt.Errorf("expected string table, got %T", node.Args[0])
+	}
+	producer, ok := node.Args[1].(string)
+	if !ok {
+		return nil, fmt.Errorf("expected string producer, got %T", node.Args[1])
+	}
 	var err error
 	var start, end uint64
 	if node.Args[2] == "all-time" {
 		start = 0
 		end = ^uint64(0)
 	} else {
-		start, err = strconv.ParseUint(node.Args[2], 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse start time: %w", err)
+		start, ok = node.Args[2].(uint64)
+		if !ok {
+			return nil, fmt.Errorf("expected uint64 start time, got %T", node.Args[2])
 		}
-		end, err = strconv.ParseUint(node.Args[3], 10, 64)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse end time: %w", err)
+		end, ok = node.Args[3].(uint64)
+		if !ok {
+			return nil, fmt.Errorf("expected uint64 end time, got %T", node.Args[3])
 		}
 	}
 	it, err := sf(ctx, producer, table, start, end)
