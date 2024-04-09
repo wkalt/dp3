@@ -144,15 +144,11 @@ func (n Node) String() string {
 // is expected to start with "prefix dot", which we strip under the assumption
 // that aliases have already been resolved at this point.
 func compileBinaryExpr(expr ql.BinaryExpression) *Node {
-	_, left, found := strings.Cut(expr.Left, ".")
-	if !found {
-		panic("expected a binary expression with a dot")
-	}
 	return &Node{
 		Type: BinaryExpression,
 
 		BinaryOp:      &expr.Op,
-		BinaryOpField: util.Pointer(left),
+		BinaryOpField: &expr.Left,
 		BinaryOpValue: &expr.Right,
 	}
 }
@@ -231,6 +227,29 @@ func compileSelect(ast ql.Select) *Node {
 	return base
 }
 
+func compileAnd(ast []ql.BinaryExpression) *Node {
+	children := make([]*Node, len(ast))
+	for i, expr := range ast {
+		children[i] = compileBinaryExpr(expr)
+	}
+	return &Node{
+		Type:     And,
+		Children: children,
+	}
+}
+
+func compileOr(ast []ql.OrClause) *Node {
+	children := make([]*Node, len(ast))
+	for i, clause := range ast {
+		children[i] = compileAnd(clause.AndExprs)
+	}
+
+	return &Node{
+		Type:     Or,
+		Children: children,
+	}
+}
+
 // CompileQuery compiles an AST query to a plan node.
 func CompileQuery(ast ql.Query) (*Node, error) {
 	start := int64(0)
@@ -248,19 +267,16 @@ func CompileQuery(ast ql.Query) (*Node, error) {
 	}
 	producer := ast.From
 	base := compileSelect(ast.Select)
-	// Push where clauses down to the appropriate scan nodes, and also add
-	// target and start/end time constraints.
+	// Push the entire where clause down to each scan node, since we don't know
+	// about schemas here. The executor will resolve it according to the schema
+	// of the data and error if nonsense is submitted.
+	where := compileOr(ast.Where)
 	traverse(base, nil, func(n *Node) {
 		if n.Type != Scan {
 			return
 		}
-		alias := util.When(n.Args[1] != "", n.Args[1], n.Args[0])
-		for _, where := range ast.Where {
-			for _, binexp := range where.AndExprs {
-				if strings.HasPrefix(binexp.Left, fmt.Sprint(alias)+".") {
-					n.Children = append(n.Children, compileBinaryExpr(binexp))
-				}
-			}
+		if len(where.Children) > 0 {
+			n.Children = append(n.Children, where)
 		}
 		n.Args = append(n.Args, producer)
 		if start == 0 && end == math.MaxInt64 {

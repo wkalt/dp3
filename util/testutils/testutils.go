@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"strings"
 	"testing"
 )
 
@@ -88,4 +89,13 @@ func ReadPrefixedString(t *testing.T, bs []byte) string {
 		t.Fatalf("expected at least %d bytes, got %d", 4+int(l), len(bs))
 	}
 	return string(bs[4 : 4+l])
+}
+
+// StripSpace removes all newlines and repeated spaces from a string.
+func StripSpace(s string) string {
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.ReplaceAll(s, "\n", "")
+	// replace runs of multiple spaces with a single space
+	s = strings.Join(strings.Fields(s), " ")
+	return s
 }
