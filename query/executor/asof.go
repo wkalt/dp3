@@ -31,6 +31,8 @@ type AsofJoinNode struct {
 	lastLeft  *Tuple
 	lastRight *Tuple
 
+	immediate bool
+
 	threshold   uint64
 	initialized bool
 }
@@ -111,12 +113,17 @@ func (n *AsofJoinNode) Next(ctx context.Context) (*Tuple, error) {
 
 // String returns the string representation of the node.
 func (n *AsofJoinNode) String() string {
-	return fmt.Sprintf("[asof %d %s %s]", n.threshold, n.children[0].String(), n.children[1].String())
+	return fmt.Sprintf(
+		"[asof %d %s %s %s]",
+		n.threshold,
+		util.When(n.immediate, "immediate", "full"),
+		n.children[0].String(), n.children[1].String(),
+	)
 }
 
 // NewAsofJoinNode constructs a new as-of join node.
-func NewAsofJoinNode(left, right Node, threshold uint64) *AsofJoinNode {
+func NewAsofJoinNode(left, right Node, immediate bool, threshold uint64) *AsofJoinNode {
 	children := []Node{left, right}
 	pq := util.NewPriorityQueue[queueElement, uint64]()
-	return &AsofJoinNode{children: children, threshold: threshold, pq: pq}
+	return &AsofJoinNode{children: children, threshold: threshold, immediate: immediate, pq: pq}
 }

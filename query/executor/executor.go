@@ -113,16 +113,16 @@ func compileAsofJoin(ctx context.Context, node *plan.Node, sf ScanFactory) (Node
 		return nil, err
 	}
 
-	if l := len(node.Args); l > 1 && l != 3 {
-		return nil, fmt.Errorf("expected 1 or 3 arguments, got %d", l)
+	if l := len(node.Args); l > 2 && l != 4 {
+		return nil, fmt.Errorf("expected 2 or 4 arguments, got %d", l)
 	}
 	var threshold uint64
-	if len(node.Args) > 1 {
-		units, ok := node.Args[1].(string)
+	if len(node.Args) > 2 {
+		units, ok := node.Args[2].(string)
 		if !ok {
 			return nil, errors.New("expected string units")
 		}
-		quantity, ok := node.Args[2].(int)
+		quantity, ok := node.Args[3].(int)
 		if !ok {
 			return nil, fmt.Errorf("failed to parse quantity: %w", err)
 		}
@@ -143,11 +143,15 @@ func compileAsofJoin(ctx context.Context, node *plan.Node, sf ScanFactory) (Node
 	if !ok {
 		return nil, errors.New("expected string keyword")
 	}
+	immediate, ok := node.Args[1].(bool)
+	if !ok {
+		return nil, errors.New("expected bool immediate")
+	}
 	switch keyword {
 	case "precedes":
-		return NewAsofJoinNode(left, right, threshold), nil
+		return NewAsofJoinNode(left, right, immediate, threshold), nil
 	case "succeeds":
-		return NewAsofJoinNode(right, left, threshold), nil
+		return NewAsofJoinNode(right, left, immediate, threshold), nil
 	case "neighbors":
 		return nil, errors.New("not implemented")
 	default:
