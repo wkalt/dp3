@@ -24,7 +24,8 @@ so the strategy will evolve with time.
 // Parser is the interface for parsing ROS1 message bytes. FixedSize returns the
 // fixed length of the parser if it has one, else zero. The parse method cases
 // FixedSize to skip over sections of bytes where possible. The parse parameter
-// supplied to it, indicates whether bytes should be parsed or skipped.
+// supplied to it, indicates whether bytes should be parsed or skipped. The
+// result is the number of bytes read followed by any error encountered.
 type Parser interface {
 	FixedSize() int
 	Parse(data []byte, values *[]any, parse bool) (int, error)

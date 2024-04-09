@@ -10,6 +10,7 @@ import (
 	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/query/plan"
 	"github.com/wkalt/dp3/tree"
+	"github.com/wkalt/dp3/util"
 )
 
 /*
@@ -179,6 +180,10 @@ func compileScan(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, er
 	if !ok {
 		return nil, fmt.Errorf("expected string table, got %T", node.Args[0])
 	}
+	alias, ok := node.Args[1].(string)
+	if !ok {
+		return nil, fmt.Errorf("expected string alias, got %T", node.Args[1])
+	}
 	producer, ok := node.Args[2].(string)
 	if !ok {
 		return nil, fmt.Errorf("expected string producer, got %T", node.Args[1])
@@ -202,5 +207,11 @@ func compileScan(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, er
 	if err != nil {
 		return nil, err
 	}
-	return NewScanNode(table, it), nil
+	scan := NewScanNode(table, it)
+	if len(node.Children) > 0 {
+		expr := newExpr(util.When(alias != "", alias, table), node.Children[0])
+		return NewFilterNode(expr.filter, scan), nil
+	}
+
+	return scan, nil
 }

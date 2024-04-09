@@ -60,6 +60,26 @@ func U64b(v uint64) []byte {
 	return buf
 }
 
+// I8b returns a byte slice containing a single int8 value.
+func I8b(v int8) []byte {
+	return U8b(uint8(v))
+}
+
+// I16b returns a byte slice containing a single int16 value.
+func I16b(v int16) []byte {
+	return U16b(uint16(v))
+}
+
+// I32b returns a byte slice containing a single int32 value.
+func I32b(v int32) []byte {
+	return U32b(uint32(v))
+}
+
+// I64b returns a byte slice containing a single int64 value.
+func I64b(v int64) []byte {
+	return U64b(uint64(v))
+}
+
 // F32b returns a byte slice containing a single float32 value.
 func F32b(v float32) []byte {
 	return U32b(math.Float32bits(v))

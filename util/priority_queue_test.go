@@ -9,12 +9,14 @@ import (
 )
 
 func TestPriorityQueue(t *testing.T) {
-	pq := util.NewPriorityQueue[int, int]()
+	pq := util.NewPriorityQueue[int](func(a, b int) bool {
+		return a < b
+	})
 	heap.Init(pq)
-	heap.Push(pq, &util.Item[int, int]{Value: 1, Priority: 3})
-	heap.Push(pq, &util.Item[int, int]{Value: 2, Priority: 2})
-	heap.Push(pq, &util.Item[int, int]{Value: 3, Priority: 1})
-	assert.Equal(t, 3, heap.Pop(pq).(int))
-	assert.Equal(t, 2, heap.Pop(pq).(int))
+	heap.Push(pq, 3)
+	heap.Push(pq, 2)
+	heap.Push(pq, 1)
 	assert.Equal(t, 1, heap.Pop(pq).(int))
+	assert.Equal(t, 2, heap.Pop(pq).(int))
+	assert.Equal(t, 3, heap.Pop(pq).(int))
 }

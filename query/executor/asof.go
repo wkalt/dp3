@@ -24,7 +24,7 @@ returned.
 
 // AsofJoinNode represents an as-of join.
 type AsofJoinNode struct {
-	pq *util.PriorityQueue[queueElement, uint64]
+	pq *util.PriorityQueue[queueElement]
 
 	children []Node
 
@@ -58,11 +58,7 @@ func (n *AsofJoinNode) initialize(ctx context.Context) error {
 			return fmt.Errorf("failed to get next message on left child: %w", err)
 		}
 		if next != nil {
-			item := util.Item[queueElement, uint64]{
-				Value:    queueElement{tuple: next, index: i},
-				Priority: next.Message.LogTime,
-			}
-			heap.Push(n.pq, &item)
+			heap.Push(n.pq, queueElement{tuple: next, index: i})
 		}
 	}
 	n.initialized = true
@@ -88,11 +84,7 @@ func (n *AsofJoinNode) Next(ctx context.Context) (*Tuple, error) {
 				return nil, fmt.Errorf("failed to get next tuple: %w", err)
 			}
 		} else {
-			item := util.Item[queueElement, uint64]{
-				Value:    queueElement{tuple: next, index: element.index},
-				Priority: next.Message.LogTime,
-			}
-			heap.Push(n.pq, &item)
+			heap.Push(n.pq, queueElement{tuple: next, index: element.index})
 		}
 		if element.index == 0 {
 			n.lastLeft = element.tuple
@@ -124,6 +116,11 @@ func (n *AsofJoinNode) String() string {
 // NewAsofJoinNode constructs a new as-of join node.
 func NewAsofJoinNode(left, right Node, immediate bool, threshold uint64) *AsofJoinNode {
 	children := []Node{left, right}
-	pq := util.NewPriorityQueue[queueElement, uint64]()
+	pq := util.NewPriorityQueue[queueElement](func(a, b queueElement) bool {
+		if a.tuple.Message.LogTime == b.tuple.Message.LogTime {
+			return a.tuple.Message.ChannelID < b.tuple.Message.ChannelID
+		}
+		return a.tuple.Message.LogTime < b.tuple.Message.LogTime
+	})
 	return &AsofJoinNode{children: children, threshold: threshold, immediate: immediate, pq: pq}
 }

@@ -15,7 +15,7 @@ predicate supplied at construction.
 // FilterNode represents the filter node.
 type FilterNode struct {
 	child  Node
-	filter func(*Tuple) bool
+	filter func(*Tuple) (bool, error)
 }
 
 // Next returns the next tuple from the node.
@@ -25,7 +25,11 @@ func (n *FilterNode) Next(ctx context.Context) (*Tuple, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to read next message: %w", err)
 		}
-		if n.filter(t) {
+		ok, err := n.filter(t)
+		if err != nil {
+			return nil, fmt.Errorf("failed to filter message: %w", err)
+		}
+		if ok {
 			return t, nil
 		}
 	}
@@ -42,4 +46,8 @@ func (n *FilterNode) Close() error {
 // String returns a string representation of the node.
 func (n *FilterNode) String() string {
 	return fmt.Sprintf("[filter %s]", n.child.String())
+}
+
+func NewFilterNode(filter func(*Tuple) (bool, error), child Node) *FilterNode {
+	return &FilterNode{child: child, filter: filter}
 }
