@@ -29,7 +29,7 @@ type queueElement struct {
 // MergeNode represents the merge node.
 type MergeNode struct {
 	children []Node
-	pq       *util.PriorityQueue[queueElement, uint64]
+	pq       *util.PriorityQueue[queueElement]
 
 	initialized bool
 }
@@ -37,8 +37,13 @@ type MergeNode struct {
 // NewMergeNode returns a new merge node.
 func NewMergeNode(children ...Node) *MergeNode {
 	return &MergeNode{
-		children:    children,
-		pq:          util.NewPriorityQueue[queueElement, uint64](),
+		children: children,
+		pq: util.NewPriorityQueue[queueElement](func(a, b queueElement) bool {
+			if a.tuple.Message.LogTime == b.tuple.Message.LogTime {
+				return a.tuple.Message.ChannelID < b.tuple.Message.ChannelID
+			}
+			return a.tuple.Message.LogTime < b.tuple.Message.LogTime
+		}),
 		initialized: false,
 	}
 }
@@ -56,12 +61,7 @@ func (n *MergeNode) initialize(ctx context.Context) error {
 				}
 				return fmt.Errorf("failed to get next message on child %d: %w", i, err)
 			}
-
-			item := util.Item[queueElement, uint64]{
-				Value:    queueElement{tuple: tuple, index: i},
-				Priority: tuple.Message.LogTime,
-			}
-			heap.Push(n.pq, &item)
+			heap.Push(n.pq, queueElement{tuple: tuple, index: i})
 			return nil
 		})
 	}
@@ -86,11 +86,7 @@ func (n *MergeNode) Next(ctx context.Context) (*Tuple, error) {
 			return nil, fmt.Errorf("failed to get next message on child %d: %w", element.index, err)
 		}
 		if next != nil {
-			item := util.Item[queueElement, uint64]{
-				Value:    queueElement{tuple: next, index: element.index},
-				Priority: next.Message.LogTime,
-			}
-			heap.Push(n.pq, &item)
+			heap.Push(n.pq, queueElement{tuple: next, index: element.index})
 		}
 		return element.tuple, nil
 	}

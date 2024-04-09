@@ -138,7 +138,12 @@ func Nmerge(writer io.Writer, iterators ...mcap.MessageIterator) error {
 	if err := w.WriteHeader(&mcap.Header{}); err != nil {
 		return fmt.Errorf("failed to write header: %w", err)
 	}
-	pq := util.NewPriorityQueue[record, uint64]()
+	pq := util.NewPriorityQueue[record](func(a, b record) bool {
+		if a.message.LogTime == b.message.LogTime {
+			return a.message.ChannelID < b.message.ChannelID
+		}
+		return a.message.LogTime < b.message.LogTime
+	})
 	heap.Init(pq)
 	mc := NewMergeCoordinator(w)
 
@@ -151,11 +156,8 @@ func Nmerge(writer io.Writer, iterators ...mcap.MessageIterator) error {
 			}
 			return fmt.Errorf("failed to get next message from iterator %d: %w", i, err)
 		}
-		var item = util.Item[record, uint64]{
-			Value:    record{schema, channel, message, i},
-			Priority: message.LogTime,
-		}
-		heap.Push(pq, &item)
+		rec := record{schema, channel, message, i}
+		heap.Push(pq, rec)
 	}
 
 	for pq.Len() > 0 {
@@ -173,11 +175,7 @@ func Nmerge(writer io.Writer, iterators ...mcap.MessageIterator) error {
 			}
 			return fmt.Errorf("failed to get next message: %w", err)
 		}
-		var item = util.Item[record, uint64]{
-			Value:    record{s, c, m, rec.idx},
-			Priority: m.LogTime,
-		}
-		heap.Push(pq, &item)
+		heap.Push(pq, record{s, c, m, rec.idx})
 	}
 	if err := w.Close(); err != nil {
 		return fmt.Errorf("failed to close writer: %w", err)

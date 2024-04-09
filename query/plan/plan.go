@@ -97,7 +97,6 @@ func (n Node) String() string {
 	for i, c := range n.Children {
 		children[i] = c.String()
 	}
-
 	switch n.Type {
 	case BinaryExpression:
 		return fmt.Sprintf("[binexp [%s %s %s]]", *n.BinaryOp, *n.BinaryOpField, n.BinaryOpValue)
@@ -116,7 +115,6 @@ func (n Node) String() string {
 		argsStr := " (" + strings.Join(args, " ") + ") "
 		return fmt.Sprintf("[%s%s%s]", n.Type, argsStr, strings.Join(children, " "))
 	}
-
 	args := ""
 	if len(n.Args) > 0 {
 		count := 0
@@ -243,7 +241,6 @@ func compileOr(ast []ql.OrClause) *Node {
 	for i, clause := range ast {
 		children[i] = compileAnd(clause.AndExprs)
 	}
-
 	return &Node{
 		Type:     Or,
 		Children: children,

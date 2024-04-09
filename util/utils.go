@@ -134,3 +134,12 @@ func CryptoHash(data []byte) string {
 func Pointer[T any](x T) *T {
 	return &x
 }
+
+func All[T any](xs []T, f func(T) bool) bool {
+	for _, x := range xs {
+		if !f(x) {
+			return false
+		}
+	}
+	return true
+}

@@ -96,7 +96,21 @@ func (t Timestamp) Nanos() (int64, error) {
 type Value struct {
 	Text    *string  `@QuotedString`
 	Integer *int64   `| @Integer`
+	Bool    *bool    `| @("true" | "false")`
 	Float   *float64 `| @Float`
+}
+
+func (v Value) Value() any {
+	if v.Text != nil {
+		return *v.Text
+	}
+	if v.Integer != nil {
+		return *v.Integer
+	}
+	if v.Float != nil {
+		return *v.Float
+	}
+	panic("invalid value")
 }
 
 // String returns the string representation of the value.

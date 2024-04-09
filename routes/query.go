@@ -47,6 +47,7 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			httputil.InternalServerError(ctx, w, "error compiling query: %s", err)
 			return
 		}
+		log.Debugf(ctx, "compiled query: %s", qp.String())
 		if err := executor.Run(ctx, w, qp, tmgr.NewTreeIterator); err != nil {
 			httputil.InternalServerError(ctx, w, "error executing query: %s", err)
 			return

@@ -1,7 +1,5 @@
 package util
 
-import "cmp"
-
 /*
 PriorityQueue is a simple heap-based priority queue. We use it to execute
 streaming merges over tree iterators.
@@ -9,42 +7,43 @@ streaming merges over tree iterators.
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type Item[K comparable, P cmp.Ordered] struct {
-	Value    K
-	Priority P
+type PriorityQueue[K comparable] struct {
+	items []K
+	less  func(a, b K) bool
 }
 
-type PriorityQueue[K comparable, P cmp.Ordered] []*Item[K, P]
-
-func NewPriorityQueue[K comparable, P cmp.Ordered]() *PriorityQueue[K, P] {
-	pq := make(PriorityQueue[K, P], 0)
-	return &pq
+func NewPriorityQueue[K comparable](less func(a, b K) bool) *PriorityQueue[K] {
+	items := make([]K, 0)
+	return &PriorityQueue[K]{
+		items: items,
+		less:  less,
+	}
 }
 
-func (pq PriorityQueue[_, _]) Len() int {
-	return len(pq)
+func (pq PriorityQueue[_]) Len() int {
+	return len(pq.items)
 }
 
-func (pq PriorityQueue[_, _]) Less(i, j int) bool {
-	return pq[i].Priority < pq[j].Priority
+func (pq PriorityQueue[_]) Less(i, j int) bool {
+	return pq.less(pq.items[i], pq.items[j])
 }
 
-func (pq PriorityQueue[_, _]) Swap(i, j int) {
-	pq[i], pq[j] = pq[j], pq[i]
+func (pq PriorityQueue[_]) Swap(i, j int) {
+	pq.items[i], pq.items[j] = pq.items[j], pq.items[i]
 }
 
-func (pq *PriorityQueue[K, P]) Push(item any) {
-	value, ok := item.(*Item[K, P])
+func (pq *PriorityQueue[K]) Push(item any) {
+	value, ok := item.(K)
 	if !ok {
 		panic("pq: invalid item type")
 	}
-	*pq = append(*pq, value)
+	pq.items = append(pq.items, value)
 }
 
-func (pq *PriorityQueue[K, P]) Pop() any {
-	old := *pq
+func (pq *PriorityQueue[K]) Pop() any {
+	old := pq.items
 	n := len(old)
 	item := old[n-1]
-	*pq = old[0 : n-1]
-	return item.Value
+	pq.items = old[0 : n-1]
+	return item
 }
