@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/wkalt/dp3/query/ql"
+	"github.com/wkalt/dp3/util"
 )
 
 /*
@@ -92,6 +93,11 @@ func traverse(n *Node, pre func(n *Node), post func(n *Node)) {
 
 // String returns a string representation of the node.
 func (n Node) String() string {
+	children := make([]string, len(n.Children))
+	for i, c := range n.Children {
+		children[i] = c.String()
+	}
+
 	switch n.Type {
 	case BinaryExpression:
 		return fmt.Sprintf("[binexp [%s %s %s]]", *n.BinaryOp, *n.BinaryOpField, n.BinaryOpValue)
@@ -99,11 +105,18 @@ func (n Node) String() string {
 		return fmt.Sprintf("[limit %d %s]", *n.Limit, n.Children[0])
 	case Offset:
 		return fmt.Sprintf("[offset %d %s]", *n.Offset, n.Children[0])
+	case AsofJoin:
+		args := []string{
+			fmt.Sprintf("%v", n.Args[0]),
+			util.When(n.Args[1].(bool), "immediate", "full"), // this is the reason for the separate case
+		}
+		if len(n.Args) > 2 {
+			args = append(args, fmt.Sprint(n.Args[2]), fmt.Sprint(n.Args[3]))
+		}
+		argsStr := " (" + strings.Join(args, " ") + ") "
+		return fmt.Sprintf("[%s%s%s]", n.Type, argsStr, strings.Join(children, " "))
 	}
-	children := make([]string, len(n.Children))
-	for i, c := range n.Children {
-		children[i] = c.String()
-	}
+
 	args := ""
 	if len(n.Args) > 0 {
 		for i, arg := range n.Args {
@@ -167,6 +180,7 @@ func compileAJ(left *Node, ast ql.AJ) *Node {
 	right := compileSelect(ast.Select)
 	args := []any{
 		ast.Keyword,
+		ast.Immediate,
 	}
 	if ast.Constraint != nil {
 		args = append(args,
@@ -239,9 +253,9 @@ func CompileQuery(ast ql.Query) (*Node, error) {
 		n.Args = append(n.Args, producer)
 		if start == 0 && end == math.MaxInt64 {
 			n.Args = append(n.Args, "all-time")
-		} else {
-			n.Args = append(n.Args, uint64(start), uint64(end))
+			return
 		}
+		n.Args = append(n.Args, uint64(start), uint64(end))
 	})
 	if len(ast.PagingClause) > 0 {
 		base = wrapWithPaging(base, ast.PagingClause)

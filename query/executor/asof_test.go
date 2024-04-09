@@ -42,7 +42,7 @@ func TestAsofJoinNode(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
-			node := executor.NewAsofJoinNode(c.left, c.right, c.threshold)
+			node := executor.NewAsofJoinNode(c.left, c.right, false, c.threshold)
 			actual := []uint64{}
 			for {
 				tuple, err := node.Next(ctx)

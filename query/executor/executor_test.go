@@ -48,7 +48,12 @@ func TestCompilePlan(t *testing.T) {
 		{
 			"asof join",
 			"from device topic-0 precedes topic-1 by less than 10 seconds",
-			"[asof 10000000000 [scan topic-0] [scan topic-1]]",
+			"[asof 10000000000 full [scan topic-0] [scan topic-1]]",
+		},
+		{
+			"asof join with immediate",
+			"from device topic-0 precedes immediate topic-1 by less than 10 seconds",
+			"[asof 10000000000 immediate [scan topic-0] [scan topic-1]]",
 		},
 	}
 	parser := ql.NewParser()

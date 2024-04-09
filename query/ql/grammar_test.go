@@ -207,22 +207,27 @@ func TestAJ(t *testing.T) {
 		{
 			"precedes",
 			"precedes b",
-			newAJ("precedes", newSelect("b", nil, nil), nil),
+			newAJ("precedes", false, newSelect("b", nil, nil), nil),
+		},
+		{
+			"precedes immediate",
+			"precedes immediate b",
+			newAJ("precedes", true, newSelect("b", nil, nil), nil),
 		},
 		{
 			"succeeds",
 			"succeeds b",
-			newAJ("succeeds", newSelect("b", nil, nil), nil),
+			newAJ("succeeds", false, newSelect("b", nil, nil), nil),
 		},
 		{
 			"neighbors",
 			"neighbors b",
-			newAJ("neighbors", newSelect("b", nil, nil), nil),
+			newAJ("neighbors", false, newSelect("b", nil, nil), nil),
 		},
 		{
 			"precedes with constraint",
 			"precedes b by less than 20 seconds",
-			newAJ("precedes", newSelect("b", nil, nil), newAsofConstraint(20, "seconds")),
+			newAJ("precedes", false, newSelect("b", nil, nil), newAsofConstraint(20, "seconds")),
 		},
 	}
 	for _, c := range cases {
@@ -283,7 +288,7 @@ func TestSelect(t *testing.T) {
 			"a precedes b by less than 10 nanoseconds",
 			newSelect("a",
 				nil,
-				newAJ("precedes",
+				newAJ("precedes", false,
 					newSelect("b", nil, nil),
 					newAsofConstraint(10, "nanoseconds"),
 				)),
@@ -293,13 +298,13 @@ func TestSelect(t *testing.T) {
 			"a, b precedes c by less than 10 nanoseconds",
 			newSelect("a",
 				newMJ(newSelect("b", nil,
-					newAJ("precedes", newSelect("c", nil, nil),
+					newAJ("precedes", false, newSelect("c", nil, nil),
 						newAsofConstraint(10, "nanoseconds")))), nil),
 		},
 		{
 			"aj before mj",
 			"a precedes b, c",
-			newSelect("a", nil, newAJ("precedes",
+			newSelect("a", nil, newAJ("precedes", false,
 				newSelect("b", newMJ(newSelect("c", nil, nil)), nil),
 				nil,
 			)),
@@ -455,7 +460,7 @@ func TestQuery(t *testing.T) {
 			"from my-robot a precedes b by less than 10 seconds",
 			newQuery(
 				nil,
-				newSelect("a", nil, newAJ("precedes", newSelect("b", nil, nil), newAsofConstraint(10, "seconds"))),
+				newSelect("a", nil, newAJ("precedes", false, newSelect("b", nil, nil), newAsofConstraint(10, "seconds"))),
 				nil,
 				nil,
 			),
@@ -465,7 +470,7 @@ func TestQuery(t *testing.T) {
 			"from my-robot a precedes b",
 			newQuery(
 				nil,
-				newSelect("a", nil, newAJ("precedes", newSelect("b", nil, nil), nil)),
+				newSelect("a", nil, newAJ("precedes", false, newSelect("b", nil, nil), nil)),
 				nil,
 				nil,
 			),
@@ -475,7 +480,7 @@ func TestQuery(t *testing.T) {
 			"from my-robot a precedes b limit 10 offset 10",
 			newQuery(
 				nil,
-				newSelect("a", nil, newAJ("precedes", newSelect("b", nil, nil), nil)),
+				newSelect("a", nil, newAJ("precedes", false, newSelect("b", nil, nil), nil)),
 				nil,
 				newPagingClause("limit", 10, "offset", 10),
 			),
@@ -485,7 +490,7 @@ func TestQuery(t *testing.T) {
 			"from my-robot a precedes b offset 10 limit 10",
 			newQuery(
 				nil,
-				newSelect("a", nil, newAJ("precedes", newSelect("b", nil, nil), nil)),
+				newSelect("a", nil, newAJ("precedes", false, newSelect("b", nil, nil), nil)),
 				nil,
 				newPagingClause("offset", 10, "limit", 10),
 			),
