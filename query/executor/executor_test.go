@@ -23,23 +23,125 @@ func TestQueryExecution(t *testing.T) {
 	defer finish()
 	prepTmgr2(t, ctx, tmgr)
 
+	t.Run("join scenarios", func(t *testing.T) {
+		cases := []struct {
+			assertion string
+			query     string
+			expected  [][]int64
+		}{
+			{
+				"basic scan",
+				"from device topic-0",
+				[][]int64{{0, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}},
+			},
+			{
+				"basic merge join",
+				"from device topic-0, topic-1",
+				[][]int64{{0, 0}, {1, 0}, {0, 1}, {0, 2}, {1, 2}, {0, 3}, {0, 4}, {1, 4}, {1, 6}, {1, 8}},
+			},
+			{
+				"merge join with where clause on one element",
+				"from device topic-0, topic-1 where topic-1.u8 = 0",
+				[][]int64{{0, 0}, {1, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}},
+			},
+			{
+				"merge join with where clause on both elements",
+				// todo: it's weird that either "and" or "or" could work. Will need to firm up the grammar.
+				"from device topic-0, topic-1 where topic-0.u8 = 0 and topic-1.u8 = 0",
+				[][]int64{{0, 0}, {1, 0}},
+			},
+			{
+				"asof join precedes",
+				"from device topic-0 precedes topic-1 by less than 2 nanoseconds",
+				[][]int64{{0, 0}, {1, 0}, {0, 2}, {1, 2}, {0, 4}, {1, 4}},
+			},
+			{
+				"asof join succeeds",
+				"from device topic-0 succeeds topic-1 by less than 2 nanoseconds",
+				[][]int64{{1, 0}, {0, 1}, {1, 2}, {0, 3}},
+			},
+			{
+				"asof join with precedes without immediate",
+				"from device topic-1 precedes topic-8 by less than 100 nanoseconds",
+				[][]int64{{1, 0}, {8, 0}, {1, 8}, {8, 9}, {8, 18}, {8, 27}, {8, 36}},
+			},
+			{
+				"asof join with precedes with immediate",
+				"from device topic-1 precedes immediate topic-8 by less than 100 nanoseconds",
+				[][]int64{{1, 0}, {8, 0}, {1, 8}, {8, 9}},
+			},
+			{
+				"asof join with where clause",
+				"from device topic-0 precedes immediate topic-1 by less than 10 nanoseconds where topic-0.u8 = 0",
+				[][]int64{{0, 0}, {1, 0}},
+			},
+			{
+				"merge join with alias",
+				"from device topic-0 as a, topic-1 as b where a.u8 = 0 and b.u8 = 0",
+				[][]int64{{0, 0}, {1, 0}},
+			},
+			{
+				"merge join one alias one not",
+				"from device topic-0 as a, topic-1 where a.u8 = 0 and topic-1.u8 = 0",
+				[][]int64{{0, 0}, {1, 0}},
+			},
+			{
+				"asof join with alias",
+				"from device topic-0 as a precedes topic-1 as b by less than 10 nanoseconds where a.u8 = 0 and b.u8 = 0",
+				[][]int64{{0, 0}, {1, 0}},
+			},
+			{
+				"limit",
+				"from device topic-0 as a precedes topic-1 as b by less than 10 nanoseconds where a.u8 = 0 and b.u8 = 0 limit 1",
+				[][]int64{{0, 0}},
+			},
+			{
+				"offset",
+				"from device topic-0 as a precedes topic-1 as b by less than 10 nanoseconds where a.u8 = 0 and b.u8 = 0 offset 1",
+				[][]int64{{1, 0}},
+			},
+		}
+		for _, c := range cases {
+			t.Run(c.assertion, func(t *testing.T) {
+				parser := ql.NewParser()
+				ast, err := parser.ParseString("", c.query)
+				require.NoError(t, err)
+				qp, err := plan.CompileQuery(*ast)
+				require.NoError(t, err)
+				actual, err := executor.CompilePlan(ctx, qp, tmgr.NewTreeIterator)
+				require.NoError(t, err)
+
+				results := [][]int64{}
+				for {
+					tuple, err := actual.Next(ctx)
+					if err != nil {
+						require.ErrorIs(t, err, io.EOF)
+						break
+					}
+					results = append(results, []int64{int64(tuple.Message.ChannelID), int64(tuple.Message.LogTime)})
+				}
+				require.Equal(t, c.expected, results)
+			})
+		}
+	})
+
 	t.Run("string comparisons", func(t *testing.T) {
 		queries := map[string][][]int64{
-			`= "hello"`:    {{0, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}},
-			`< "hello"`:    {},
-			`> "hello"`:    {},
-			`<= "hello"`:   {{0, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}},
-			`>= "hello"`:   {{0, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}},
-			`!= "hello"`:   {},
-			`~ "ello"`:     {{0, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}},
-			`~ "^ello"`:    {},
-			`~ "^hello$"`:  {{0, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}},
-			`~* "^heLLo$"`: {{0, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}},
+			`= "hello"`:   {{0, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}},
+			`< "hello"`:   {},
+			`> "hello"`:   {},
+			`<= "hello"`:  {{0, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}},
+			`>= "hello"`:  {{0, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}},
+			`!= "hello"`:  {},
+			`~ "ello"`:    {{0, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}},
+			`~ "^ello"`:   {},
+			`~ "^hello$"`: {{0, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}},
+			`~* "HeLLo"`:  {{0, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}},
 		}
 		parser := ql.NewParser()
 		for query, result := range queries {
 			t.Run(query, func(t *testing.T) {
-				query := fmt.Sprintf(`from device topic-0 where topic-0.s %s`, query)
+				query := "from device topic-0 where topic-0.s " + query
 				ast, err := parser.ParseString("", query)
 				require.NoError(t, err)
 				qp, err := plan.CompileQuery(*ast)
@@ -195,6 +297,7 @@ func prepTmgr(t *testing.T, ctx context.Context, tmgr *treemgr.TreeManager) {
 }
 
 func prepTmgr2(t *testing.T, ctx context.Context, tmgr *treemgr.TreeManager) {
+	t.Helper()
 	schema := []byte(`
 	uint8 u8
 	uint16 u16

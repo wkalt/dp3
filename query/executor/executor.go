@@ -42,16 +42,8 @@ func Run(
 		return err
 	}
 	defer root.Close()
-	writer, err := mcap.NewWriter(w)
-	if err != nil {
-		return fmt.Errorf("failed to construct mcap writer: %w", err)
-	}
-	defer writer.Close()
-
-	if err := writer.WriteHeader(&fmcap.Header{}); err != nil {
-		return fmt.Errorf("failed to write header: %w", err)
-	}
-	mc := mcap.NewMergeCoordinator(writer)
+	initialized := false
+	var mc *mcap.MergeCoordinator
 	for {
 		tuple, err := root.Next(ctx)
 		if err != nil {
@@ -60,6 +52,23 @@ func Run(
 			}
 			return fmt.Errorf("failed to read next message: %w", err)
 		}
+		// defer initialization until we successfully pull a message to avoid
+		// schema conflicts. todo: we need to be able to check the schemas prior
+		// to running the executor - they should be extracted into a /schemas
+		// directory and referencable by hash.
+		if !initialized {
+			writer, err := mcap.NewWriter(w)
+			if err != nil {
+				return fmt.Errorf("failed to construct mcap writer: %w", err)
+			}
+			defer writer.Close()
+			if err := writer.WriteHeader(&fmcap.Header{}); err != nil {
+				return fmt.Errorf("failed to write header: %w", err)
+			}
+			mc = mcap.NewMergeCoordinator(writer)
+			initialized = true
+		}
+
 		if err := mc.Write(tuple.Schema, tuple.Channel, tuple.Message); err != nil {
 			return fmt.Errorf("failed to write message: %w", err)
 		}
@@ -126,18 +135,13 @@ func compileAsofJoin(ctx context.Context, node *plan.Node, sf ScanFactory) (Node
 		if !ok {
 			return nil, fmt.Errorf("failed to parse quantity: %w", err)
 		}
-		switch units {
-		case "nanoseconds":
-			threshold = uint64(quantity)
-		case "microseconds":
-			threshold = uint64(quantity) * 1e3
-		case "milliseconds":
-			threshold = uint64(quantity) * 1e6
-		case "seconds":
-			threshold = uint64(quantity) * 1e9
-		case "minutes":
-			threshold = uint64(quantity) * 60 * 1e9
-		}
+		threshold = uint64(quantity) * map[string]uint64{
+			"nanoseconds":  1,
+			"microseconds": 1e3,
+			"milliseconds": 1e6,
+			"seconds":      1e9,
+			"minutes":      60 * 1e9,
+		}[units]
 	}
 	keyword, ok := node.Args[0].(string)
 	if !ok {
@@ -209,7 +213,7 @@ func compileScan(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, er
 	}
 	scan := NewScanNode(table, it)
 	if len(node.Children) > 0 {
-		expr := newExpr(util.When(alias != "", alias, table), node.Children[0])
+		expr := newExpression(util.When(alias != "", alias, table), node.Children[0])
 		return NewFilterNode(expr.filter, scan), nil
 	}
 

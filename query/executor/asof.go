@@ -31,7 +31,8 @@ type AsofJoinNode struct {
 	lastLeft  *Tuple
 	lastRight *Tuple
 
-	immediate bool
+	immediate   bool
+	leftEmitted bool
 
 	threshold   uint64
 	initialized bool
@@ -88,16 +89,25 @@ func (n *AsofJoinNode) Next(ctx context.Context) (*Tuple, error) {
 		}
 		if element.index == 0 {
 			n.lastLeft = element.tuple
+			n.leftEmitted = false
 			continue
 		}
 		if n.lastLeft == nil {
 			continue
 		}
+
 		if n.lastLeft.Message.LogTime+n.threshold > element.tuple.Message.LogTime || n.threshold == 0 {
-			output := n.lastLeft
-			n.lastRight = element.tuple
-			n.lastLeft = nil
-			return output, nil
+			// if we're not in immediate mode, and we already emitted the left
+			// tuple, emit right tuples.
+			if !n.leftEmitted {
+				n.lastRight = element.tuple
+				n.leftEmitted = true
+				return n.lastLeft, nil
+			}
+			if n.immediate {
+				continue
+			}
+			return element.tuple, nil
 		}
 	}
 	return nil, io.EOF

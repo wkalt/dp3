@@ -14,22 +14,22 @@ import (
 	"github.com/wkalt/dp3/util/schema"
 )
 
-type expr struct {
+type expression struct {
 	filters map[*fmcap.Schema]func(*Tuple) (bool, error)
 	node    *plan.Node
 	values  []any
 	target  string
 }
 
-func newExpr(target string, node *plan.Node) *expr {
-	return &expr{
+func newExpression(target string, node *plan.Node) *expression {
+	return &expression{
 		filters: make(map[*fmcap.Schema]func(*Tuple) (bool, error)),
 		target:  target,
 		node:    node,
 	}
 }
 
-func (e *expr) filter(t *Tuple) (bool, error) {
+func (e *expression) filter(t *Tuple) (bool, error) {
 	fn, ok := e.filters[t.Schema]
 	if !ok {
 		var err error
@@ -42,7 +42,7 @@ func (e *expr) filter(t *Tuple) (bool, error) {
 	return fn(t)
 }
 
-func (e *expr) compileFilter(schema *fmcap.Schema) (func(t *Tuple) (bool, error), error) {
+func (e *expression) compileFilter(schema *fmcap.Schema) (func(t *Tuple) (bool, error), error) {
 	pkg, name, found := strings.Cut(schema.Name, "/")
 	if !found {
 		pkg = ""
@@ -59,7 +59,10 @@ func (e *expr) compileFilter(schema *fmcap.Schema) (func(t *Tuple) (bool, error)
 	}
 	parser := ros1msg.GenSkipper(*parsed)
 	return func(t *Tuple) (bool, error) {
-		parser.Parse(t.Message.Data, &e.values, true)
+		_, err := parser.Parse(t.Message.Data, &e.values, true)
+		if err != nil {
+			return false, fmt.Errorf("failed to parse message: %w", err)
+		}
 		defer func() {
 			e.values = e.values[:0]
 		}()
@@ -67,7 +70,7 @@ func (e *expr) compileFilter(schema *fmcap.Schema) (func(t *Tuple) (bool, error)
 	}, nil
 }
 
-func (e *expr) compileOrExpr(
+func (e *expression) compileOrExpr(
 	fields []util.Named[schema.PrimitiveType],
 	node *plan.Node,
 ) (func(values []any) (bool, error), error) {
@@ -89,7 +92,9 @@ func (e *expr) compileOrExpr(
 	}, nil
 }
 
-func (e *expr) compileBinaryExpression(
+var ErrUnknownTable = errors.New("unknown table")
+
+func (e *expression) compileBinaryExpression(
 	fields []util.Named[schema.PrimitiveType],
 	expr *plan.Node,
 ) (func([]any) (bool, error), error) {
@@ -100,9 +105,13 @@ func (e *expr) compileBinaryExpression(
 	if !found {
 		return nil, fmt.Errorf("invalid field %s", *expr.BinaryOpField)
 	}
+
+	// ignore clauses not targeted at this table. Note we need a better way to
+	// handle this, possibly in the plan step.
 	if alias != e.target {
-		return nil, nil // >:[
+		return nil, ErrUnknownTable
 	}
+
 	switch *expr.BinaryOp {
 	case "=":
 		return e.compileExprEquals(fields, expr, dealiased)
@@ -125,23 +134,22 @@ func (e *expr) compileBinaryExpression(
 	}
 }
 
-func (e *expr) compileAndExpr(
+func (e *expression) compileAndExpr(
 	fields []util.Named[schema.PrimitiveType],
 	node *plan.Node,
 ) (func(values []any) (bool, error), error) {
-	terms := make([]func([]any) (bool, error), len(node.Children))
-	var err error
-	for i, expr := range node.Children {
-		terms[i], err = e.compileBinaryExpression(fields, expr)
-		if err != nil {
+	terms := make([]func([]any) (bool, error), 0, len(node.Children))
+	for _, expr := range node.Children {
+		term, err := e.compileBinaryExpression(fields, expr)
+		if err != nil && !errors.Is(err, ErrUnknownTable) {
 			return nil, err
+		}
+		if err == nil {
+			terms = append(terms, term)
 		}
 	}
 	return func(values []any) (bool, error) {
 		for _, term := range terms {
-			if term == nil {
-				continue
-			}
 			if ok, err := term(values); !ok || err != nil {
 				return ok, err
 			}
@@ -354,7 +362,7 @@ func compileEqualFloat64(
 	}, nil
 }
 
-func (e *expr) compileExprEquals(
+func (e *expression) compileExprEquals(
 	fields []util.Named[schema.PrimitiveType],
 	expr *plan.Node,
 	dealiased string,
@@ -583,7 +591,8 @@ func compileLessThanString(
 	}, nil
 }
 
-func (e *expr) compileExprLessThan(
+// nolint: dupl
+func (e *expression) compileExprLessThan(
 	fields []util.Named[schema.PrimitiveType],
 	expr *plan.Node,
 	dealiased string,
@@ -810,7 +819,8 @@ func compileGreaterThanString(
 	}, nil
 }
 
-func (e *expr) compileExprGreaterThan(
+// nolint: dupl
+func (e *expression) compileExprGreaterThan(
 	fields []util.Named[schema.PrimitiveType],
 	expr *plan.Node,
 	dealiased string,
@@ -1037,7 +1047,8 @@ func compileLessThanEqualsString(
 	}, nil
 }
 
-func (e *expr) compileExprLessThanEquals(
+// nolint: dupl
+func (e *expression) compileExprLessThanEquals(
 	fields []util.Named[schema.PrimitiveType],
 	expr *plan.Node,
 	dealiased string,
@@ -1264,7 +1275,8 @@ func compileGreaterThanEqualsString(
 	}, nil
 }
 
-func (e *expr) compileExprGreaterThanEquals(
+// nolint: dupl
+func (e *expression) compileExprGreaterThanEquals(
 	fields []util.Named[schema.PrimitiveType],
 	expr *plan.Node,
 	dealiased string,
@@ -1491,7 +1503,8 @@ func compileNotEqualsString(
 	}, nil
 }
 
-func (e *expr) compileExprNotEquals(
+// nolint: dupl
+func (e *expression) compileExprNotEquals(
 	fields []util.Named[schema.PrimitiveType],
 	expr *plan.Node,
 	dealiased string,
@@ -1546,11 +1559,11 @@ func compileExprLikeString(
 		if !ok {
 			return false, fmt.Errorf("field %d is not a string", i)
 		}
-		return re.Match([]byte(strings.ToLower(v))), nil
+		return re.MatchString(strings.ToLower(v)), nil
 	}, nil
 }
 
-func (e *expr) compileExprLike(
+func (e *expression) compileExprLike(
 	fields []util.Named[schema.PrimitiveType],
 	expr *plan.Node,
 	dealiased string,
@@ -1575,7 +1588,7 @@ func compileExprILikeString(
 	if value.Text == nil {
 		return nil, fmt.Errorf("string field %d incompatible with param %s", i, value.String())
 	}
-	re, err := regexp.Compile(*value.Text)
+	re, err := regexp.Compile(strings.ToLower(*value.Text))
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile regex %s: %w", *value.Text, err)
 	}
@@ -1584,11 +1597,11 @@ func compileExprILikeString(
 		if !ok {
 			return false, fmt.Errorf("field %d is not a string", i)
 		}
-		return re.Match([]byte(strings.ToLower(v))), nil
+		return re.MatchString(strings.ToLower(v)), nil
 	}, nil
 }
 
-func (e *expr) compileExprILike(
+func (e *expression) compileExprILike(
 	fields []util.Named[schema.PrimitiveType],
 	expr *plan.Node,
 	dealiased string,
@@ -1597,7 +1610,7 @@ func (e *expr) compileExprILike(
 		if field.Name == dealiased {
 			switch field.Value {
 			case schema.STRING:
-				return compileExprLikeString(i, *expr.BinaryOpValue)
+				return compileExprILikeString(i, *expr.BinaryOpValue)
 			default:
 				return nil, fmt.Errorf("unsupported type for operator '~*': %s", field.Value)
 			}
