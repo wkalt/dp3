@@ -119,11 +119,17 @@ func (n Node) String() string {
 
 	args := ""
 	if len(n.Args) > 0 {
-		for i, arg := range n.Args {
-			if i > 0 {
+		count := 0
+		for _, arg := range n.Args {
+			term := fmt.Sprintf("%v", arg)
+			if term == "" {
+				continue
+			}
+			if count > 0 {
 				args += " "
 			}
 			args += fmt.Sprintf("%v", arg)
+			count++
 		}
 		args = fmt.Sprintf(" (%s)", args)
 	}
@@ -134,13 +140,19 @@ func (n Node) String() string {
 	return fmt.Sprintf("[%s%s%s]", n.Type, args, childrenTerm)
 }
 
-// compileBinaryExpr compiles an AST binary expression to a plan node.
+// compileBinaryExpr compiles an AST binary expression to a plan node. The LHS
+// is expected to start with "prefix dot", which we strip under the assumption
+// that aliases have already been resolved at this point.
 func compileBinaryExpr(expr ql.BinaryExpression) *Node {
+	_, left, found := strings.Cut(expr.Left, ".")
+	if !found {
+		panic("expected a binary expression with a dot")
+	}
 	return &Node{
 		Type: BinaryExpression,
 
 		BinaryOp:      &expr.Op,
-		BinaryOpField: &expr.Left,
+		BinaryOpField: util.Pointer(left),
 		BinaryOpValue: &expr.Right,
 	}
 }
@@ -208,7 +220,7 @@ func compileMJ(left *Node, ast ql.MJ) *Node {
 func compileSelect(ast ql.Select) *Node {
 	base := &Node{
 		Type: Scan,
-		Args: []any{ast.Entity},
+		Args: []any{ast.Entity, ast.Alias},
 	}
 	if ast.AJ != nil {
 		return compileAJ(base, *ast.AJ)
@@ -242,10 +254,10 @@ func CompileQuery(ast ql.Query) (*Node, error) {
 		if n.Type != Scan {
 			return
 		}
-		table := n.Args[0]
+		alias := util.When(n.Args[1] != "", n.Args[1], n.Args[0])
 		for _, where := range ast.Where {
 			for _, binexp := range where.AndExprs {
-				if strings.HasPrefix(binexp.Left, fmt.Sprint(table)+".") {
+				if strings.HasPrefix(binexp.Left, fmt.Sprint(alias)+".") {
 					n.Children = append(n.Children, compileBinaryExpr(binexp))
 				}
 			}

@@ -57,6 +57,7 @@ type OrClause struct {
 // Select represents a select statement.
 type Select struct {
 	Entity string `@Word`
+	Alias  string `("as" @Word)?`
 	MJ     *MJ    `( @@`
 	AJ     *AJ    `| @@ )?`
 }
