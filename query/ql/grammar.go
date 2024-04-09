@@ -115,6 +115,7 @@ func (v Value) String() string {
 // AJ represents an as-of join.
 type AJ struct {
 	Keyword    string          `@( "precedes" | "succeeds" | "neighbors" )`
+	Immediate  bool            `("immediate")?`
 	Select     Select          `@@`
 	Constraint *AsOfConstraint `(@@)*`
 }
