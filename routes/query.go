@@ -2,6 +2,7 @@ package routes
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/wkalt/dp3/query/executor"
@@ -49,6 +50,11 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		}
 		log.Debugf(ctx, "compiled query: %s", qp.String())
 		if err := executor.Run(ctx, w, qp, tmgr.NewTreeIterator); err != nil {
+			e := executor.FieldNotFoundError{}
+			if errors.As(err, &e) {
+				httputil.BadRequest(ctx, w, "%s", e.Error())
+				return
+			}
 			httputil.InternalServerError(ctx, w, "error executing query: %s", err)
 			return
 		}

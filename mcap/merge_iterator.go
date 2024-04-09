@@ -90,7 +90,7 @@ func (mi *mergeIterator) Next([]byte) (*mcap.Schema, *mcap.Channel, *mcap.Messag
 
 	if err == nil {
 		rec := record{s, c, m, rec.idx}
-		heap.Push(mi.pq, &rec)
+		heap.Push(mi.pq, rec)
 	}
 	s2, c2, m2 := mi.remap(rec.idx, rec.schema, rec.channel, rec.message)
 	return s2, c2, m2, nil
