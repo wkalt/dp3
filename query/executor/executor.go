@@ -112,8 +112,7 @@ func compileAsofJoin(ctx context.Context, node *plan.Node, sf ScanFactory) (Node
 	if err != nil {
 		return nil, err
 	}
-
-	if l := len(node.Args); l > 2 && l != 4 {
+	if l := len(node.Args); l != 2 && l != 4 {
 		return nil, fmt.Errorf("expected 2 or 4 arguments, got %d", l)
 	}
 	var threshold uint64
@@ -180,21 +179,21 @@ func compileScan(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, er
 	if !ok {
 		return nil, fmt.Errorf("expected string table, got %T", node.Args[0])
 	}
-	producer, ok := node.Args[1].(string)
+	producer, ok := node.Args[2].(string)
 	if !ok {
 		return nil, fmt.Errorf("expected string producer, got %T", node.Args[1])
 	}
 	var err error
 	var start, end uint64
-	if node.Args[2] == "all-time" {
+	if node.Args[3] == "all-time" {
 		start = 0
 		end = ^uint64(0)
 	} else {
-		start, ok = node.Args[2].(uint64)
+		start, ok = node.Args[3].(uint64)
 		if !ok {
 			return nil, fmt.Errorf("expected uint64 start time, got %T", node.Args[2])
 		}
-		end, ok = node.Args[3].(uint64)
+		end, ok = node.Args[4].(uint64)
 		if !ok {
 			return nil, fmt.Errorf("expected uint64 end time, got %T", node.Args[3])
 		}
