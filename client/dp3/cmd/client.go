@@ -35,7 +35,7 @@ __        _      _____
 `
 )
 
-func withPaging(pager string, f func(io.Writer) error) error {
+func withPaging(pager string, f func(io.WriteCloser) error) error {
 	if pager == "" {
 		return f(os.Stdout)
 	}
@@ -53,15 +53,21 @@ func withPaging(pager string, f func(io.Writer) error) error {
 	cmd.Stdout = stdout
 	cmd.Stderr = os.Stderr
 
-	defer func() {
-		w.Close()
+	done := make(chan struct{})
+
+	go func() {
 		if err := cmd.Run(); err != nil {
-			fmt.Println("error running pager:", err)
+			fmt.Fprintln(os.Stderr, "error running pager: "+err.Error())
 		}
-		os.Stdout = stdout
+		done <- struct{}{}
 	}()
 
-	return f(w)
+	go f(w)
+
+	<-done
+	w.Close()
+	os.Stdout = stdout
+	return nil
 }
 
 func executeQuery(s string) error {
@@ -84,7 +90,8 @@ func executeQuery(s string) error {
 		return errors.New(response.Error)
 	}
 	pager := maybePager()
-	return withPaging(pager, func(w io.Writer) error {
+	return withPaging(pager, func(w io.WriteCloser) error {
+		defer w.Close()
 		return util.MCAPToJSON(w, resp.Body)
 	})
 }
@@ -92,15 +99,6 @@ func executeQuery(s string) error {
 func fileExists(name string) bool {
 	_, err := os.Stat(name)
 	return !os.IsNotExist(err)
-}
-
-func readPipe(r *io.PipeReader, w io.Writer, ch chan struct{}, cmd string) {
-	defer close(ch)
-	c := exec.Command(cmd)
-	c.Stdout = w
-	c.Stderr = os.Stderr
-	c.Stdin = r
-	c.Run()
 }
 
 func maybePager() string {
@@ -238,7 +236,8 @@ func handleStatRange(line string) error {
 		return fmt.Errorf("failed to parse end time: %w", err)
 	}
 	pager := maybePager()
-	return withPaging(pager, func(w io.Writer) error {
+	return withPaging(pager, func(w io.WriteCloser) error {
+		defer w.Close()
 		return printStatRange(w, producer, topic, uint64(granularity)*1e9, starttime, endtime)
 	})
 }
