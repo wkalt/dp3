@@ -71,6 +71,9 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 		wal.WithGCInterval(2 * time.Minute),
 	}
 	waldir := "waldir"
+	if err := util.EnsureDirectoryExists(waldir); err != nil {
+		return fmt.Errorf("failed to ensure WAL directory exists: %w", err)
+	}
 	tmgr, err := treemgr.NewTreeManager(
 		ctx,
 		ns,

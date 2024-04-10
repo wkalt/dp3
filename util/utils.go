@@ -5,6 +5,8 @@ import (
 	"crypto/md5"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
+	"os"
 	"slices"
 	"strconv"
 	"time"
@@ -142,4 +144,13 @@ func All[T any](xs []T, f func(T) bool) bool {
 		}
 	}
 	return true
+}
+
+func EnsureDirectoryExists(dir string) error {
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("failed to make directory: %w", err)
+		}
+	}
+	return nil
 }

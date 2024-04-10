@@ -8,7 +8,7 @@ type StreamNotFoundError struct {
 }
 
 func (e StreamNotFoundError) Error() string {
-	return fmt.Sprintf("stream %s/%s not found", e.ProducerID, e.Topic)
+	return fmt.Sprintf("stream %s:%s not found", e.ProducerID, e.Topic)
 }
 
 func (e StreamNotFoundError) Is(target error) bool {
