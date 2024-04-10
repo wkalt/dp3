@@ -23,6 +23,10 @@ import (
 	"github.com/wkalt/dp3/util/httputil"
 )
 
+var (
+	clientNoPager bool
+)
+
 const (
 	prefix  = `# `
 	artwork = `
@@ -35,8 +39,8 @@ __        _      _____
 `
 )
 
-func withPaging(pager string, f func(io.WriteCloser) error) error {
-	if pager == "" {
+func withPaging(pager string, f func(io.Writer) error) error {
+	if pager == "" || clientNoPager {
 		return f(os.Stdout)
 	}
 
@@ -62,10 +66,12 @@ func withPaging(pager string, f func(io.WriteCloser) error) error {
 		done <- struct{}{}
 	}()
 
-	go f(w)
+	if err := f(w); err != nil {
+		return err
+	}
+	w.Close()
 
 	<-done
-	w.Close()
 	os.Stdout = stdout
 	return nil
 }
@@ -90,8 +96,7 @@ func executeQuery(s string) error {
 		return errors.New(response.Error)
 	}
 	pager := maybePager()
-	return withPaging(pager, func(w io.WriteCloser) error {
-		defer w.Close()
+	return withPaging(pager, func(w io.Writer) error {
 		return util.MCAPToJSON(w, resp.Body)
 	})
 }
@@ -236,8 +241,7 @@ func handleStatRange(line string) error {
 		return fmt.Errorf("failed to parse end time: %w", err)
 	}
 	pager := maybePager()
-	return withPaging(pager, func(w io.WriteCloser) error {
-		defer w.Close()
+	return withPaging(pager, func(w io.Writer) error {
 		return printStatRange(w, producer, topic, uint64(granularity)*1e9, starttime, endtime)
 	})
 }
@@ -339,4 +343,6 @@ var clientCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(clientCmd)
+
+	clientCmd.Flags().BoolVar(&clientNoPager, "no-pager", false, "Disable the pager")
 }

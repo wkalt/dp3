@@ -25,7 +25,7 @@ The following instructions will start dp3 with a data directory on local disk.
     ./dp3 server --data-dir data
 ```
 
-3. Start the interpreter and type help to get started
+3. Start the interpreter and type help to get started.
 
 ```
 $ ./dp3 client
@@ -56,6 +56,8 @@ Available help topics are:
 Any input aside from "help" that does not start with a backslash is interpreted
 as a query. Queries are terminated with a semicolon.
 dp3 #
+dp3 # from my-robot /fix limit 1;
+{"topic":"/fix","sequence":1193398,"log_time":1479513060.001367422,"publish_time":1479513060.001367422,"data":{"header":{"seq":115877,"stamp":1479513060.000963926,"frame_id":"/imu"},"status":{"status":0,"service":0},"latitude":37.39954376220703,"longitude":-122.10643005371094,"altitude":-8.820882797241211,"position_covariance":[0,0,0,0,0,0,0,0,0],"position_covariance_type":0}}
 ```
 
 ## Background
