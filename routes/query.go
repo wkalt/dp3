@@ -8,6 +8,7 @@ import (
 	"github.com/wkalt/dp3/query/executor"
 	"github.com/wkalt/dp3/query/plan"
 	"github.com/wkalt/dp3/query/ql"
+	"github.com/wkalt/dp3/rootmap"
 	"github.com/wkalt/dp3/treemgr"
 	"github.com/wkalt/dp3/util/httputil"
 	"github.com/wkalt/dp3/util/log"
@@ -50,9 +51,14 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		}
 		log.Debugf(ctx, "compiled query: %s", qp.String())
 		if err := executor.Run(ctx, w, qp, tmgr.NewTreeIterator); err != nil {
-			e := executor.FieldNotFoundError{}
-			if errors.As(err, &e) {
-				httputil.BadRequest(ctx, w, "%s", e.Error())
+			fieldNotFound := executor.FieldNotFoundError{}
+			if errors.As(err, &fieldNotFound) {
+				httputil.BadRequest(ctx, w, "%s", fieldNotFound.Error())
+				return
+			}
+			streamNotFound := rootmap.StreamNotFoundError{}
+			if errors.As(err, &streamNotFound) {
+				httputil.BadRequest(ctx, w, "%s", streamNotFound.Error())
 				return
 			}
 			httputil.InternalServerError(ctx, w, "error executing query: %s", err)

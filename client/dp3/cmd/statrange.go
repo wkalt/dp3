@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"time"
@@ -36,43 +37,64 @@ var statrangeCmd = &cobra.Command{
 		if err != nil {
 			bailf("error parsing end date: %s", err)
 		}
-		req := &routes.StatRangeRequest{
-			ProducerID:  statrangeProducerID,
-			Start:       uint64(start.UnixNano()),
-			End:         uint64(end.UnixNano()),
-			Topic:       statrangeTopic,
-			Granularity: statrangeGranularity * 1e9,
-		}
-		buf := &bytes.Buffer{}
-		if err = json.NewEncoder(buf).Encode(req); err != nil {
-			bailf("error encoding request: %s", err)
-		}
-		resp, err := http.Post("http://localhost:8089/statrange", "application/json", buf)
+		err = printStatRange(
+			os.Stdout,
+			statrangeProducerID,
+			statrangeTopic,
+			statrangeGranularity*1e9,
+			start,
+			end,
+		)
 		if err != nil {
 			bailf("error calling statrange: %s", err)
 		}
-		defer resp.Body.Close()
-
-		cutil.MustOK(resp)
-
-		response := []nodestore.StatRange{}
-		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-			bailf("error decoding response: %s", err)
-		}
-
-		headers := []string{"Start", "End", "Schema", "Type", "Field", "Name", "Value"}
-		data := [][]string{}
-		for _, record := range response {
-			start := time.Unix(0, int64(record.Start)).Format(time.RFC3339)
-			end := time.Unix(0, int64(record.End)).Format(time.RFC3339)
-			schema := record.SchemaHash[:7]
-			data = append(data, []string{
-				start, end, schema, string(record.Type), record.Field, record.Name, fmt.Sprintf("%v", record.Value)},
-			)
-		}
-
-		cutil.PrintTable(os.Stdout, headers, data)
 	},
+}
+
+func printStatRange(
+	w io.Writer,
+	producer string,
+	topic string,
+	granularity uint64,
+	start time.Time,
+	end time.Time,
+) error {
+	req := &routes.StatRangeRequest{
+		ProducerID:  producer,
+		Start:       uint64(start.UnixNano()),
+		End:         uint64(end.UnixNano()),
+		Topic:       topic,
+		Granularity: granularity,
+	}
+	buf := &bytes.Buffer{}
+	if err := json.NewEncoder(buf).Encode(req); err != nil {
+		return fmt.Errorf("error encoding request: %s", err)
+	}
+	resp, err := http.Post("http://localhost:8089/statrange", "application/json", buf)
+	if err != nil {
+		return fmt.Errorf("error calling statrange: %s", err)
+	}
+	defer resp.Body.Close()
+
+	cutil.MustOK(resp)
+
+	response := []nodestore.StatRange{}
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return fmt.Errorf("error decoding response: %s", err)
+	}
+
+	headers := []string{"Start", "End", "Schema", "Type", "Field", "Name", "Value"}
+	data := [][]string{}
+	for _, record := range response {
+		start := time.Unix(0, int64(record.Start)).Format(time.RFC3339)
+		end := time.Unix(0, int64(record.End)).Format(time.RFC3339)
+		schema := record.SchemaHash[:7]
+		data = append(data, []string{
+			start, end, schema, string(record.Type), record.Field, record.Name, fmt.Sprintf("%v", record.Value)},
+		)
+	}
+	cutil.PrintTable(w, headers, data)
+	return nil
 }
 
 func init() {

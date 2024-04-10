@@ -21,6 +21,43 @@ var (
 	importWorkerCount int
 )
 
+func doImport(producer string, paths []string, workers int) error {
+	g := &errgroup.Group{}
+	g.SetLimit(workers)
+	for _, path := range paths {
+		g.Go(func() error {
+			abs, err := filepath.Abs(path)
+			if err != nil {
+				return fmt.Errorf("error getting absolute path: %w", err)
+			}
+			req := &routes.ImportRequest{
+				ProducerID: producer,
+				Path:       abs,
+			}
+			buf := &bytes.Buffer{}
+			if err = json.NewEncoder(buf).Encode(req); err != nil {
+				return fmt.Errorf("error encoding request: %s", err)
+			}
+
+			resp, err := http.Post("http://localhost:8089/import", "application/json", buf)
+			if err != nil {
+				return fmt.Errorf("error calling import: %s", err)
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				body, err := io.ReadAll(resp.Body)
+				if err != nil {
+					return fmt.Errorf("unexpected status code: %s", resp.Status)
+				}
+				return fmt.Errorf("failed to import %s: %s", path, body)
+			}
+			return nil
+		})
+	}
+	return g.Wait()
+}
+
 // importCmd represents the import command
 var importCmd = &cobra.Command{
 	Use:   "import --producer my-robot [file]",
@@ -30,40 +67,7 @@ var importCmd = &cobra.Command{
 			cmd.Usage()
 			return
 		}
-		g := &errgroup.Group{}
-		g.SetLimit(importWorkerCount)
-		for _, path := range paths {
-			g.Go(func() error {
-				abs, err := filepath.Abs(path)
-				if err != nil {
-					return fmt.Errorf("error getting absolute path: %w", err)
-				}
-				req := &routes.ImportRequest{
-					ProducerID: importProducerID,
-					Path:       abs,
-				}
-				buf := &bytes.Buffer{}
-				if err = json.NewEncoder(buf).Encode(req); err != nil {
-					return fmt.Errorf("error encoding request: %s", err)
-				}
-
-				resp, err := http.Post("http://localhost:8089/import", "application/json", buf)
-				if err != nil {
-					return fmt.Errorf("error calling import: %s", err)
-				}
-				defer resp.Body.Close()
-
-				if resp.StatusCode != http.StatusOK {
-					body, err := io.ReadAll(resp.Body)
-					if err != nil {
-						return fmt.Errorf("unexpected status code: %s", resp.Status)
-					}
-					return fmt.Errorf("failed to import %s: %s", path, body)
-				}
-				return nil
-			})
-		}
-		if err := g.Wait(); err != nil {
+		if err := doImport(importProducerID, paths, importWorkerCount); err != nil {
 			bailf("Import error: %s", err)
 		}
 	},
