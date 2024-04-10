@@ -28,7 +28,7 @@ The following instructions will start dp3 with a data directory on local disk.
 3. Start the interpreter and type help to get started
 
 ```
-[/mnt/nvme/projects/dp3] (main) $ ./dp3 client
+$ ./dp3 client
 __        _      _____ 
 \ \    __| |_ __|___ / 
  \ \  / _` | '_ \ |_ \ 
