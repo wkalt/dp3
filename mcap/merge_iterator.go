@@ -11,7 +11,7 @@ import (
 )
 
 type mergeIterator struct {
-	pq *util.PriorityQueue[record, uint64]
+	pq *util.PriorityQueue[record]
 
 	iterators []mcap.MessageIterator
 
@@ -89,18 +89,20 @@ func (mi *mergeIterator) Next([]byte) (*mcap.Schema, *mcap.Channel, *mcap.Messag
 	}
 
 	if err == nil {
-		var item = util.Item[record, uint64]{
-			Value:    record{s, c, m, rec.idx},
-			Priority: m.LogTime,
-		}
-		heap.Push(mi.pq, &item)
+		rec := record{s, c, m, rec.idx}
+		heap.Push(mi.pq, rec)
 	}
 	s2, c2, m2 := mi.remap(rec.idx, rec.schema, rec.channel, rec.message)
 	return s2, c2, m2, nil
 }
 
 func NmergeIterator(iterators ...mcap.MessageIterator) (mcap.MessageIterator, error) {
-	pq := util.NewPriorityQueue[record, uint64]()
+	pq := util.NewPriorityQueue[record](func(a, b record) bool {
+		if a.message.LogTime == b.message.LogTime {
+			return a.message.ChannelID < b.message.ChannelID
+		}
+		return a.message.LogTime < b.message.LogTime
+	})
 	heap.Init(pq)
 
 	// push one element from each iterator onto queue
@@ -112,11 +114,8 @@ func NmergeIterator(iterators ...mcap.MessageIterator) (mcap.MessageIterator, er
 			}
 			return nil, fmt.Errorf("failed to get next message from iterator %d: %w", i, err)
 		}
-		var item = util.Item[record, uint64]{
-			Value:    record{schema, channel, message, i},
-			Priority: message.LogTime,
-		}
-		heap.Push(pq, &item)
+		rec := record{schema, channel, message, i}
+		heap.Push(pq, rec)
 	}
 
 	return &mergeIterator{

@@ -9,14 +9,14 @@ import (
 
 /*
 Public functions related to parsing ROS1 message bytes. Contains two main
-methods - ParseMessage and AnalyzeSchema. AnalyzeSchema is called once on a
+methods - SkipMessage and AnalyzeSchema. AnalyzeSchema is called once on a
 schema.Schema, to generate names for all "values of interest". This involves
 some string concatenation activity that is otherwise unrelated to parsing.
 
-ParseMessage is called once per message and extracts the same interesting values
+SkipMessage is called once per message and extracts the same interesting values
 via duplicated code logic - the underlying mechanics must be kept in sync.
 
-On each call to ParseMessage, results may be zipped up with the
+On each call to SkipMessage, results may be zipped up with the
 previously-obtained schema analysis to produce an association of nested paths to
 values.
 */
@@ -33,7 +33,7 @@ func SkipMessage(skipper Parser, data []byte, values *[]any) error {
 
 // AnalyzeSchema returns a list of Named[schema.PrimitiveType] that represent
 // interesting values in a message. The length and ordering of this list match
-// the response of ParseMessage.
+// the response of SkipMessage.
 func AnalyzeSchema(s schema.Schema) []util.Named[schema.PrimitiveType] {
 	fields := []util.Named[schema.PrimitiveType]{}
 	for _, f := range s.Fields {

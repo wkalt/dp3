@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"net"
+	"strings"
 	"testing"
 )
 
@@ -59,6 +60,26 @@ func U64b(v uint64) []byte {
 	return buf
 }
 
+// I8b returns a byte slice containing a single int8 value.
+func I8b(v int8) []byte {
+	return U8b(uint8(v))
+}
+
+// I16b returns a byte slice containing a single int16 value.
+func I16b(v int16) []byte {
+	return U16b(uint16(v))
+}
+
+// I32b returns a byte slice containing a single int32 value.
+func I32b(v int32) []byte {
+	return U32b(uint32(v))
+}
+
+// I64b returns a byte slice containing a single int64 value.
+func I64b(v int64) []byte {
+	return U64b(uint64(v))
+}
+
 // F32b returns a byte slice containing a single float32 value.
 func F32b(v float32) []byte {
 	return U32b(math.Float32bits(v))
@@ -88,4 +109,13 @@ func ReadPrefixedString(t *testing.T, bs []byte) string {
 		t.Fatalf("expected at least %d bytes, got %d", 4+int(l), len(bs))
 	}
 	return string(bs[4 : 4+l])
+}
+
+// StripSpace removes all newlines and repeated spaces from a string.
+func StripSpace(s string) string {
+	s = strings.ReplaceAll(s, "\r", "")
+	s = strings.ReplaceAll(s, "\n", "")
+	// replace runs of multiple spaces with a single space
+	s = strings.Join(strings.Fields(s), " ")
+	return s
 }

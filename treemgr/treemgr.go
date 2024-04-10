@@ -454,9 +454,23 @@ func closeAll(ctx context.Context, closers ...*tree.Iterator) {
 	}
 }
 
+func (tm *TreeManager) NewTreeIterator(
+	ctx context.Context,
+	producer string,
+	topic string,
+	start, end uint64,
+) (*tree.Iterator, error) {
+	rootID, _, err := tm.rootmap.GetLatest(ctx, producer, topic)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest root: %w", err)
+	}
+	tr := tree.NewBYOTreeReader(rootID, tm.ns.Get)
+	return tree.NewTreeIterator(ctx, tr, start, end, 0), nil
+}
+
 func (tm *TreeManager) loadIterators(
 	ctx context.Context,
-	pq *util.PriorityQueue[record, uint64],
+	pq *util.PriorityQueue[record],
 	roots []rootmap.RootListing,
 	start, end uint64,
 ) ([]*tree.Iterator, error) {
@@ -476,12 +490,8 @@ func (tm *TreeManager) loadIterators(
 				}
 				return fmt.Errorf("failed to get next message: %w", err)
 			}
-			item := util.Item[record, uint64]{
-				Value:    record{schema, channel, message, i},
-				Priority: message.LogTime,
-			}
 			mtx.Lock()
-			heap.Push(pq, &item)
+			heap.Push(pq, record{schema, channel, message, i})
 			mtx.Unlock()
 			ch <- util.NewPair(i, it)
 			return nil
@@ -507,7 +517,12 @@ func (tm *TreeManager) getMessages(
 	start, end uint64,
 	roots []rootmap.RootListing,
 ) error {
-	pq := util.NewPriorityQueue[record, uint64]()
+	pq := util.NewPriorityQueue[record](func(a, b record) bool {
+		if a.message.LogTime == b.message.LogTime {
+			return a.message.ChannelID < b.message.ChannelID
+		}
+		return a.message.LogTime < b.message.LogTime
+	})
 	heap.Init(pq)
 	// with one goroutine per root, construct a tree iterator and push the first
 	// message onto the heap. Loading the first message will do the initial
@@ -540,11 +555,7 @@ func (tm *TreeManager) getMessages(
 			}
 			return fmt.Errorf("failed to get next message: %w", err)
 		}
-		var item = util.Item[record, uint64]{
-			Value:    record{s, c, m, rec.idx},
-			Priority: m.LogTime,
-		}
-		heap.Push(pq, &item)
+		heap.Push(pq, record{s, c, m, rec.idx})
 	}
 	return nil
 }
