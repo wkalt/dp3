@@ -43,15 +43,14 @@ multimodal log database for low-latency playback and analytics.
 
 The client supports interaction via either queries or dot commands. The
 supported dot commands are:
-
   .h [topic] to print help text. If topic is blank, prints this text.
   .statrange to run a statrange query
   .import to import data to the database
 
 Available help topics are:
   query: Show examples of query syntax.
-  statrange: Explain the \statrange command.
-  import: Explain the \import command.
+  statrange: Explain the .statrange command.
+  import: Explain the .import command.
 
 Any input aside from "help" that does not start with a dot is interpreted
 as a query. Queries are terminated with a semicolon.
