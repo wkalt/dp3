@@ -157,22 +157,22 @@ func run() error {
 		switch {
 		case line == "":
 			continue
-		case line == "help", strings.HasPrefix(line, "\\h"):
+		case line == "help", strings.HasPrefix(line, ".h"):
 			_, topic, _ := strings.Cut(line, " ")
 			fmt.Println(help[topic])
 			continue
-		case strings.HasPrefix(line, "\\statrange"):
+		case strings.HasPrefix(line, ".statrange"):
 			if err := handleStatRange(line); err != nil {
 				printError(err.Error())
 			}
 			continue
-		case strings.HasPrefix(line, "\\import"):
+		case strings.HasPrefix(line, ".import"):
 			if err := handleImport(line); err != nil {
 				printError(err.Error())
 			}
 			continue
-		case strings.HasPrefix(line, "\\"):
-			printError("recognized command: " + line)
+		case strings.HasPrefix(line, "."):
+			printError("unrecognized command: " + line)
 			continue
 		}
 
@@ -250,20 +250,20 @@ var help = map[string]string{
 	"": `The dp3 client is an interactive interpreter for dp3.  dp3 is a
 multimodal log database for low-latency playback and analytics.
 
-The client supports interaction via either queries or slash commands. The
-supported slash commands are:
+The client supports interaction via either queries or dot commands. The
+supported dot commands are:
 
-  \h [topic] to print help text. If topic is blank, prints this text.
-  \statrange to run a statrange query
-  \import to import data to the database
+  .h [topic] to print help text. If topic is blank, prints this text.
+  .statrange to run a statrange query
+  .import to import data to the database
 
 Available help topics are:
   query: Show examples of query syntax.
   statrange: Explain the \statrange command.
   import: Explain the \import command.
 
-Any input aside from "help" that does not start with a backslash is interpreted
-as a query. Queries are terminated with a semicolon.`,
+Any input aside from "help" that does not start with a dot is interpreted as a
+query. Queries are terminated with a semicolon.`,
 
 	// query
 	"query": `dp3 uses a SQL-like query language geared toward merging,
@@ -292,14 +292,14 @@ Paging with limit and offset
 Results are always ordered on log time.`,
 
 	// statrange
-	"statrange": `The \statrange command is used to summarize field-level statistics
+	"statrange": `The .statrange command is used to summarize field-level statistics
 for a producer and topic at a chosen level of granularity.
 
 The syntax is:
-  \statrange producer topic granularity start end
+  .statrange producer topic granularity start end
 
 For example,
-  \statrange my-robot /diagnostics 60 "2024-01-01" "2024-01-02"
+  .statrange my-robot /diagnostics 60 "2024-01-01" "2024-01-02"
 
 Producer and topic are required, and if start and end are supplied granularity
 must be as well.
@@ -312,11 +312,11 @@ Start and end are quoted ISO8601 timestamps.  If they are unsupplied the full
 available range will be summarized.`,
 
 	// import
-	"import": `The \import command is used to import data into dp3. The syntax is:
-  \import producer file
+	"import": `The .import command is used to import data into dp3. The syntax is:
+  .import producer file
 
 Multiple files can be imported using filepath globbing, for example:
-  \import my-robot /path/to/data/**/*.mcap
+  .import my-robot /path/to/data/**/*.mcap
 
 If done this way, the import will be spread over cpucount/2 workers.
 

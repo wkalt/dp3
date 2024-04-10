@@ -41,22 +41,22 @@ dp3 # help
 The dp3 client is an interactive interpreter for dp3.  dp3 is a
 multimodal log database for low-latency playback and analytics.
 
-The client supports interaction via either queries or slash commands. The
-supported slash commands are:
+The client supports interaction via either queries or dot commands. The
+supported dot commands are:
 
-  \h [topic] to print help text. If topic is blank, prints this text.
-  \statrange to run a statrange query
-  \import to import data to the database
+  .h [topic] to print help text. If topic is blank, prints this text.
+  .statrange to run a statrange query
+  .import to import data to the database
 
 Available help topics are:
   query: Show examples of query syntax.
   statrange: Explain the \statrange command.
   import: Explain the \import command.
 
-Any input aside from "help" that does not start with a backslash is interpreted
+Any input aside from "help" that does not start with a dot is interpreted
 as a query. Queries are terminated with a semicolon.
 dp3 #
-dp3 # \import my-robot example-data/fix.mcap
+dp3 # .import my-robot example-data/fix.mcap
 dp3 #
 dp3 # from my-robot /fix limit 1;
 {"topic":"/fix","sequence":1193398,"log_time":1479513060.001367422,"publish_time":1479513060.001367422,"data":{"header":{"seq":115877,"stamp":1479513060.000963926,"frame_id":"/imu"},"status":{"status":0,"service":0},"latitude":37.39954376220703,"longitude":-122.10643005371094,"altitude":-8.820882797241211,"position_covariance":[0,0,0,0,0,0,0,0,0],"position_covariance_type":0}}
