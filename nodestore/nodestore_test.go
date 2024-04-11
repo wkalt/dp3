@@ -13,6 +13,7 @@ import (
 )
 
 func TestNodestore(t *testing.T) {
+	var prefix = "prefix"
 	t.Run("Put", func(t *testing.T) {
 		ctx := context.Background()
 		store := storage.NewMemStore()
@@ -20,7 +21,7 @@ func TestNodestore(t *testing.T) {
 		ns := nodestore.NewNodestore(store, cache)
 		node := nodestore.NewLeafNode([]byte("test"), nil, nil)
 		bytes := node.ToBytes()
-		require.NoError(t, ns.Put(ctx, 1, bytes))
+		require.NoError(t, ns.Put(ctx, prefix, 1, bytes))
 	})
 
 	t.Run("Get", func(t *testing.T) {
@@ -40,9 +41,9 @@ func TestNodestore(t *testing.T) {
 		require.NoError(t, err)
 		addr := nodestore.NewNodeID(1, uint64(n), uint64(len(bytes)))
 
-		require.NoError(t, ns.Put(ctx, 1, buf.Bytes()))
+		require.NoError(t, ns.Put(ctx, prefix, 1, buf.Bytes()))
 
-		retrieved, err := ns.Get(ctx, addr)
+		retrieved, err := ns.Get(ctx, prefix, addr)
 		require.NoError(t, err)
 
 		leaf, ok := retrieved.(*nodestore.LeafNode)
@@ -53,7 +54,7 @@ func TestNodestore(t *testing.T) {
 		require.Equal(t, data, found)
 
 		// hits the cache
-		_, err = ns.Get(ctx, addr)
+		_, err = ns.Get(ctx, prefix, addr)
 		require.NoError(t, err)
 	})
 }

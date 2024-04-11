@@ -8,6 +8,7 @@ import (
 	"hash/maphash"
 	"io"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -49,8 +50,14 @@ type TreeManager struct {
 
 // NewRoot creates a new root for the provided producer and topic.
 func (tm *TreeManager) NewRoot(ctx context.Context, producer string, topic string) error {
+	var slashReplacementChar = "!()!"
+	safeProducer := strings.ReplaceAll(producer, "/", slashReplacementChar)
+	safeTopic := strings.ReplaceAll(topic, "/", slashReplacementChar)
+	prefix := fmt.Sprintf("%s/%s", safeTopic, safeProducer)
+
 	rootID, version, err := tm.newRoot(
 		ctx,
+		prefix,
 		util.DateSeconds("1970-01-01"),
 		util.DateSeconds("2038-01-19"),
 		60,
@@ -59,8 +66,9 @@ func (tm *TreeManager) NewRoot(ctx context.Context, producer string, topic strin
 	if err != nil {
 		return fmt.Errorf("failed to create new root: %w", err)
 	}
+
 	// todo two inserts can race here and get a unique violation. need to handle that.
-	if err := tm.rootmap.Put(ctx, producer, topic, version, rootID); err != nil {
+	if err := tm.rootmap.Put(ctx, producer, topic, version, prefix, rootID); err != nil {
 		return fmt.Errorf("failed to put root: %w", err)
 	}
 	return nil
@@ -150,7 +158,7 @@ func (tm *TreeManager) Receive(ctx context.Context, producerID string, data io.R
 		var writer *writer
 		var ok bool
 		if writer, ok = writers[channel.Topic]; !ok {
-			if _, _, err := tm.rootmap.GetLatest(ctx, producerID, channel.Topic); err != nil {
+			if _, _, _, err := tm.rootmap.GetLatest(ctx, producerID, channel.Topic); err != nil {
 				switch {
 				case errors.Is(err, rootmap.StreamNotFoundError{}):
 					if err := tm.NewRoot(ctx,
@@ -201,11 +209,11 @@ func (tm *TreeManager) GetStatistics(
 	version uint64,
 	granularity uint64,
 ) ([]nodestore.StatRange, error) {
-	rootID, err := tm.rootmap.Get(ctx, producerID, topic, version)
+	prefix, rootID, err := tm.rootmap.Get(ctx, producerID, topic, version)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest root: %w", err)
 	}
-	tr := tree.NewBYOTreeReader(rootID, tm.ns.Get)
+	tr := tree.NewBYOTreeReader(prefix, rootID, tm.ns.Get)
 	ranges, err := tree.GetStatRange(ctx, tr, start, end, granularity)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stat range: %w", err)
@@ -245,11 +253,11 @@ func (tm *TreeManager) GetStatisticsLatest(
 	topic string,
 	granularity uint64,
 ) ([]nodestore.StatRange, error) {
-	rootID, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
+	prefix, rootID, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest root: %w", err)
 	}
-	tr := tree.NewBYOTreeReader(rootID, tm.ns.Get)
+	tr := tree.NewBYOTreeReader(prefix, rootID, tm.ns.Get)
 	ranges, err := tree.GetStatRange(ctx, tr, start, end, granularity)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stat range: %w", err)
@@ -272,11 +280,11 @@ func (tm *TreeManager) ForceFlush(ctx context.Context) error {
 
 // PrintStream returns a string representation of the tree for the given stream.
 func (tm *TreeManager) PrintStream(ctx context.Context, producerID string, topic string) string {
-	root, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
+	prefix, root, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
 	if err != nil {
 		return fmt.Sprintf("failed to get latest root: %v", err)
 	}
-	tr := tree.NewBYOTreeReader(root, tm.ns.Get)
+	tr := tree.NewBYOTreeReader(prefix, root, tm.ns.Get)
 	s, err := tree.Print(ctx, tr)
 	if err != nil {
 		return fmt.Sprintf("failed to print tree: %v", err)
@@ -286,6 +294,7 @@ func (tm *TreeManager) PrintStream(ctx context.Context, producerID string, topic
 
 func (tm *TreeManager) newRoot(
 	ctx context.Context,
+	prefix string,
 	start uint64,
 	end uint64,
 	leafWidthSecs int,
@@ -304,7 +313,7 @@ func (tm *TreeManager) newRoot(
 	if err != nil {
 		return nodestore.NodeID{}, 0, fmt.Errorf("failed to get next version: %w", err)
 	}
-	if err := tm.ns.Put(ctx, version, data); err != nil {
+	if err := tm.ns.Put(ctx, prefix, version, data); err != nil {
 		return nodestore.NodeID{}, 0, fmt.Errorf("failed to put root: %w", err)
 	}
 	nodeID := nodestore.NewNodeID(version, 0, uint64(len(data)))
@@ -316,11 +325,11 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 
 	// there should be an existing root
 	// If there is an existing root, then we need to add that data to the merge.
-	existingRootID, _, err := tm.rootmap.GetLatest(ctx, batch.ProducerID, batch.Topic)
+	prefix, existingRootID, _, err := tm.rootmap.GetLatest(ctx, batch.ProducerID, batch.Topic)
 	if err != nil && !errors.Is(err, rootmap.StreamNotFoundError{}) {
 		return fmt.Errorf("failed to get root: %w", err)
 	}
-	basereader := tree.NewBYOTreeReader(existingRootID, tm.ns.Get)
+	basereader := tree.NewBYOTreeReader(prefix, existingRootID, tm.ns.Get)
 
 	for _, addr := range batch.Addrs {
 		page, err := tm.wal.Get(addr)
@@ -347,10 +356,11 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 		return fmt.Errorf("failed to serialize partial tree: %w", err)
 	}
 	rootID := data[len(data)-24:]
-	if err := tm.ns.Put(ctx, version, data[:len(data)-24]); err != nil {
+	if err := tm.ns.Put(ctx, prefix, version, data[:len(data)-24]); err != nil {
 		return fmt.Errorf("failed to put tree: %w", err)
 	}
-	if err := tm.rootmap.Put(ctx, batch.ProducerID, batch.Topic, version, nodestore.NodeID(rootID)); err != nil {
+	if err := tm.rootmap.Put(
+		ctx, batch.ProducerID, batch.Topic, version, prefix, nodestore.NodeID(rootID)); err != nil {
 		return fmt.Errorf("failed to put root: %w", err)
 	}
 	return nil
@@ -460,11 +470,11 @@ func (tm *TreeManager) NewTreeIterator(
 	topic string,
 	start, end uint64,
 ) (*tree.Iterator, error) {
-	rootID, _, err := tm.rootmap.GetLatest(ctx, producer, topic)
+	prefix, rootID, _, err := tm.rootmap.GetLatest(ctx, producer, topic)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest root: %w", err)
 	}
-	tr := tree.NewBYOTreeReader(rootID, tm.ns.Get)
+	tr := tree.NewBYOTreeReader(prefix, rootID, tm.ns.Get)
 	return tree.NewTreeIterator(ctx, tr, start, end, 0), nil
 }
 
@@ -480,7 +490,7 @@ func (tm *TreeManager) loadIterators(
 	mtx := &sync.Mutex{}
 	for i, root := range roots {
 		g.Go(func() error {
-			tr := tree.NewBYOTreeReader(root.NodeID, tm.ns.Get)
+			tr := tree.NewBYOTreeReader(root.Prefix, root.NodeID, tm.ns.Get)
 			it := tree.NewTreeIterator(ctx, tr, start, end, root.RequestedMinVersion)
 			schema, channel, message, err := it.Next(ctx)
 			if err != nil {
@@ -517,7 +527,7 @@ func (tm *TreeManager) getMessages(
 	start, end uint64,
 	roots []rootmap.RootListing,
 ) error {
-	pq := util.NewPriorityQueue[record](func(a, b record) bool {
+	pq := util.NewPriorityQueue(func(a, b record) bool {
 		if a.message.LogTime == b.message.LogTime {
 			return a.message.ChannelID < b.message.ChannelID
 		}
@@ -569,7 +579,7 @@ func (tm *TreeManager) insert(
 	data []byte,
 	statistics map[string]*nodestore.Statistics,
 ) error {
-	rootID, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
+	prefix, rootID, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
 	if err != nil {
 		return fmt.Errorf("failed to get root ID: %w", err)
 	}
@@ -577,7 +587,7 @@ func (tm *TreeManager) insert(
 	if err != nil {
 		return fmt.Errorf("failed to get next version: %w", err)
 	}
-	currentRoot, err := tm.ns.Get(ctx, rootID)
+	currentRoot, err := tm.ns.Get(ctx, prefix, rootID)
 	if err != nil {
 		return fmt.Errorf("failed to get root: %w", err)
 	}
@@ -629,13 +639,13 @@ func (tm *TreeManager) dimensions(
 	producerID string,
 	topic string,
 ) (*treeDimensions, error) {
-	root, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
+	prefix, root, _, err := tm.rootmap.GetLatest(ctx, producerID, topic)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest root: %w", err)
 	}
-	node, err := tm.ns.Get(ctx, root)
+	node, err := tm.ns.Get(ctx, prefix, root)
 	if err != nil {
-		return nil, fmt.Errorf("failed to look up node %s: %w", root, err)
+		return nil, fmt.Errorf("failed to look up node %s/%s: %w", prefix, root, err)
 	}
 	inner := node.(*nodestore.InnerNode)
 	return &treeDimensions{

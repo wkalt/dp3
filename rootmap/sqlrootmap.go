@@ -35,6 +35,7 @@ func (rm *sqlRootmap) initialize() error {
 		producer_id text not null,
 		topic text not null,
 		version bigint not null,
+		storage_prefix text not null,
 		node_id text not null,
 		timestamp text not null default current_timestamp,
 		primary key (producer_id, topic, version)
@@ -57,13 +58,14 @@ func (rm *sqlRootmap) Put(
 	producerID string,
 	topic string,
 	version uint64,
+	prefix string,
 	nodeID nodestore.NodeID,
 ) error {
 	rm.mtx.Lock()
 	defer rm.mtx.Unlock()
 	_, err := rm.db.ExecContext(ctx, `
-	insert into rootmap (producer_id, topic, version, node_id) values ($1, $2, $3, $4)`,
-		producerID, topic, version, hex.EncodeToString(nodeID[:]),
+	insert into rootmap (producer_id, topic, version, storage_prefix, node_id) values ($1, $2, $3, $4, $5)`,
+		producerID, topic, version, prefix, hex.EncodeToString(nodeID[:]),
 	)
 	if err != nil {
 		var err sqlite3.Error
@@ -83,7 +85,7 @@ func (rm *sqlRootmap) GetLatestByTopic(
 	sb := strings.Builder{}
 	params := []any{producerID}
 	sb.WriteString(`
-	select r1.topic, r1.node_id, r1.version
+	select r1.topic, r1.storage_prefix, r1.node_id, r1.version
 	from rootmap r1 left join rootmap r2
 	on (r1.topic = r2.topic and r1.producer_id = r2.producer_id and r1.version < r2.version)
 	where r2.rowid is null
@@ -112,7 +114,8 @@ func (rm *sqlRootmap) GetLatestByTopic(
 		var nodeID string
 		var version uint64
 		var topic string
-		if err := rows.Scan(&topic, &nodeID, &version); err != nil {
+		var prefix string
+		if err := rows.Scan(&topic, &prefix, &nodeID, &version); err != nil {
 			return nil, fmt.Errorf("failed to read from rootmap: %w", err)
 		}
 		if version > maxVersion {
@@ -124,7 +127,7 @@ func (rm *sqlRootmap) GetLatestByTopic(
 		}
 		if version > topics[topic] {
 			listings = append(listings, RootListing{
-				topic, nodestore.NodeID(decoded), version, topics[topic],
+				prefix, topic, nodestore.NodeID(decoded), version, topics[topic],
 			})
 		}
 	}
@@ -135,44 +138,52 @@ func (rm *sqlRootmap) GetLatestByTopic(
 }
 
 func (rm *sqlRootmap) GetLatest(
-	ctx context.Context, producerID string, topic string) (nodestore.NodeID, uint64, error) {
+	ctx context.Context,
+	producerID string,
+	topic string,
+) (string, nodestore.NodeID, uint64, error) {
+	var prefix string
 	var nodeID string
 	var version uint64
 	err := rm.db.QueryRowContext(ctx, `
-	select node_id, version from rootmap where producer_id = $1 and topic = $2 order by version desc limit 1`,
+	select storage_prefix, node_id, version
+	from rootmap
+	where producer_id = $1 and topic = $2
+	order by version desc limit 1`,
 		producerID, topic,
-	).Scan(&nodeID, &version)
+	).Scan(&prefix, &nodeID, &version)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nodestore.NodeID{}, 0, StreamNotFoundError{producerID, topic}
+			return prefix, nodestore.NodeID{}, 0, StreamNotFoundError{producerID, topic}
 		}
-		return nodestore.NodeID{}, 0, fmt.Errorf("failed to read from rootmap: %w", err)
+		return prefix, nodestore.NodeID{}, 0, fmt.Errorf("failed to read from rootmap: %w", err)
 	}
 	decoded, err := hex.DecodeString(nodeID)
 	if err != nil {
-		return nodestore.NodeID{}, 0, fmt.Errorf("failed to decode node ID: %w", err)
+		return prefix, nodestore.NodeID{}, 0, fmt.Errorf("failed to decode node ID: %w", err)
 	}
-	return nodestore.NodeID(decoded), version, nil
+	return prefix, nodestore.NodeID(decoded), version, nil
 }
 
 func (rm *sqlRootmap) Get(
-	ctx context.Context, producerID string, topic string, version uint64) (nodestore.NodeID, error) {
+	ctx context.Context, producerID string, topic string, version uint64) (string, nodestore.NodeID, error) {
 	var nodeID string
+	var prefix string
 	err := rm.db.QueryRowContext(ctx, `
-	select node_id from rootmap where producer_id = $1 and topic = $2 and version = $3`,
+	select storage_prefix, node_id from rootmap where producer_id = $1 and topic = $2 and version = $3`,
 		producerID, topic, version,
-	).Scan(&nodeID)
+	).Scan(&prefix, &nodeID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nodestore.NodeID{}, StreamNotFoundError{producerID, topic}
+			return prefix, nodestore.NodeID{}, StreamNotFoundError{producerID, topic}
 		}
-		return nodestore.NodeID{}, fmt.Errorf("failed to read from rootmap: %w", err)
+		return prefix, nodestore.NodeID{}, fmt.Errorf("failed to read from rootmap: %w", err)
 	}
 	decoded, err := hex.DecodeString(nodeID)
 	if err != nil {
-		return nodestore.NodeID{}, fmt.Errorf("failed to decode node ID: %w", err)
+		return prefix, nodestore.NodeID{}, fmt.Errorf("failed to decode node ID: %w", err)
 	}
-	return nodestore.NodeID(decoded), nil
+	return prefix, nodestore.NodeID(decoded), nil
 }
 
 func NewSQLRootmap(db *sql.DB) (Rootmap, error) {

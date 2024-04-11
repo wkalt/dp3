@@ -17,6 +17,8 @@ func TestRootmaps(t *testing.T) {
 	require.NoError(t, err)
 	defer db.Close()
 
+	var testPrefix = "test"
+
 	cases := []struct {
 		assertion string
 		f         func(*testing.T) rootmap.Rootmap
@@ -43,50 +45,52 @@ func TestRootmaps(t *testing.T) {
 			rm := c.f(t)
 			t.Run("put", func(t *testing.T) {
 				expected := randNodeID()
-				err := rm.Put(ctx, "my-device", "my-topic", 10, expected)
+				err := rm.Put(ctx, "my-device", "my-topic", 10, testPrefix, expected)
 				require.NoError(t, err)
 
-				nodeID, err := rm.Get(ctx, "my-device", "my-topic", 10)
+				prefix, nodeID, err := rm.Get(ctx, "my-device", "my-topic", 10)
 				require.NoError(t, err)
 				require.Equal(t, expected, nodeID)
+				require.Equal(t, testPrefix, prefix)
 			})
 
 			t.Run("get latest", func(t *testing.T) {
 				node1 := randNodeID()
-				err := rm.Put(ctx, "my-device", "my-topic", 20, node1)
+				err := rm.Put(ctx, "my-device", "my-topic", 20, testPrefix, node1)
 				require.NoError(t, err)
 
 				node2 := randNodeID()
-				err = rm.Put(ctx, "my-device", "my-topic", 30, node2)
+				err = rm.Put(ctx, "my-device", "my-topic", 30, testPrefix, node2)
 				require.NoError(t, err)
 
-				nodeID, _, err := rm.GetLatest(ctx, "my-device", "my-topic")
+				prefix, nodeID, _, err := rm.GetLatest(ctx, "my-device", "my-topic")
 				require.NoError(t, err)
 				require.Equal(t, node2, nodeID)
+				require.Equal(t, testPrefix, prefix)
 			})
 			t.Run("get latest by topic", func(t *testing.T) {
 				node1 := randNodeID()
-				err := rm.Put(ctx, "my-device", "topic1", 40, node1)
+				err := rm.Put(ctx, "my-device", "topic1", 40, testPrefix, node1)
 				require.NoError(t, err)
 
 				node2 := randNodeID()
-				err = rm.Put(ctx, "my-device", "topic2", 50, node2)
+				err = rm.Put(ctx, "my-device", "topic2", 50, testPrefix, node2)
 				require.NoError(t, err)
 
 				listings, err := rm.GetLatestByTopic(ctx, "my-device", map[string]uint64{"topic1": 0, "topic2": 0})
 				require.NoError(t, err)
 
 				require.ElementsMatch(t, []rootmap.RootListing{
-					{"topic1", node1, 40, 0},
-					{"topic2", node2, 50, 0},
+					{testPrefix, "topic1", node1, 40, 0},
+					{testPrefix, "topic2", node2, 50, 0},
 				}, listings)
 			})
 			t.Run("get version that does not exist", func(t *testing.T) {
-				_, err := rm.Get(ctx, "fake-device", "my-topic", 1e9)
+				_, _, err := rm.Get(ctx, "fake-device", "my-topic", 1e9)
 				require.ErrorIs(t, err, rootmap.StreamNotFoundError{})
 			})
 			t.Run("get latest version that does not exist", func(t *testing.T) {
-				_, _, err := rm.GetLatest(ctx, "fake-device", "my-topic")
+				_, _, _, err := rm.GetLatest(ctx, "fake-device", "my-topic")
 				require.ErrorIs(t, err, rootmap.StreamNotFoundError{})
 			})
 		})

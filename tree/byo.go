@@ -14,8 +14,9 @@ node retrieval. This is used to construct nodestore-backed tree readers.
 */
 
 type byoTreeReader struct {
-	root nodestore.NodeID
-	get  func(context.Context, nodestore.NodeID) (nodestore.Node, error)
+	root   nodestore.NodeID
+	prefix string
+	get    func(context.Context, string, nodestore.NodeID) (nodestore.Node, error)
 }
 
 // Root returns the root node ID.
@@ -25,7 +26,7 @@ func (t *byoTreeReader) Root() nodestore.NodeID {
 
 // Get returns the node with the given ID.
 func (t *byoTreeReader) Get(ctx context.Context, id nodestore.NodeID) (nodestore.Node, error) {
-	return t.get(ctx, id)
+	return t.get(ctx, t.prefix, id)
 }
 
 // GetLeafData returns the data for a leaf node.
@@ -33,7 +34,7 @@ func (t *byoTreeReader) GetLeafData(ctx context.Context, id nodestore.NodeID) (
 	nodestore.NodeID, io.ReadSeekCloser, error,
 ) {
 	var ancestor nodestore.NodeID
-	node, err := t.get(ctx, id)
+	node, err := t.get(ctx, t.prefix, id)
 	if err != nil {
 		return ancestor, nil, err
 	}
@@ -47,8 +48,9 @@ func (t *byoTreeReader) GetLeafData(ctx context.Context, id nodestore.NodeID) (
 
 // NewBYOTreeReader creates a new BYOTreeReader.
 func NewBYOTreeReader(
+	prefix string,
 	root nodestore.NodeID,
-	get func(context.Context, nodestore.NodeID) (nodestore.Node, error),
+	get func(context.Context, string, nodestore.NodeID) (nodestore.Node, error),
 ) TreeReader {
-	return &byoTreeReader{root, get}
+	return &byoTreeReader{root, prefix, get}
 }

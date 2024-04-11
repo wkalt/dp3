@@ -17,6 +17,7 @@ type root struct {
 	producerID string
 	topic      string
 	version    uint64
+	prefix     string
 	nodeID     nodestore.NodeID
 }
 
@@ -54,40 +55,42 @@ func (rm *memrootmap) GetLatestByTopic(
 				maxVersion = item.version
 			}
 		}
-		listings = append(listings, RootListing{topic, max.nodeID, max.version, topics[topic]})
+		listings = append(listings, RootListing{max.prefix, topic, max.nodeID, max.version, topics[topic]})
 	}
 	return listings, nil
 }
 
 func (rm *memrootmap) GetLatest(
-	ctx context.Context, producerID string, topic string) (nodestore.NodeID, uint64, error) {
+	ctx context.Context, producerID string, topic string) (string, nodestore.NodeID, uint64, error) {
 	for i := len(rm.roots) - 1; i >= 0; i-- { // nb: assumes roots added in ascending order
 		root := rm.roots[i]
 		if root.producerID == producerID && root.topic == topic {
-			return root.nodeID, root.version, nil
+			return root.prefix, root.nodeID, root.version, nil
 		}
 	}
-	return nodestore.NodeID{}, 0, StreamNotFoundError{producerID, topic}
+	return "", nodestore.NodeID{}, 0, StreamNotFoundError{producerID, topic}
 }
 
 func (rm *memrootmap) Get(
-	ctx context.Context, producerID string, topic string, version uint64) (nodestore.NodeID, error) {
+	ctx context.Context, producerID string, topic string, version uint64) (string, nodestore.NodeID, error) {
 	for i := len(rm.roots) - 1; i >= 0; i-- {
 		root := rm.roots[i]
 		if root.producerID == producerID && root.topic == topic && root.version == version {
-			return root.nodeID, nil
+			return root.prefix, root.nodeID, nil
 		}
 	}
-	return nodestore.NodeID{}, StreamNotFoundError{producerID, topic}
+	return "", nodestore.NodeID{}, StreamNotFoundError{producerID, topic}
 }
 
 func (rm *memrootmap) Put(
 	ctx context.Context, producerID string, topic string,
-	version uint64, nodeID nodestore.NodeID) error {
+	version uint64, prefix string, nodeID nodestore.NodeID,
+) error {
 	rm.roots = append(rm.roots, root{
 		producerID: producerID,
 		topic:      topic,
 		version:    version,
+		prefix:     prefix,
 		nodeID:     nodeID,
 	})
 	return nil

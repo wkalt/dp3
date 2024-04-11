@@ -30,6 +30,10 @@ func NewDirectoryStore(root string) *DirectoryStore {
 
 // Put stores an object in the directory.
 func (d *DirectoryStore) Put(_ context.Context, id string, data []byte) error {
+	dir, _ := filepath.Split(d.root + "/" + id)
+	if err := util.EnsureDirectoryExists(dir); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
 	err := os.WriteFile(d.root+"/"+id, data, 0600)
 	if err != nil {
 		return fmt.Errorf("write failure: %w", err)
