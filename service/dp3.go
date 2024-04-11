@@ -98,13 +98,15 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 	signal.Notify(sigint, syscall.SIGINT)
 	signal.Notify(sigterm, syscall.SIGTERM)
 
+	startErr := make(chan error)
 	go func() {
 		log.Infow(ctx, "Starting server",
 			"port", opts.Port, "cache", util.HumanBytes(opts.CacheSizeBytes), "storage", store)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Errorf(ctx, "failed to start server: %s", err)
+			startErr <- err
 		}
 	}()
+
 	go func() {
 		log.Infof(ctx, "Starting pprof server on :6060")
 		if err := http.ListenAndServe(":6060", nil); err != nil {
@@ -117,6 +119,8 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 		log.Infof(ctx, "Received SIGINT")
 	case <-sigterm:
 		log.Infof(ctx, "Received SIGTERM")
+	case err := <-startErr:
+		return fmt.Errorf("failed to start server: %w", err)
 	}
 
 	log.Infof(ctx, "Allowing 10 seconds for existing connections to close")
