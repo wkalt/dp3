@@ -65,8 +65,8 @@ func NewNodestore(
 }
 
 // Put an object to storage.
-func (n *Nodestore) Put(ctx context.Context, oid uint64, data []byte) error {
-	objectname := strconv.FormatUint(oid, 10)
+func (n *Nodestore) Put(ctx context.Context, prefix string, oid uint64, data []byte) error {
+	objectname := prefix + "/" + strconv.FormatUint(oid, 10)
 	if err := n.store.Put(ctx, objectname, data); err != nil {
 		return fmt.Errorf("failed to put object %d: %w", oid, err)
 	}
@@ -75,14 +75,14 @@ func (n *Nodestore) Put(ctx context.Context, oid uint64, data []byte) error {
 
 // Get retrieves a node from the nodestore. It will check the cache prior to
 // storage.
-func (n *Nodestore) Get(ctx context.Context, id NodeID) (Node, error) {
+func (n *Nodestore) Get(ctx context.Context, prefix string, id NodeID) (Node, error) {
 	if value, ok := n.cache.Get(id); ok {
 		return value, nil
 	}
-	reader, err := n.store.GetRange(ctx, id.OID(), int(id.Offset()), int(id.Length()))
+	reader, err := n.store.GetRange(ctx, prefix+"/"+id.OID(), int(id.Offset()), int(id.Length()))
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotFound) {
-			return nil, NodeNotFoundError{id}
+			return nil, NodeNotFoundError{prefix, id}
 		}
 		return nil, fmt.Errorf("failed to get node %s: %w", id, err)
 	}
@@ -102,13 +102,13 @@ func (n *Nodestore) Get(ctx context.Context, id NodeID) (Node, error) {
 // GetLeaf retrieves a leaf node from the nodestore. It returns a ReadSeekCloser
 // over the leaf data, the closing of which is the caller's responsibility. It
 // does not cache data.
-func (n *Nodestore) GetLeafData(ctx context.Context, id NodeID) (
+func (n *Nodestore) GetLeafData(ctx context.Context, prefix string, id NodeID) (
 	ancestor NodeID, reader io.ReadSeekCloser, err error,
 ) {
-	reader, err = n.store.GetRange(ctx, id.OID(), int(id.Offset()), int(id.Length()))
+	reader, err = n.store.GetRange(ctx, prefix+"/"+id.OID(), int(id.Offset()), int(id.Length()))
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotFound) {
-			return ancestor, nil, NodeNotFoundError{id}
+			return ancestor, nil, NodeNotFoundError{prefix, id}
 		}
 		return ancestor, nil, fmt.Errorf("failed to get node %s: %w", id, err)
 	}

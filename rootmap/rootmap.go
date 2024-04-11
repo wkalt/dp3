@@ -22,6 +22,7 @@ recover.
 var ErrRootAlreadyExists = errors.New("root already exists")
 
 type RootListing struct {
+	Prefix              string
 	Topic               string
 	NodeID              nodestore.NodeID
 	NewMinVersion       uint64
@@ -29,8 +30,8 @@ type RootListing struct {
 }
 
 type Rootmap interface {
-	GetLatest(ctx context.Context, producerID string, topic string) (nodestore.NodeID, uint64, error)
+	GetLatest(ctx context.Context, producerID string, topic string) (string, nodestore.NodeID, uint64, error)
 	GetLatestByTopic(ctx context.Context, producerID string, topics map[string]uint64) ([]RootListing, error)
-	Get(ctx context.Context, producerID string, topic string, version uint64) (nodestore.NodeID, error)
-	Put(ctx context.Context, producerID string, topic string, version uint64, nodeID nodestore.NodeID) error
+	Get(ctx context.Context, producerID string, topic string, version uint64) (string, nodestore.NodeID, error)
+	Put(ctx context.Context, producerID string, topic string, version uint64, prefix string, nodeID nodestore.NodeID) error
 }
