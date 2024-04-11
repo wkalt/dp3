@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"github.com/wkalt/dp3/util"
 	"golang.org/x/sync/errgroup"
@@ -32,18 +33,21 @@ type MergeNode struct {
 	pq       *util.PriorityQueue[queueElement]
 
 	initialized bool
+
+	mtx *sync.Mutex
 }
 
 // NewMergeNode returns a new merge node.
 func NewMergeNode(children ...Node) *MergeNode {
 	return &MergeNode{
 		children: children,
-		pq: util.NewPriorityQueue[queueElement](func(a, b queueElement) bool {
+		pq: util.NewPriorityQueue(func(a, b queueElement) bool {
 			if a.tuple.Message.LogTime == b.tuple.Message.LogTime {
 				return a.tuple.Message.ChannelID < b.tuple.Message.ChannelID
 			}
 			return a.tuple.Message.LogTime < b.tuple.Message.LogTime
 		}),
+		mtx:         &sync.Mutex{},
 		initialized: false,
 	}
 }
@@ -52,7 +56,9 @@ func NewMergeNode(children ...Node) *MergeNode {
 // concurrently.
 func (n *MergeNode) initialize(ctx context.Context) error {
 	g := errgroup.Group{}
+	g.SetLimit(len(n.children))
 	for i, child := range n.children {
+		child := child
 		g.Go(func() error {
 			tuple, err := child.Next(ctx)
 			if err != nil {
@@ -61,7 +67,9 @@ func (n *MergeNode) initialize(ctx context.Context) error {
 				}
 				return fmt.Errorf("failed to get next message on child %d: %w", i, err)
 			}
+			n.mtx.Lock()
 			heap.Push(n.pq, queueElement{tuple: tuple, index: i})
+			n.mtx.Unlock()
 			return nil
 		})
 	}
