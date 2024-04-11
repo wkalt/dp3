@@ -57,6 +57,10 @@ func withPaging(pager string, f func(io.Writer) error) error {
 	cmd.Stdout = stdout
 	cmd.Stderr = os.Stderr
 
+	defer func() {
+		os.Stdout = stdout
+	}()
+
 	done := make(chan struct{})
 
 	go func() {
@@ -66,14 +70,22 @@ func withPaging(pager string, f func(io.Writer) error) error {
 		done <- struct{}{}
 	}()
 
-	if err := f(w); err != nil {
+	errs := make(chan error)
+	go func() {
+		if err := f(w); err != nil {
+			errs <- err
+		}
+		if err := w.Close(); err != nil {
+			fmt.Println("error closing pipe: %w", err)
+		}
+	}()
+
+	select {
+	case <-done:
+		return nil
+	case err := <-errs:
 		return err
 	}
-	w.Close()
-
-	<-done
-	os.Stdout = stdout
-	return nil
 }
 
 func executeQuery(s string) error {
