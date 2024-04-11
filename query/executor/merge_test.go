@@ -2,6 +2,7 @@ package executor_test
 
 import (
 	"context"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -66,6 +67,7 @@ func TestMergeNode(t *testing.T) {
 			for {
 				tuple, err := node.Next(ctx)
 				if err != nil {
+					require.ErrorIs(t, err, io.EOF)
 					break
 				}
 				actual = append(actual, tuple.Message.LogTime)

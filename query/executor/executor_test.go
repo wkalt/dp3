@@ -102,26 +102,28 @@ func TestQueryExecution(t *testing.T) {
 			},
 		}
 		for _, c := range cases {
-			t.Run(c.assertion, func(t *testing.T) {
-				parser := ql.NewParser()
-				ast, err := parser.ParseString("", c.query)
-				require.NoError(t, err)
-				qp, err := plan.CompileQuery(*ast)
-				require.NoError(t, err)
-				actual, err := executor.CompilePlan(ctx, qp, tmgr.NewTreeIterator)
-				require.NoError(t, err)
+			for range 100 {
+				t.Run(c.assertion, func(t *testing.T) {
+					parser := ql.NewParser()
+					ast, err := parser.ParseString("", c.query)
+					require.NoError(t, err)
+					qp, err := plan.CompileQuery(*ast)
+					require.NoError(t, err)
+					actual, err := executor.CompilePlan(ctx, qp, tmgr.NewTreeIterator)
+					require.NoError(t, err)
 
-				results := [][]int64{}
-				for {
-					tuple, err := actual.Next(ctx)
-					if err != nil {
-						require.ErrorIs(t, err, io.EOF)
-						break
+					results := [][]int64{}
+					for {
+						tuple, err := actual.Next(ctx)
+						if err != nil {
+							require.ErrorIs(t, err, io.EOF)
+							break
+						}
+						results = append(results, []int64{int64(tuple.Message.ChannelID), int64(tuple.Message.LogTime)})
 					}
-					results = append(results, []int64{int64(tuple.Message.ChannelID), int64(tuple.Message.LogTime)})
-				}
-				require.Equal(t, c.expected, results)
-			})
+					require.Equal(t, c.expected, results)
+				})
+			}
 		}
 	})
 
