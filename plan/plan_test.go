@@ -4,8 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
-	"github.com/wkalt/dp3/query/plan"
-	"github.com/wkalt/dp3/query/ql"
+	"github.com/wkalt/dp3/plan"
+	"github.com/wkalt/dp3/ql"
 	"github.com/wkalt/dp3/util/testutils"
 )
 

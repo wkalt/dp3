@@ -5,7 +5,7 @@ import (
 	"math"
 	"strings"
 
-	"github.com/wkalt/dp3/query/ql"
+	"github.com/wkalt/dp3/ql"
 	"github.com/wkalt/dp3/util"
 )
 
