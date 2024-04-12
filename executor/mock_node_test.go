@@ -16,7 +16,7 @@ func TestMockNode(t *testing.T) {
 		for j := range 3 {
 			tuple, err := node.Next(ctx)
 			require.NoError(t, err)
-			require.Equal(t, uint64(j+1), tuple.Message.LogTime)
+			require.Equal(t, uint64(j+1), tuple.LogTime())
 		}
 		_, err := node.Next(ctx)
 		require.ErrorIs(t, err, io.EOF)

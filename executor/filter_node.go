@@ -12,14 +12,14 @@ predicate supplied at construction.
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// FilterNode represents the filter node.
-type FilterNode struct {
+// filterNode represents the filter node.
+type filterNode struct {
 	child  Node
-	filter func(*Tuple) (bool, error)
+	filter func(*tuple) (bool, error)
 }
 
 // Next returns the next tuple from the node.
-func (n *FilterNode) Next(ctx context.Context) (*Tuple, error) {
+func (n *filterNode) Next(ctx context.Context) (*tuple, error) {
 	for {
 		t, err := n.child.Next(ctx)
 		if err != nil {
@@ -36,7 +36,7 @@ func (n *FilterNode) Next(ctx context.Context) (*Tuple, error) {
 }
 
 // Close the node.
-func (n *FilterNode) Close() error {
+func (n *filterNode) Close() error {
 	if err := n.child.Close(); err != nil {
 		return fmt.Errorf("failed to close filter node: %w", err)
 	}
@@ -44,10 +44,10 @@ func (n *FilterNode) Close() error {
 }
 
 // String returns a string representation of the node.
-func (n *FilterNode) String() string {
+func (n *filterNode) String() string {
 	return fmt.Sprintf("[filter %s]", n.child.String())
 }
 
-func NewFilterNode(filter func(*Tuple) (bool, error), child Node) *FilterNode {
-	return &FilterNode{child: child, filter: filter}
+func NewFilterNode(filter func(*tuple) (bool, error), child Node) *filterNode {
+	return &filterNode{child: child, filter: filter}
 }

@@ -15,15 +15,15 @@ the leaves of the execution tree.
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// ScanNode represents a scan node.
-type ScanNode struct {
+// scanNode represents a scan node.
+type scanNode struct {
 	it *tree.Iterator
 
 	topic string
 }
 
 // Next returns the next tuple from the node.
-func (n *ScanNode) Next(ctx context.Context) (*Tuple, error) {
+func (n *scanNode) Next(ctx context.Context) (*tuple, error) {
 	if !n.it.More() {
 		return nil, io.EOF
 	}
@@ -31,15 +31,15 @@ func (n *ScanNode) Next(ctx context.Context) (*Tuple, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to scan next message: %w", err)
 	}
-	return &Tuple{
-		Schema:  s,
-		Channel: c,
-		Message: m,
+	return &tuple{
+		schema:  s,
+		channel: c,
+		message: m,
 	}, nil
 }
 
 // Close the node.
-func (n *ScanNode) Close() error {
+func (n *scanNode) Close() error {
 	if err := n.it.Close(); err != nil {
 		return fmt.Errorf("failed to close scan node: %w", err)
 	}
@@ -47,7 +47,7 @@ func (n *ScanNode) Close() error {
 }
 
 // String returns a string representation of the node.
-func (n *ScanNode) String() string {
+func (n *scanNode) String() string {
 	return fmt.Sprintf("[scan %s]", n.topic)
 }
 
@@ -55,6 +55,6 @@ func (n *ScanNode) String() string {
 func NewScanNode(
 	topic string,
 	it *tree.Iterator,
-) *ScanNode {
-	return &ScanNode{it: it, topic: topic}
+) *scanNode {
+	return &scanNode{it: it, topic: topic}
 }

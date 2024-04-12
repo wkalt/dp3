@@ -119,7 +119,7 @@ func TestQueryExecution(t *testing.T) {
 							require.ErrorIs(t, err, io.EOF)
 							break
 						}
-						results = append(results, []int64{int64(tuple.Message.ChannelID), int64(tuple.Message.LogTime)})
+						results = append(results, []int64{int64(tuple.ChannelID()), int64(tuple.LogTime())})
 					}
 					require.Equal(t, c.expected, results)
 				})
@@ -158,7 +158,7 @@ func TestQueryExecution(t *testing.T) {
 						require.ErrorIs(t, err, io.EOF)
 						break
 					}
-					results = append(results, []int64{int64(tuple.Message.ChannelID), int64(tuple.Message.LogTime)})
+					results = append(results, []int64{int64(tuple.ChannelID()), int64(tuple.LogTime())})
 				}
 				require.Equal(t, result, results)
 			})
@@ -213,7 +213,7 @@ func TestQueryExecution(t *testing.T) {
 							require.ErrorIs(t, err, io.EOF)
 							break
 						}
-						results = append(results, []int64{int64(tuple.Message.ChannelID), int64(tuple.Message.LogTime)})
+						results = append(results, []int64{int64(tuple.ChannelID()), int64(tuple.LogTime())})
 					}
 					require.Equal(t, expected[operator], results)
 				})

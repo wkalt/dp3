@@ -1,6 +1,7 @@
 package executor
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -8,9 +9,16 @@ import (
 	"github.com/wkalt/dp3/util/schema"
 )
 
+/*
+Errors returned by the executor.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
+// FieldNotFoundError is an error returned when a field is not found.
 type FieldNotFoundError struct {
-	Field  string
-	Fields []util.Named[schema.PrimitiveType]
+	field  string
+	fields []util.Named[schema.PrimitiveType]
 }
 
 func (e FieldNotFoundError) Is(target error) bool {
@@ -18,19 +26,12 @@ func (e FieldNotFoundError) Is(target error) bool {
 	return ok
 }
 
-func NewErrFieldNotFound(field string, fields []util.Named[schema.PrimitiveType]) FieldNotFoundError {
-	return FieldNotFoundError{
-		Field:  field,
-		Fields: fields,
-	}
-}
-
 func (e FieldNotFoundError) Error() string {
 	sb := &strings.Builder{}
-	sb.WriteString(fmt.Sprintf("Field %s not found.", e.Field))
-	if len(e.Fields) > 0 {
+	sb.WriteString(fmt.Sprintf("Field %s not found.", e.field))
+	if len(e.fields) > 0 {
 		sb.WriteString(" Available fields: ")
-		for i, f := range e.Fields {
+		for i, f := range e.fields {
 			if i > 0 {
 				sb.WriteString(", ")
 			}
@@ -40,3 +41,14 @@ func (e FieldNotFoundError) Error() string {
 	}
 	return sb.String()
 }
+
+// newErrFieldNotFound creates a new FieldNotFoundError.
+func newErrFieldNotFound(field string, fields []util.Named[schema.PrimitiveType]) FieldNotFoundError {
+	return FieldNotFoundError{
+		field:  field,
+		fields: fields,
+	}
+}
+
+// ErrUnknownTable is an error returned when a table is not found.
+var ErrUnknownTable = errors.New("unknown table")

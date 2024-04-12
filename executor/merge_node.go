@@ -23,12 +23,12 @@ child that originated the popped tuple, if available.
 ////////////////////////////////////////////////////////////////////////////////
 
 type queueElement struct {
-	tuple *Tuple
+	tuple *tuple
 	index int
 }
 
-// MergeNode represents the merge node.
-type MergeNode struct {
+// mergeNode represents the merge node.
+type mergeNode struct {
 	children []Node
 	pq       *util.PriorityQueue[queueElement]
 
@@ -38,14 +38,14 @@ type MergeNode struct {
 }
 
 // NewMergeNode returns a new merge node.
-func NewMergeNode(children ...Node) *MergeNode {
-	return &MergeNode{
+func NewMergeNode(children ...Node) *mergeNode {
+	return &mergeNode{
 		children: children,
 		pq: util.NewPriorityQueue(func(a, b queueElement) bool {
-			if a.tuple.Message.LogTime == b.tuple.Message.LogTime {
-				return a.tuple.Message.ChannelID < b.tuple.Message.ChannelID
+			if a.tuple.message.LogTime == b.tuple.message.LogTime {
+				return a.tuple.message.ChannelID < b.tuple.message.ChannelID
 			}
-			return a.tuple.Message.LogTime < b.tuple.Message.LogTime
+			return a.tuple.message.LogTime < b.tuple.message.LogTime
 		}),
 		mtx:         &sync.Mutex{},
 		initialized: false,
@@ -54,7 +54,7 @@ func NewMergeNode(children ...Node) *MergeNode {
 
 // initialize pushes one message from each child into the priority queue,
 // concurrently.
-func (n *MergeNode) initialize(ctx context.Context) error {
+func (n *mergeNode) initialize(ctx context.Context) error {
 	g := errgroup.Group{}
 	g.SetLimit(len(n.children))
 	for i, child := range n.children {
@@ -81,7 +81,7 @@ func (n *MergeNode) initialize(ctx context.Context) error {
 }
 
 // Next returns the next tuple from the node.
-func (n *MergeNode) Next(ctx context.Context) (*Tuple, error) {
+func (n *mergeNode) Next(ctx context.Context) (*tuple, error) {
 	if !n.initialized {
 		if err := n.initialize(ctx); err != nil {
 			return nil, fmt.Errorf("failed to initialize merge node: %w", err)
@@ -102,7 +102,7 @@ func (n *MergeNode) Next(ctx context.Context) (*Tuple, error) {
 }
 
 // Close the node.
-func (n *MergeNode) Close() error {
+func (n *mergeNode) Close() error {
 	errs := make([]error, 0, len(n.children))
 	for _, child := range n.children {
 		if err := child.Close(); err != nil {
@@ -116,7 +116,7 @@ func (n *MergeNode) Close() error {
 }
 
 // String returns a string representation of the node.
-func (n *MergeNode) String() string {
+func (n *mergeNode) String() string {
 	sb := strings.Builder{}
 	sb.WriteString("[merge")
 	for _, child := range n.children {
