@@ -14,35 +14,64 @@ import (
 	"github.com/wkalt/dp3/util/schema"
 )
 
+/*
+This file is responsible for compiling where clauses into filter functions that
+can be executed on message bytes.
+
+The main complication with this is that it must be done dynamically and during
+query execution -- not before. The reason is that we don't know the schema of
+the data until we see it from the leaf nodes, and our trees/tables are not
+guaranteed to have a fully consistent schema. These issues can probably be
+addressed with time through external storage/caching of schemas. Today we don't
+have it though.
+
+Instead, we use the "expression" structure to hold state about the filters we
+have compiled for schemas we have seen in the course of a query execution.
+
+A filter has signature func(*Tuple) (bool, error), where the bool indicates
+whether the evaluted tuple should be passed up the chain. A where clause comes
+into this infrastructure as an "OrExpression", which is an array of
+"AndExpression". The entrypoint for where clause compilation is
+compileOrExpression.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
+// expression holds a where clause and manages the compilation of new filters
+// for it as new schemas are observed in the playback stream.
 type expression struct {
-	filters map[*fmcap.Schema]func(*Tuple) (bool, error)
+	filters map[*fmcap.Schema]func(*tuple) (bool, error)
 	node    *plan.Node
 	values  []any
 	target  string
 }
 
+// newExpression creates a new expression.
 func newExpression(target string, node *plan.Node) *expression {
 	return &expression{
-		filters: make(map[*fmcap.Schema]func(*Tuple) (bool, error)),
+		filters: make(map[*fmcap.Schema]func(*tuple) (bool, error)),
 		target:  target,
 		node:    node,
 	}
 }
 
-func (e *expression) filter(t *Tuple) (bool, error) {
-	fn, ok := e.filters[t.Schema]
+// filter evaluates a tuple against the where clause. This is the function
+// passed to the filter node constructor.
+func (e *expression) filter(t *tuple) (bool, error) {
+	fn, ok := e.filters[t.schema]
 	if !ok {
 		var err error
-		fn, err = e.compileFilter(t.Schema)
+		fn, err = e.compileFilter(t.schema)
 		if err != nil {
 			return false, err
 		}
-		e.filters[t.Schema] = fn
+		e.filters[t.schema] = fn
 	}
 	return fn(t)
 }
 
-func (e *expression) compileFilter(schema *fmcap.Schema) (func(t *Tuple) (bool, error), error) {
+// compileFilter compiles a filter function for a schema.
+func (e *expression) compileFilter(schema *fmcap.Schema) (func(t *tuple) (bool, error), error) {
 	pkg, name, found := strings.Cut(schema.Name, "/")
 	if !found {
 		pkg = ""
@@ -53,13 +82,13 @@ func (e *expression) compileFilter(schema *fmcap.Schema) (func(t *Tuple) (bool, 
 		return nil, fmt.Errorf("failed to parse message definition %s: %w", schema.Name, err)
 	}
 	fields := ros1msg.AnalyzeSchema(*parsed)
-	filterfn, err := e.compileOrExpr(fields, e.node)
+	filterfn, err := e.compileOrExpression(fields, e.node)
 	if err != nil {
 		return nil, fmt.Errorf("failed to compile filter function for %s: %w", schema.Name, err)
 	}
 	parser := ros1msg.GenSkipper(*parsed)
-	return func(t *Tuple) (bool, error) {
-		_, err := parser.Parse(t.Message.Data, &e.values, true)
+	return func(t *tuple) (bool, error) {
+		_, err := parser.Parse(t.message.Data, &e.values, true)
 		if err != nil {
 			return false, fmt.Errorf("failed to parse message: %w", err)
 		}
@@ -70,14 +99,16 @@ func (e *expression) compileFilter(schema *fmcap.Schema) (func(t *Tuple) (bool, 
 	}, nil
 }
 
-func (e *expression) compileOrExpr(
+// compileOrExpression compiles an "or" expression. An or expression is a list
+// of "and" expressions.
+func (e *expression) compileOrExpression(
 	fields []util.Named[schema.PrimitiveType],
 	node *plan.Node,
 ) (func(values []any) (bool, error), error) {
 	var err error
 	orterms := make([]func([]any) (bool, error), len(node.Children))
 	for i, child := range node.Children {
-		orterms[i], err = e.compileAndExpr(fields, child)
+		orterms[i], err = e.compileAndExpression(fields, child)
 		if err != nil {
 			return nil, err
 		}
@@ -92,8 +123,7 @@ func (e *expression) compileOrExpr(
 	}, nil
 }
 
-var ErrUnknownTable = errors.New("unknown table")
-
+// compileBinaryExpression compiles a binary expression.
 func (e *expression) compileBinaryExpression(
 	fields []util.Named[schema.PrimitiveType],
 	expr *plan.Node,
@@ -126,15 +156,17 @@ func (e *expression) compileBinaryExpression(
 	case "!=":
 		return e.compileExprNotEquals(fields, expr, dealiased)
 	case "~":
-		return e.compileExprLike(fields, expr, dealiased)
+		return e.compileExprRegex(fields, expr, dealiased)
 	case "~*":
-		return e.compileExprILike(fields, expr, dealiased)
+		return e.compileExprCaseInsensitiveRegex(fields, expr, dealiased)
 	default:
 		return nil, fmt.Errorf("unrecognized operator %s", *expr.BinaryOp)
 	}
 }
 
-func (e *expression) compileAndExpr(
+// compileAndExpression compiles an "and" expression. An and expression is a
+// list of binary expressions.
+func (e *expression) compileAndExpression(
 	fields []util.Named[schema.PrimitiveType],
 	node *plan.Node,
 ) (func(values []any) (bool, error), error) {
@@ -158,6 +190,8 @@ func (e *expression) compileAndExpr(
 	}, nil
 }
 
+// compileEqualBool returns a function that compares a boolean field to a
+// boolean value.
 func compileEqualBool(
 	i int,
 	value ql.Value,
@@ -174,6 +208,8 @@ func compileEqualBool(
 	}, nil
 }
 
+// compileEqualString returns a function that compares a string field to a
+// string value.
 func compileEqualString(
 	i int,
 	value ql.Value,
@@ -190,6 +226,8 @@ func compileEqualString(
 	}, nil
 }
 
+// compileEqualUint8 returns a function that compares a uint8 field to a uint8
+// value.
 func compileEqualUint8(
 	i int,
 	value ql.Value,
@@ -206,6 +244,8 @@ func compileEqualUint8(
 	}, nil
 }
 
+// compileEqualUint16 returns a function that compares a uint16 field to a uint16
+// value.
 func compileEqualUint16(
 	i int,
 	value ql.Value,
@@ -222,6 +262,8 @@ func compileEqualUint16(
 	}, nil
 }
 
+// compileEqualUint32 returns a function that compares a uint32 field to a uint32
+// value.
 func compileEqualUint32(
 	i int,
 	value ql.Value,
@@ -238,6 +280,8 @@ func compileEqualUint32(
 	}, nil
 }
 
+// compileEqualUint64 returns a function that compares a uint64 field to a uint64
+// value.
 func compileEqualUint64(
 	i int,
 	value ql.Value,
@@ -254,6 +298,8 @@ func compileEqualUint64(
 	}, nil
 }
 
+// compileEqualInt8 returns a function that compares an int8 field to an int8
+// value.
 func compileEqualInt8(
 	i int,
 	value ql.Value,
@@ -270,6 +316,8 @@ func compileEqualInt8(
 	}, nil
 }
 
+// compileEqualInt16 returns a function that compares an int16 field to an int16
+// value.
 func compileEqualInt16(
 	i int,
 	value ql.Value,
@@ -286,6 +334,8 @@ func compileEqualInt16(
 	}, nil
 }
 
+// compileEqualInt32 returns a function that compares an int32 field to an int32
+// value.
 func compileEqualInt32(
 	i int,
 	value ql.Value,
@@ -302,6 +352,8 @@ func compileEqualInt32(
 	}, nil
 }
 
+// compileEqualInt64 returns a function that compares an int64 field to an int64
+// value.
 func compileEqualInt64(
 	i int,
 	value ql.Value,
@@ -318,6 +370,8 @@ func compileEqualInt64(
 	}, nil
 }
 
+// compileEqualFloat32 returns a function that compares a float32 field to a
+// float32 value.
 func compileEqualFloat32(
 	i int,
 	value ql.Value,
@@ -340,6 +394,8 @@ func compileEqualFloat32(
 	}, nil
 }
 
+// compileEqualFloat64 returns a function that compares a float64 field to a
+// float64 value.
 func compileEqualFloat64(
 	i int,
 	value ql.Value,
@@ -362,6 +418,8 @@ func compileEqualFloat64(
 	}, nil
 }
 
+// compileExprEquals compiles an equals expression by dispatching to the filter
+// of the appropriate type.
 func (e *expression) compileExprEquals(
 	fields []util.Named[schema.PrimitiveType],
 	expr *plan.Node,
@@ -400,9 +458,11 @@ func (e *expression) compileExprEquals(
 			}
 		}
 	}
-	return nil, NewErrFieldNotFound(*expr.BinaryOpField, fields)
+	return nil, newErrFieldNotFound(*expr.BinaryOpField, fields)
 }
 
+// compileLessThanUint8 returns a function that compares a uint8 field to a
+// uint8 value.
 func compileLessThanUint8(
 	i int,
 	value ql.Value,
@@ -419,6 +479,8 @@ func compileLessThanUint8(
 	}, nil
 }
 
+// compileLessThanUint16 returns a function that compares a uint16 field to a
+// uint16 value.
 func compileLessThanUint16(
 	i int,
 	value ql.Value,
@@ -435,6 +497,8 @@ func compileLessThanUint16(
 	}, nil
 }
 
+// compileLessThanUint32 returns a function that compares a uint32 field to a
+// uint32 value.
 func compileLessThanUint32(
 	i int,
 	value ql.Value,
@@ -451,6 +515,8 @@ func compileLessThanUint32(
 	}, nil
 }
 
+// compileLessThanUint64 returns a function that compares a uint64 field to a
+// uint64 value.
 func compileLessThanUint64(
 	i int,
 	value ql.Value,
@@ -467,6 +533,8 @@ func compileLessThanUint64(
 	}, nil
 }
 
+// compileLessThanInt8 returns a function that compares an int8 field to an int8
+// value.
 func compileLessThanInt8(
 	i int,
 	value ql.Value,
@@ -483,6 +551,8 @@ func compileLessThanInt8(
 	}, nil
 }
 
+// compileLessThanInt16 returns a function that compares an int16 field to an
+// int16 value.
 func compileLessThanInt16(
 	i int,
 	value ql.Value,
@@ -499,6 +569,8 @@ func compileLessThanInt16(
 	}, nil
 }
 
+// compileLessThanInt32 returns a function that compares an int32 field to an
+// int32 value.
 func compileLessThanInt32(
 	i int,
 	value ql.Value,
@@ -515,6 +587,8 @@ func compileLessThanInt32(
 	}, nil
 }
 
+// compileLessThanInt64 returns a function that compares an int64 field to an
+// int64 value.
 func compileLessThanInt64(
 	i int,
 	value ql.Value,
@@ -531,6 +605,8 @@ func compileLessThanInt64(
 	}, nil
 }
 
+// compileLessThanFloat32 returns a function that compares a float32 field to a
+// float32 value.
 func compileLessThanFloat32(
 	i int,
 	value ql.Value,
@@ -553,6 +629,8 @@ func compileLessThanFloat32(
 	}, nil
 }
 
+// compileLessThanFloat64 returns a function that compares a float64 field to a
+// float64 value.
 func compileLessThanFloat64(
 	i int,
 	value ql.Value,
@@ -575,6 +653,8 @@ func compileLessThanFloat64(
 	}, nil
 }
 
+// compileLessThanString returns a function that compares a string field to a
+// string value.
 func compileLessThanString(
 	i int,
 	value ql.Value,
@@ -591,6 +671,8 @@ func compileLessThanString(
 	}, nil
 }
 
+// compileExprLessThan compiles a less than expression by dispatching to the
+// filter of the appropriate type.
 // nolint: dupl
 func (e *expression) compileExprLessThan(
 	fields []util.Named[schema.PrimitiveType],
@@ -628,9 +710,11 @@ func (e *expression) compileExprLessThan(
 			}
 		}
 	}
-	return nil, NewErrFieldNotFound(*expr.BinaryOpField, fields)
+	return nil, newErrFieldNotFound(*expr.BinaryOpField, fields)
 }
 
+// compileGreaterThanUint8 returns a function that compares a uint8 field to a
+// uint8 value.
 func compileGreaterThanUint8(
 	i int,
 	value ql.Value,
@@ -647,6 +731,8 @@ func compileGreaterThanUint8(
 	}, nil
 }
 
+// compileGreaterThanUint16 returns a function that compares a uint16 field to a
+// uint16 value.
 func compileGreaterThanUint16(
 	i int,
 	value ql.Value,
@@ -663,6 +749,8 @@ func compileGreaterThanUint16(
 	}, nil
 }
 
+// compileGreaterThanUint32 returns a function that compares a uint32 field to a
+// uint32 value.
 func compileGreaterThanUint32(
 	i int,
 	value ql.Value,
@@ -679,6 +767,8 @@ func compileGreaterThanUint32(
 	}, nil
 }
 
+// compileGreaterThanUint64 returns a function that compares a uint64 field to a
+// uint64 value.
 func compileGreaterThanUint64(
 	i int,
 	value ql.Value,
@@ -695,6 +785,8 @@ func compileGreaterThanUint64(
 	}, nil
 }
 
+// compileGreaterThanInt8 returns a function that compares an int8 field to an
+// int8 value.
 func compileGreaterThanInt8(
 	i int,
 	value ql.Value,
@@ -711,6 +803,8 @@ func compileGreaterThanInt8(
 	}, nil
 }
 
+// compileGreaterThanInt16 returns a function that compares an int16 field to an
+// int16 value.
 func compileGreaterThanInt16(
 	i int,
 	value ql.Value,
@@ -727,6 +821,8 @@ func compileGreaterThanInt16(
 	}, nil
 }
 
+// compileGreaterThanInt32 returns a function that compares an int32 field to an
+// int32 value.
 func compileGreaterThanInt32(
 	i int,
 	value ql.Value,
@@ -743,6 +839,8 @@ func compileGreaterThanInt32(
 	}, nil
 }
 
+// compileGreaterThanInt64 returns a function that compares an int64 field to an
+// int64 value.
 func compileGreaterThanInt64(
 	i int,
 	value ql.Value,
@@ -759,6 +857,8 @@ func compileGreaterThanInt64(
 	}, nil
 }
 
+// compileGreaterThanFloat32 returns a function that compares a float32 field to
+// a float32 value.
 func compileGreaterThanFloat32(
 	i int,
 	value ql.Value,
@@ -781,6 +881,8 @@ func compileGreaterThanFloat32(
 	}, nil
 }
 
+// compileGreaterThanFloat64 returns a function that compares a float64 field to
+// a float64 value.
 func compileGreaterThanFloat64(
 	i int,
 	value ql.Value,
@@ -803,6 +905,8 @@ func compileGreaterThanFloat64(
 	}, nil
 }
 
+// compileGreaterThanString returns a function that compares a string field to a
+// string value.
 func compileGreaterThanString(
 	i int,
 	value ql.Value,
@@ -819,6 +923,8 @@ func compileGreaterThanString(
 	}, nil
 }
 
+// compileExprGreaterThan compiles a greater than expression by dispatching to
+// the filter of the appropriate type.
 // nolint: dupl
 func (e *expression) compileExprGreaterThan(
 	fields []util.Named[schema.PrimitiveType],
@@ -856,9 +962,11 @@ func (e *expression) compileExprGreaterThan(
 			}
 		}
 	}
-	return nil, NewErrFieldNotFound(*expr.BinaryOpField, fields)
+	return nil, newErrFieldNotFound(*expr.BinaryOpField, fields)
 }
 
+// compileLessThanEqualsUint8 returns a function that compares a uint8 field to
+// a uint8 value.
 func compileLessThanEqualsUint8(
 	i int,
 	value ql.Value,
@@ -875,6 +983,8 @@ func compileLessThanEqualsUint8(
 	}, nil
 }
 
+// compileLessThanEqualsUint16 returns a function that compares a uint16 field to
+// a uint16 value.
 func compileLessThanEqualsUint16(
 	i int,
 	value ql.Value,
@@ -891,6 +1001,8 @@ func compileLessThanEqualsUint16(
 	}, nil
 }
 
+// compileLessThanEqualsUint32 returns a function that compares a uint32 field to
+// a uint32 value.
 func compileLessThanEqualsUint32(
 	i int,
 	value ql.Value,
@@ -907,6 +1019,8 @@ func compileLessThanEqualsUint32(
 	}, nil
 }
 
+// compileLessThanEqualsUint64 returns a function that compares a uint64 field to
+// a uint64 value.
 func compileLessThanEqualsUint64(
 	i int,
 	value ql.Value,
@@ -923,6 +1037,8 @@ func compileLessThanEqualsUint64(
 	}, nil
 }
 
+// compileLessThanEqualsInt8 returns a function that compares an int8 field to an
+// int8 value.
 func compileLessThanEqualsInt8(
 	i int,
 	value ql.Value,
@@ -939,6 +1055,8 @@ func compileLessThanEqualsInt8(
 	}, nil
 }
 
+// compileLessThanEqualsInt16 returns a function that compares an int16 field to
+// an int16 value.
 func compileLessThanEqualsInt16(
 	i int,
 	value ql.Value,
@@ -955,6 +1073,8 @@ func compileLessThanEqualsInt16(
 	}, nil
 }
 
+// compileLessThanEqualsInt32 returns a function that compares an int32 field to
+// an int32 value.
 func compileLessThanEqualsInt32(
 	i int,
 	value ql.Value,
@@ -971,6 +1091,8 @@ func compileLessThanEqualsInt32(
 	}, nil
 }
 
+// compileLessThanEqualsInt64 returns a function that compares an int64 field to
+// an int64 value.
 func compileLessThanEqualsInt64(
 	i int,
 	value ql.Value,
@@ -987,6 +1109,8 @@ func compileLessThanEqualsInt64(
 	}, nil
 }
 
+// compileLessThanEqualsFloat32 returns a function that compares a float32 field
+// to a float32 value.
 func compileLessThanEqualsFloat32(
 	i int,
 	value ql.Value,
@@ -1009,6 +1133,8 @@ func compileLessThanEqualsFloat32(
 	}, nil
 }
 
+// compileLessThanEqualsFloat64 returns a function that compares a float64 field
+// to a float64 value.
 func compileLessThanEqualsFloat64(
 	i int,
 	value ql.Value,
@@ -1031,6 +1157,8 @@ func compileLessThanEqualsFloat64(
 	}, nil
 }
 
+// compileLessThanEqualsString returns a function that compares a string field
+// to a string value.
 func compileLessThanEqualsString(
 	i int,
 	value ql.Value,
@@ -1047,6 +1175,8 @@ func compileLessThanEqualsString(
 	}, nil
 }
 
+// compileExprLessThanEquals compiles a less than or equals expression by
+// dispatching to the filter of the appropriate type.
 // nolint: dupl
 func (e *expression) compileExprLessThanEquals(
 	fields []util.Named[schema.PrimitiveType],
@@ -1084,9 +1214,11 @@ func (e *expression) compileExprLessThanEquals(
 			}
 		}
 	}
-	return nil, NewErrFieldNotFound(*expr.BinaryOpField, fields)
+	return nil, newErrFieldNotFound(*expr.BinaryOpField, fields)
 }
 
+// compileGreaterThanEqualsUint8 returns a function that compares a uint8 field to
+// a uint8 value.
 func compileGreaterThanEqualsUint8(
 	i int,
 	value ql.Value,
@@ -1103,6 +1235,8 @@ func compileGreaterThanEqualsUint8(
 	}, nil
 }
 
+// compileGreaterThanEqualsUint16 returns a function that compares a uint16 field
+// to a uint16 value.
 func compileGreaterThanEqualsUint16(
 	i int,
 	value ql.Value,
@@ -1119,6 +1253,8 @@ func compileGreaterThanEqualsUint16(
 	}, nil
 }
 
+// compileGreaterThanEqualsUint32 returns a function that compares a uint32 field
+// to a uint32 value.
 func compileGreaterThanEqualsUint32(
 	i int,
 	value ql.Value,
@@ -1135,6 +1271,8 @@ func compileGreaterThanEqualsUint32(
 	}, nil
 }
 
+// compileGreaterThanEqualsUint64 returns a function that compares a uint64 field
+// to a uint64 value.
 func compileGreaterThanEqualsUint64(
 	i int,
 	value ql.Value,
@@ -1151,6 +1289,8 @@ func compileGreaterThanEqualsUint64(
 	}, nil
 }
 
+// compileGreaterThanEqualsInt8 returns a function that compares an int8 field to
+// an int8 value.
 func compileGreaterThanEqualsInt8(
 	i int,
 	value ql.Value,
@@ -1167,6 +1307,8 @@ func compileGreaterThanEqualsInt8(
 	}, nil
 }
 
+// compileGreaterThanEqualsInt16 returns a function that compares an int16 field
+// to an int16 value.
 func compileGreaterThanEqualsInt16(
 	i int,
 	value ql.Value,
@@ -1183,6 +1325,8 @@ func compileGreaterThanEqualsInt16(
 	}, nil
 }
 
+// compileGreaterThanEqualsInt32 returns a function that compares an int32 field
+// to an int32 value.
 func compileGreaterThanEqualsInt32(
 	i int,
 	value ql.Value,
@@ -1199,6 +1343,8 @@ func compileGreaterThanEqualsInt32(
 	}, nil
 }
 
+// compileGreaterThanEqualsInt64 returns a function that compares an int64 field
+// to an int64 value.
 func compileGreaterThanEqualsInt64(
 	i int,
 	value ql.Value,
@@ -1215,6 +1361,8 @@ func compileGreaterThanEqualsInt64(
 	}, nil
 }
 
+// compileGreaterThanEqualsFloat32 returns a function that compares a float32
+// field to a float32 value.
 func compileGreaterThanEqualsFloat32(
 	i int,
 	value ql.Value,
@@ -1237,6 +1385,8 @@ func compileGreaterThanEqualsFloat32(
 	}, nil
 }
 
+// compileGreaterThanEqualsFloat64 returns a function that compares a float64
+// field to a float64 value.
 func compileGreaterThanEqualsFloat64(
 	i int,
 	value ql.Value,
@@ -1259,6 +1409,8 @@ func compileGreaterThanEqualsFloat64(
 	}, nil
 }
 
+// compileGreaterThanEqualsString returns a function that compares a string field
+// to a string value.
 func compileGreaterThanEqualsString(
 	i int,
 	value ql.Value,
@@ -1275,6 +1427,8 @@ func compileGreaterThanEqualsString(
 	}, nil
 }
 
+// compileExprGreaterThanEquals compiles a greater than or equals expression by
+// dispatching to the filter of the appropriate type.
 // nolint: dupl
 func (e *expression) compileExprGreaterThanEquals(
 	fields []util.Named[schema.PrimitiveType],
@@ -1312,9 +1466,11 @@ func (e *expression) compileExprGreaterThanEquals(
 			}
 		}
 	}
-	return nil, NewErrFieldNotFound(*expr.BinaryOpField, fields)
+	return nil, newErrFieldNotFound(*expr.BinaryOpField, fields)
 }
 
+// compileEqualsUint8 returns a function that compares a uint8 field to a uint8
+// value.
 func compileNotEqualsUint8(
 	i int,
 	value ql.Value,
@@ -1331,6 +1487,8 @@ func compileNotEqualsUint8(
 	}, nil
 }
 
+// compileEqualsUint16 returns a function that compares a uint16 field to a
+// uint16 value.
 func compileNotEqualsUint16(
 	i int,
 	value ql.Value,
@@ -1347,6 +1505,8 @@ func compileNotEqualsUint16(
 	}, nil
 }
 
+// compileEqualsUint32 returns a function that compares a uint32 field to a
+// uint32 value.
 func compileNotEqualsUint32(
 	i int,
 	value ql.Value,
@@ -1363,6 +1523,8 @@ func compileNotEqualsUint32(
 	}, nil
 }
 
+// compileEqualsUint64 returns a function that compares a uint64 field to a
+// uint64 value.
 func compileNotEqualsUint64(
 	i int,
 	value ql.Value,
@@ -1379,6 +1541,8 @@ func compileNotEqualsUint64(
 	}, nil
 }
 
+// compileEqualsInt8 returns a function that compares an int8 field to an int8
+// value.
 func compileNotEqualsInt8(
 	i int,
 	value ql.Value,
@@ -1395,6 +1559,8 @@ func compileNotEqualsInt8(
 	}, nil
 }
 
+// compileEqualsInt16 returns a function that compares an int16 field to an
+// int16 value.
 func compileNotEqualsInt16(
 	i int,
 	value ql.Value,
@@ -1411,6 +1577,8 @@ func compileNotEqualsInt16(
 	}, nil
 }
 
+// compileEqualsInt32 returns a function that compares an int32 field to an
+// int32 value.
 func compileNotEqualsInt32(
 	i int,
 	value ql.Value,
@@ -1427,6 +1595,8 @@ func compileNotEqualsInt32(
 	}, nil
 }
 
+// compileEqualsInt64 returns a function that compares an int64 field to an
+// int64 value.
 func compileNotEqualsInt64(
 	i int,
 	value ql.Value,
@@ -1443,6 +1613,8 @@ func compileNotEqualsInt64(
 	}, nil
 }
 
+// compileEqualsFloat32 returns a function that compares a float32 field to a
+// float32 value.
 func compileNotEqualsFloat32(
 	i int,
 	value ql.Value,
@@ -1465,6 +1637,8 @@ func compileNotEqualsFloat32(
 	}, nil
 }
 
+// compileEqualsFloat64 returns a function that compares a float64 field to a
+// float64 value.
 func compileNotEqualsFloat64(
 	i int,
 	value ql.Value,
@@ -1487,6 +1661,8 @@ func compileNotEqualsFloat64(
 	}, nil
 }
 
+// compileEqualsString returns a function that compares a string field to a
+// string value.
 func compileNotEqualsString(
 	i int,
 	value ql.Value,
@@ -1503,6 +1679,8 @@ func compileNotEqualsString(
 	}, nil
 }
 
+// compileExprNotEquals compiles a not equals expression by dispatching to the
+// filter of the appropriate type.
 // nolint: dupl
 func (e *expression) compileExprNotEquals(
 	fields []util.Named[schema.PrimitiveType],
@@ -1540,10 +1718,12 @@ func (e *expression) compileExprNotEquals(
 			}
 		}
 	}
-	return nil, NewErrFieldNotFound(*expr.BinaryOpField, fields)
+	return nil, newErrFieldNotFound(*expr.BinaryOpField, fields)
 }
 
-func compileExprLikeString(
+// compileExprRegexString returns a function that compares a string field to a
+// regex value.
+func compileExprRegexString(
 	i int,
 	value ql.Value,
 ) (func([]any) (bool, error), error) {
@@ -1563,7 +1743,9 @@ func compileExprLikeString(
 	}, nil
 }
 
-func (e *expression) compileExprLike(
+// compileExprRegex compiles a regex expression by dispatching to the filter of
+// the appropriate type.
+func (e *expression) compileExprRegex(
 	fields []util.Named[schema.PrimitiveType],
 	expr *plan.Node,
 	dealiased string,
@@ -1572,16 +1754,18 @@ func (e *expression) compileExprLike(
 		if field.Name == dealiased {
 			switch field.Value {
 			case schema.STRING:
-				return compileExprLikeString(i, *expr.BinaryOpValue)
+				return compileExprRegexString(i, *expr.BinaryOpValue)
 			default:
 				return nil, fmt.Errorf("unsupported type for operator '~': %s", field.Value)
 			}
 		}
 	}
-	return nil, NewErrFieldNotFound(*expr.BinaryOpField, fields)
+	return nil, newErrFieldNotFound(*expr.BinaryOpField, fields)
 }
 
-func compileExprILikeString(
+// compileExprCaseInsensitiveRegexString returns a function that compares a
+// string field to a case-insensitive regex value.
+func compileExprCaseInsensitiveRegexString(
 	i int,
 	value ql.Value,
 ) (func([]any) (bool, error), error) {
@@ -1601,7 +1785,9 @@ func compileExprILikeString(
 	}, nil
 }
 
-func (e *expression) compileExprILike(
+// compileExprCaseInsensitiveRegex compiles a case-insensitive regex expression
+// by dispatching to the filter of the appropriate type.
+func (e *expression) compileExprCaseInsensitiveRegex(
 	fields []util.Named[schema.PrimitiveType],
 	expr *plan.Node,
 	dealiased string,
@@ -1610,11 +1796,11 @@ func (e *expression) compileExprILike(
 		if field.Name == dealiased {
 			switch field.Value {
 			case schema.STRING:
-				return compileExprILikeString(i, *expr.BinaryOpValue)
+				return compileExprCaseInsensitiveRegexString(i, *expr.BinaryOpValue)
 			default:
 				return nil, fmt.Errorf("unsupported type for operator '~*': %s", field.Value)
 			}
 		}
 	}
-	return nil, NewErrFieldNotFound(*expr.BinaryOpField, fields)
+	return nil, newErrFieldNotFound(*expr.BinaryOpField, fields)
 }

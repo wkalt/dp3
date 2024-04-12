@@ -22,14 +22,14 @@ returned.
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// AsofJoinNode represents an as-of join.
-type AsofJoinNode struct {
+// asofJoinNode represents an as-of join.
+type asofJoinNode struct {
 	pq *util.PriorityQueue[queueElement]
 
 	children []Node
 
-	lastLeft  *Tuple
-	lastRight *Tuple
+	lastLeft  *tuple
+	lastRight *tuple
 
 	immediate   bool
 	leftEmitted bool
@@ -39,7 +39,7 @@ type AsofJoinNode struct {
 }
 
 // Close the node.
-func (n *AsofJoinNode) Close() error {
+func (n *asofJoinNode) Close() error {
 	errs := make([]error, 0, len(n.children))
 	for _, child := range n.children {
 		if err := child.Close(); err != nil {
@@ -52,7 +52,7 @@ func (n *AsofJoinNode) Close() error {
 	return nil
 }
 
-func (n *AsofJoinNode) initialize(ctx context.Context) error {
+func (n *asofJoinNode) initialize(ctx context.Context) error {
 	for i := range n.children {
 		next, err := n.children[i].Next(ctx)
 		if err != nil && !errors.Is(err, io.EOF) {
@@ -67,7 +67,7 @@ func (n *AsofJoinNode) initialize(ctx context.Context) error {
 }
 
 // Next gets the next tuple from the node, or returns io.EOF if no tuple exists.
-func (n *AsofJoinNode) Next(ctx context.Context) (*Tuple, error) {
+func (n *asofJoinNode) Next(ctx context.Context) (*tuple, error) {
 	if !n.initialized {
 		if err := n.initialize(ctx); err != nil {
 			return nil, fmt.Errorf("failed to initialize asof join node: %w", err)
@@ -96,7 +96,7 @@ func (n *AsofJoinNode) Next(ctx context.Context) (*Tuple, error) {
 			continue
 		}
 
-		if n.lastLeft.Message.LogTime+n.threshold > element.tuple.Message.LogTime || n.threshold == 0 {
+		if n.lastLeft.message.LogTime+n.threshold > element.tuple.message.LogTime || n.threshold == 0 {
 			// if we're not in immediate mode, and we already emitted the left
 			// tuple, emit right tuples.
 			if !n.leftEmitted {
@@ -114,7 +114,7 @@ func (n *AsofJoinNode) Next(ctx context.Context) (*Tuple, error) {
 }
 
 // String returns the string representation of the node.
-func (n *AsofJoinNode) String() string {
+func (n *asofJoinNode) String() string {
 	return fmt.Sprintf(
 		"[asof %d %s %s %s]",
 		n.threshold,
@@ -124,13 +124,13 @@ func (n *AsofJoinNode) String() string {
 }
 
 // NewAsofJoinNode constructs a new as-of join node.
-func NewAsofJoinNode(left, right Node, immediate bool, threshold uint64) *AsofJoinNode {
+func NewAsofJoinNode(left, right Node, immediate bool, threshold uint64) *asofJoinNode {
 	children := []Node{left, right}
 	pq := util.NewPriorityQueue[queueElement](func(a, b queueElement) bool {
-		if a.tuple.Message.LogTime == b.tuple.Message.LogTime {
-			return a.tuple.Message.ChannelID < b.tuple.Message.ChannelID
+		if a.tuple.message.LogTime == b.tuple.message.LogTime {
+			return a.tuple.message.ChannelID < b.tuple.message.ChannelID
 		}
-		return a.tuple.Message.LogTime < b.tuple.Message.LogTime
+		return a.tuple.message.LogTime < b.tuple.message.LogTime
 	})
-	return &AsofJoinNode{children: children, threshold: threshold, immediate: immediate, pq: pq}
+	return &asofJoinNode{children: children, threshold: threshold, immediate: immediate, pq: pq}
 }

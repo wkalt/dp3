@@ -23,9 +23,12 @@ set of operators:
   * offset: skips the first n tuples
   * filter: filters tuples based on a predicate
 
-Queries arrive as a tree of plan nodes, which are compiled to a tree of executor
-nodes. The execution tree is executed by repeatedly calling Next on the root
-node until an io.EOF occurs.
+Queries arrive as a tree of plan nodes (represented with a root node), which are
+compiled to a tree of executor nodes, which implement the Node interface.
+
+The Node interface exposes a method Next(), which returns either a tuple or an
+io.EOF error. The query is executed by repeatedly calling next on the root node
+of the tree, until an io.EOF comes out.
 */
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -69,7 +72,7 @@ func Run(
 			initialized = true
 		}
 
-		if err := mc.Write(tuple.Schema, tuple.Channel, tuple.Message); err != nil {
+		if err := mc.Write(tuple.schema, tuple.channel, tuple.message); err != nil {
 			return fmt.Errorf("failed to write message: %w", err)
 		}
 	}

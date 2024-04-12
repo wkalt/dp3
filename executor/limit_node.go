@@ -12,19 +12,19 @@ LimitNode implements the usual limit operator.
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// LimitNode represents the limit node.
-type LimitNode struct {
+// limitNode represents the limit node.
+type limitNode struct {
 	limit int
 	child Node
 }
 
 // NewLimitNode constructs a new limit node.
-func NewLimitNode(limit int, child Node) *LimitNode {
-	return &LimitNode{limit: limit, child: child}
+func NewLimitNode(limit int, child Node) *limitNode {
+	return &limitNode{limit: limit, child: child}
 }
 
 // Next returns the next tuple from the node.
-func (n *LimitNode) Next(ctx context.Context) (*Tuple, error) {
+func (n *limitNode) Next(ctx context.Context) (*tuple, error) {
 	if n.limit == 0 {
 		return nil, io.EOF
 	}
@@ -37,7 +37,7 @@ func (n *LimitNode) Next(ctx context.Context) (*Tuple, error) {
 }
 
 // Close the node.
-func (n *LimitNode) Close() error {
+func (n *limitNode) Close() error {
 	if err := n.child.Close(); err != nil {
 		return fmt.Errorf("failed to close limit node: %w", err)
 	}
@@ -45,6 +45,6 @@ func (n *LimitNode) Close() error {
 }
 
 // String returns a string representation of the node.
-func (n *LimitNode) String() string {
+func (n *limitNode) String() string {
 	return fmt.Sprintf("[limit %d %s]", n.limit, n.child.String())
 }

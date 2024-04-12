@@ -14,14 +14,14 @@ tests, without a storage dependency.
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// MockNode is a mock implementation of a node, used to simulate scan nodes in
+// mockNode is a mock implementation of a node, used to simulate scan nodes in
 // tests.
-type MockNode struct {
-	tuples []*Tuple
+type mockNode struct {
+	tuples []*tuple
 }
 
 // Next returns the next tuple from the node.
-func (n *MockNode) Next(ctx context.Context) (*Tuple, error) {
+func (n *mockNode) Next(ctx context.Context) (*tuple, error) {
 	if len(n.tuples) == 0 {
 		return nil, io.EOF
 	}
@@ -31,22 +31,22 @@ func (n *MockNode) Next(ctx context.Context) (*Tuple, error) {
 }
 
 // String returns a string representation of the node.
-func (n *MockNode) String() string {
+func (n *mockNode) String() string {
 	return "[mock]"
 }
 
 // Close the node.
-func (n *MockNode) Close() error {
+func (n *mockNode) Close() error {
 	return nil
 }
 
 // NewMockNode constructs a new mock node.
 func NewMockNode(stamps ...uint64) Node {
-	tuples := make([]*Tuple, 0, len(stamps))
+	tuples := make([]*tuple, 0, len(stamps))
 	for _, stamp := range stamps {
-		tuples = append(tuples, NewTuple(nil, nil, &fmcap.Message{
+		tuples = append(tuples, newTuple(nil, nil, &fmcap.Message{
 			LogTime: stamp,
 		}))
 	}
-	return &MockNode{tuples: tuples}
+	return &mockNode{tuples: tuples}
 }

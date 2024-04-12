@@ -53,7 +53,7 @@ func TestAsofJoinNode(t *testing.T) {
 				if err != nil {
 					break
 				}
-				actual = append(actual, tuple.Message.LogTime)
+				actual = append(actual, tuple.LogTime())
 			}
 			require.Equal(t, c.expected, actual)
 			require.NoError(t, node.Close())
