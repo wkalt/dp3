@@ -70,7 +70,11 @@ var serverCmd = &cobra.Command{
 			}
 			store = storage.NewS3Store(mc, serverS3Bucket)
 		} else {
-			store = storage.NewDirectoryStore(serverDataDir)
+			var err error
+			store, err = storage.NewDirectoryStore(serverDataDir)
+			if err != nil {
+				bailf("error creating directory store: %s", err)
+			}
 		}
 		opts := []service.DP3Option{
 			service.WithPort(serverPort),
