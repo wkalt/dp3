@@ -21,6 +21,9 @@ func TestStorageProviders(t *testing.T) {
 	require.NoError(t, err)
 	defer os.RemoveAll(tmpdir)
 
+	dstore, err := storage.NewDirectoryStore(tmpdir)
+	require.NoError(t, err)
+
 	cases := []struct {
 		assertion string
 		store     storage.Provider
@@ -35,7 +38,7 @@ func TestStorageProviders(t *testing.T) {
 		},
 		{
 			"directory store",
-			storage.NewDirectoryStore(tmpdir),
+			dstore,
 		},
 	}
 

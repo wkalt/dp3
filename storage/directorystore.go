@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/wkalt/dp3/util"
 )
@@ -23,9 +24,28 @@ type DirectoryStore struct {
 	root string
 }
 
-// NewDirectoryStore creates a new DirectoryStore.
-func NewDirectoryStore(root string) *DirectoryStore {
-	return &DirectoryStore{root: root}
+// NewDirectoryStore creates a new DirectoryStore. On creation it will scan the
+// provided directory for any orphaned .tmp files, which may have been left
+// behind on an unclean shutdown. If any are found they are deleted.
+func NewDirectoryStore(root string) (*DirectoryStore, error) {
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if strings.HasSuffix(path, ".tmp") {
+			if err := os.Remove(path); err != nil {
+				return fmt.Errorf("failed to remove %s: %w", path, err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to clean up temporary files: %w", err)
+	}
+	return &DirectoryStore{root: root}, nil
 }
 
 // Put stores an object in the directory.
@@ -34,9 +54,13 @@ func (d *DirectoryStore) Put(_ context.Context, id string, data []byte) error {
 	if err := util.EnsureDirectoryExists(dir); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
-	err := os.WriteFile(d.root+"/"+id, data, 0600)
-	if err != nil {
+	path := d.root + "/" + id
+	tmpfile := path + ".tmp"
+	if err := os.WriteFile(tmpfile, data, 0600); err != nil {
 		return fmt.Errorf("write failure: %w", err)
+	}
+	if err := os.Rename(tmpfile, path); err != nil {
+		return fmt.Errorf("rename failure: %w", err)
 	}
 	return nil
 }
