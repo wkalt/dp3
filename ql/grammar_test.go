@@ -5,7 +5,7 @@ import (
 
 	"github.com/alecthomas/participle/v2"
 	"github.com/stretchr/testify/require"
-	"github.com/wkalt/dp3/query/ql"
+	"github.com/wkalt/dp3/ql"
 	"github.com/wkalt/dp3/util"
 )
 

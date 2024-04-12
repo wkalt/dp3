@@ -8,7 +8,7 @@ import (
 
 	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/mcap"
-	"github.com/wkalt/dp3/query/plan"
+	"github.com/wkalt/dp3/plan"
 	"github.com/wkalt/dp3/tree"
 	"github.com/wkalt/dp3/util"
 )

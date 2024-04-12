@@ -9,10 +9,10 @@ import (
 
 	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/stretchr/testify/require"
+	"github.com/wkalt/dp3/executor"
 	"github.com/wkalt/dp3/mcap"
-	"github.com/wkalt/dp3/query/executor"
-	"github.com/wkalt/dp3/query/plan"
-	"github.com/wkalt/dp3/query/ql"
+	"github.com/wkalt/dp3/plan"
+	"github.com/wkalt/dp3/ql"
 	"github.com/wkalt/dp3/treemgr"
 	"github.com/wkalt/dp3/util/testutils"
 )
