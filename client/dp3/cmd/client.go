@@ -289,16 +289,16 @@ Read all messages on a single topic:
     from my-robot /tf;
 
 Read all messages from a time-ordered merge of multiple topics:
-	from my-robot /tf, /imu;
+    from my-robot /tf, /imu;
 
 Filtering with a where clause
-	from my-robot /fix where /fix.header.frame_id = "/imu";
+    from my-robot /fix where /fix.header.frame_id = "/imu";
 
 Read /diagnostics and /fix messages where the /fix message is within 1 second of /diagnostics
     from my-robot /diagnostics precedes /fix by less than 1 seconds where /fix.header.frame_id = "/imu";
 
 Paging with limit and offset
-	from my-robot /diagnostics limit 10 offset 5;
+    from my-robot /diagnostics limit 10 offset 5;
 
 Results are always ordered on log time.`,
 
