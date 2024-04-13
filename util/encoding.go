@@ -27,6 +27,15 @@ func ReadU64(src []byte, x *uint64) int {
 	return 8
 }
 
+func ReadBool(src []byte, x *bool) int {
+	if src[0] == 1 {
+		*x = true
+	} else {
+		*x = false
+	}
+	return 1
+}
+
 // ReadPrefixedString reads a string from data and stores it in s, returning the
 // written length.
 func ReadPrefixedString(data []byte, s *string) int {
@@ -57,6 +66,16 @@ func U32(dst []byte, src uint32) int {
 func U64(dst []byte, src uint64) int {
 	binary.LittleEndian.PutUint64(dst, src)
 	return 8
+}
+
+// Bool writes a bool to dst and returns the written length.
+func Bool(dst []byte, src bool) int {
+	if src {
+		dst[0] = 1
+	} else {
+		dst[0] = 0
+	}
+	return 1
 }
 
 // WritePrefixedString writes a string to buf and returns the written length.

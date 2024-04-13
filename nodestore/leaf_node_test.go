@@ -15,8 +15,10 @@ import (
 func leafNodeBytes(buf []byte) []byte {
 	return testutils.Flatten(
 		[]byte{1 + 128},
-		testutils.U64b(0),
 		make([]byte, 24),
+		testutils.U64b(0),
+		testutils.U64b(0),
+		testutils.U64b(0),
 		buf,
 	)
 }

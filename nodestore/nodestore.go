@@ -112,11 +112,11 @@ func (n *Nodestore) GetLeafData(ctx context.Context, prefix string, id NodeID) (
 		}
 		return ancestor, nil, fmt.Errorf("failed to get node %s: %w", id, err)
 	}
-	buf := make([]byte, 1+8+24)
+	buf := make([]byte, leafHeaderLength)
 	if _, err := io.ReadFull(reader, buf); err != nil {
 		return ancestor, nil, fmt.Errorf("failed to read leaf node: %w", err)
 	}
-	ancestor = NodeID(buf[1+8:])
+	ancestor = NodeID(buf[1+1 : 1+1+24])
 	return ancestor, reader, nil
 }
 
