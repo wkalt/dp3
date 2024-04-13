@@ -29,21 +29,20 @@ func (t *byoTreeReader) Get(ctx context.Context, id nodestore.NodeID) (nodestore
 	return t.get(ctx, t.prefix, id)
 }
 
-// GetLeafData returns the data for a leaf node.
-func (t *byoTreeReader) GetLeafData(ctx context.Context, id nodestore.NodeID) (
-	nodestore.NodeID, io.ReadSeekCloser, error,
+// GetLeafNode returns the data for a leaf node.
+func (t *byoTreeReader) GetLeafNode(ctx context.Context, id nodestore.NodeID) (
+	*nodestore.LeafNode, io.ReadSeekCloser, error,
 ) {
-	var ancestor nodestore.NodeID
 	node, err := t.get(ctx, t.prefix, id)
 	if err != nil {
-		return ancestor, nil, err
+		return nil, nil, err
 	}
 
 	leaf, ok := node.(*nodestore.LeafNode)
 	if !ok {
-		return ancestor, nil, NewUnexpectedNodeError(nodestore.Leaf, node)
+		return nil, nil, NewUnexpectedNodeError(nodestore.Leaf, node)
 	}
-	return leaf.Ancestor(), util.NewReadSeekNopCloser(leaf.Data()), nil
+	return leaf, util.NewReadSeekNopCloser(leaf.Data()), nil
 }
 
 // NewBYOTreeReader creates a new BYOTreeReader.

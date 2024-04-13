@@ -143,23 +143,27 @@ func (ti *Iterator) getNextLeaf(ctx context.Context) (nodeID nodestore.NodeID, e
 }
 
 func (ti *Iterator) openLeaf(ctx context.Context, nodeID nodestore.NodeID) (
-	nodestore.NodeID, fmcap.MessageIterator, error,
+	*nodestore.LeafNode, fmcap.MessageIterator, error,
 ) {
-	ancestor, rsc, err := ti.tr.GetLeafData(ctx, nodeID)
+	// problem: we need a bit more info out of here, but we don't want to return
+	// a massive resultset. It would be better if this could give us a
+	// partly-populated leaf node with the rsc. Since the current solution is a
+	// hack maybe a little more hack can't hurt...
+	node, rsc, err := ti.tr.GetLeafNode(ctx, nodeID)
 	if err != nil {
-		return ancestor, nil, fmt.Errorf("failed to get reader: %w", err)
+		return nil, nil, fmt.Errorf("failed to get reader: %w", err)
 	}
 	reader, err := mcap.NewReader(rsc)
 	if err != nil {
-		return ancestor, nil, fmt.Errorf("failed to create reader: %w", err)
+		return nil, nil, fmt.Errorf("failed to create reader: %w", err)
 	}
 	it, err := reader.Messages(fmcap.AfterNanos(ti.start), fmcap.BeforeNanos(ti.end))
 	if err != nil {
-		return ancestor, nil, fmt.Errorf("failed to create message iterator: %w", err)
+		return nil, nil, fmt.Errorf("failed to create message iterator: %w", err)
 	}
 	ti.readers = append(ti.readers, reader)
 	ti.closers = append(ti.closers, rsc)
-	return ancestor, it, nil
+	return node, it, nil
 }
 
 // openNextLeaf opens the next leaf in the iterator.
@@ -169,17 +173,19 @@ func (ti *Iterator) openNextLeaf(ctx context.Context) error {
 		return fmt.Errorf("failed to get next leaf: %w", err)
 	}
 	// merge iterator of mcap iterators, or just the singleton.
-	ancestor, it, err := ti.openLeaf(ctx, leafID)
+	leafNode, it, err := ti.openLeaf(ctx, leafID)
 	if err != nil {
 		return fmt.Errorf("failed to open leaf: %w", err)
 	}
 	iterators := []fmcap.MessageIterator{it}
+	ancestor := leafNode.Ancestor()
 	for (ancestor != nodestore.NodeID{}) {
-		ancestor, it, err = ti.openLeaf(ctx, ancestor)
+		leafNode, it, err = ti.openLeaf(ctx, ancestor)
 		if err != nil {
 			return fmt.Errorf("failed to get ancestor: %w", err)
 		}
 		iterators = append(iterators, it)
+		ancestor = leafNode.Ancestor()
 	}
 	if len(iterators) == 1 {
 		ti.msgIterator = iterators[0]

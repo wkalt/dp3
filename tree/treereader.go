@@ -23,7 +23,7 @@ type TreeReader interface {
 	Root() nodestore.NodeID
 	Get(ctx context.Context, id nodestore.NodeID) (nodestore.Node, error)
 	// todo: remove this in favor of a closure on leaf nodes.
-	GetLeafData(ctx context.Context, id nodestore.NodeID) (nodestore.NodeID, io.ReadSeekCloser, error)
+	GetLeafNode(ctx context.Context, id nodestore.NodeID) (*nodestore.LeafNode, io.ReadSeekCloser, error)
 }
 
 func getNode(
