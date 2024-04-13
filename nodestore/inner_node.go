@@ -42,6 +42,11 @@ type Child struct {
 	Statistics map[string]*Statistics `json:"statistics"`
 }
 
+// IsTombstone returns true if the child is a tombstone.
+func (c *Child) IsTombstone() bool {
+	return c.ID == NodeID{} && c.Version > 0
+}
+
 // Size returns the size of the node in bytes.
 func (n *InnerNode) Size() uint64 {
 	return 8 + 8 + 1 + uint64(len(n.Children)*24)

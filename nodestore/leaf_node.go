@@ -24,17 +24,25 @@ const leafNodeVersion = uint8(1)
 
 type LeafNode struct {
 	leafNodeVersion uint8
-	ancestorVersion uint64
-	ancestor        NodeID
-	data            []byte
+
+	ancestor            NodeID
+	ancestorVersion     uint64
+	ancestorDeleteStart uint64
+	ancestorDeleteEnd   uint64
+
+	data []byte
 }
+
+const leafHeaderLength = 1 + 24 + 8 + 8 + 8
 
 // ToBytes serializes the node to a byte slice.
 func (n *LeafNode) ToBytes() []byte {
-	buf := make([]byte, len(n.data)+1+8+24)
+	buf := make([]byte, leafHeaderLength+len(n.data))
 	offset := util.U8(buf, n.leafNodeVersion+128)
-	offset += util.U64(buf[offset:], n.ancestorVersion)
 	offset += copy(buf[offset:], n.ancestor[:])
+	offset += util.U64(buf[offset:], n.ancestorVersion)
+	offset += util.U64(buf[offset:], n.ancestorDeleteStart)
+	offset += util.U64(buf[offset:], n.ancestorDeleteEnd)
 	copy(buf[offset:], n.data)
 	return buf
 }
@@ -44,20 +52,37 @@ func (n *LeafNode) Size() uint64 {
 	return uint64(len(n.data) + 1)
 }
 
+// AncestorDeleted returns true if the ancestor node has been deleted.
+func (n *LeafNode) AncestorDeleted() bool {
+	return n.ancestorDeleteEnd > 0
+}
+
+// AncestorDeleteStart returns the start of the ancestor deletion range.
+func (n *LeafNode) AncestorDeleteStart() uint64 {
+	return n.ancestorDeleteStart
+}
+
+// AncestorDeleteEnd returns the end of the ancestor deletion range.
+func (n *LeafNode) AncestorDeleteEnd() uint64 {
+	return n.ancestorDeleteEnd
+}
+
 // FromBytes deserializes the node from a byte slice.
 func (n *LeafNode) FromBytes(data []byte) error {
 	var version uint8
-	var ancestorVersion uint64
+	var ancestorDeleted bool
+	var ancestorVersion, ancestorDeleteStart, ancestorDeleteEnd uint64
 	offset := util.ReadU8(data, &version)
-	offset += util.ReadU64(data[offset:], &ancestorVersion)
-	ancestor := NodeID(data[offset : offset+24])
-
 	if version < 128 {
 		return errors.New("not a leaf node")
 	}
 	n.leafNodeVersion = version - 128
-	n.ancestor = ancestor
-	n.data = data[offset+24:]
+
+	offset += copy(n.ancestor[:], data[offset:])
+	offset += util.ReadU64(data[offset:], &ancestorVersion)
+	offset += util.ReadU64(data[offset:], &ancestorDeleteStart)
+	offset += util.ReadU64(data[offset:], &ancestorDeleteEnd)
+	n.data = data[offset:]
 	return nil
 }
 
@@ -81,12 +106,20 @@ func (n *LeafNode) Type() NodeType {
 	return Leaf
 }
 
+// Ancestor returns the ID of the ancestor node.
 func (n *LeafNode) Ancestor() NodeID {
 	return n.ancestor
 }
 
+// AncestorVersion returns the version of the ancestor node.
 func (n *LeafNode) AncestorVersion() uint64 {
 	return n.ancestorVersion
+}
+
+// DeleteRange sets the ancestor deletion metadata to cover the supplied range.
+func (n *LeafNode) DeleteRange(start, end uint64) {
+	n.ancestorDeleteStart = start
+	n.ancestorDeleteEnd = end
 }
 
 // NewLeafNode creates a new leaf node with the given data.
