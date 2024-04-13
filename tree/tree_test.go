@@ -34,12 +34,6 @@ func TestTreeErrors(t *testing.T) {
 		require.Error(t, err)
 	})
 
-	t.Run("deleting from (part of) a leaf node", func(t *testing.T) {
-		root := nodestore.NewInnerNode(1, 0, 4096, 64)
-		_, err := tree.DeleteMessagesInRange(ctx, root, 0, 0, 10*1e9)
-		require.EqualError(t, err, "range cannot partially span a leaf node")
-	})
-
 	t.Run("out of bounds delete", func(t *testing.T) {
 		rootStart, rootEnd := uint64(0), uint64(4096)
 		start, end := uint64(10000*1e9), uint64(10001*1e9)
@@ -220,7 +214,7 @@ func TestDeleteMessagesInRange(t *testing.T) {
 			[][]int64{},
 			0,
 			8e9,
-			"[0-16 [<link> 0-4:0] [<link> 4-8:0]]",
+			"[0-16 [<del> 0-4:1] [<del> 4-8:1]]",
 		},
 		{
 			"delete from single insert",
@@ -228,7 +222,7 @@ func TestDeleteMessagesInRange(t *testing.T) {
 			[][]int64{{6}},
 			4e9,
 			8e9,
-			"[0-16 [<link> 4-8:0]]",
+			"[0-16 [<del> 4-8:2]]",
 		},
 		{
 			"delete one among two inserts",
@@ -236,7 +230,7 @@ func TestDeleteMessagesInRange(t *testing.T) {
 			[][]int64{{3}, {7}},
 			0,
 			4e9,
-			"[0-16 [<link> 0-4:0] [<link> 4-8:2 (1b count=1) [leaf 1 msg]]]",
+			"[0-16 [<del> 0-4:3] [<ref> 4-8:2 (1b count=1) [leaf 1 msg]]]",
 		},
 		{
 			"delete one among three inserts",
@@ -244,8 +238,10 @@ func TestDeleteMessagesInRange(t *testing.T) {
 			[][]int64{{3}, {7}, {11}},
 			4e9,
 			8e9,
-			`[0-16 [<link> 0-4:1 (1b count=1) [leaf 1 msg]]
-			[<link> 4-8:0] [<link> 8-12:3 (1b count=1) [leaf 1 msg]]]`,
+			`[0-16
+			  [<ref> 0-4:1 (1b count=1) [leaf 1 msg]]
+			  [<del> 4-8:4]
+			  [<ref> 8-12:3 (1b count=1) [leaf 1 msg]]]`,
 		},
 		{
 			"delete root node (should delete links to all immediate descendants)",
@@ -253,7 +249,11 @@ func TestDeleteMessagesInRange(t *testing.T) {
 			[][]int64{{4}},
 			0,
 			16e9,
-			"[0-16 [<link> 0-4:0] [<link> 4-8:0] [<link> 8-12:0] [<link> 12-16:0]]",
+			`[0-16
+			  [<del> 0-4:2]
+			  [<del> 4-8:2]
+			  [<del> 8-12:2]
+			  [<del> 12-16:2]]`,
 		},
 		{
 			"delete leaf node in a depth-2 tree",
@@ -261,7 +261,10 @@ func TestDeleteMessagesInRange(t *testing.T) {
 			[][]int64{{7}, {11}},
 			4e9,
 			8e9,
-			"[0-64 [0-16 [<link> 4-8:0] [<link> 8-12:2 (1b count=1) [leaf 1 msg]]]]",
+			`[0-64
+			  [0-16:3 (1b count=2)
+			    [<del> 4-8:3]
+				[<ref> 8-12:2 (1b count=1) [leaf 1 msg]]]]`,
 		},
 		{
 			"delete depth-1 inner node in a depth-2 tree",
@@ -269,8 +272,30 @@ func TestDeleteMessagesInRange(t *testing.T) {
 			[][]int64{{7}, {20}},
 			0e9,
 			16e9,
-			`[0-64 [<link> 0-16:0] [<link> 16-32:2 (1b count=1)
-			[<link> 20-24:2 (1b count=1) [leaf 1 msg]]]]`,
+			`[0-64
+			  [<del> 0-16:3]
+			  [<ref> 16-32:2 (1b count=1)
+			   [<ref> 20-24:2 (1b count=1) [leaf 1 msg]]]]`,
+		},
+		{
+			"delete that partially clears a populated leaf",
+			1,
+			[][]int64{{3}, {7}},
+			0,
+			3e9,
+			`[0-16
+			  [0-4:3 (1b count=1) [leaf 0 msgs]-<del 0-3>->[leaf 1 msg]]
+			  [<ref> 4-8:2 (1b count=1) [leaf 1 msg]]]`,
+		},
+		{
+			"delete that partially clears an unpopulated leaf - results in no new empty node",
+			1,
+			[][]int64{{3}, {7}},
+			0,
+			11e9,
+			`[0-16
+			  [<del> 0-4:3]
+			  [<del> 4-8:3]]`,
 		},
 	}
 	for _, c := range cases {
@@ -280,9 +305,19 @@ func TestDeleteMessagesInRange(t *testing.T) {
 				ctx, t, 0, util.Pow(uint64(4), int(c.height+1)), c.height, 4, c.prep,
 			)
 			tmpRoot := nodestore.NewInnerNode(c.height, 0, util.Pow(uint64(4), int(c.height+1)), 4)
-			// Construct a partial tree with the deletes
-			partial, err := tree.DeleteMessagesInRange(ctx, tmpRoot, uint64(0), c.start, c.end)
+
+			start, err := tree.Print(ctx, setup)
 			require.NoError(t, err)
+			fmt.Println(start)
+			// Construct a partial tree with the deletes
+			version := len(c.prep) + 1
+			partial, err := tree.DeleteMessagesInRange(ctx, tmpRoot, uint64(version), c.start, c.end)
+			require.NoError(t, err)
+
+			partstr, err := tree.Print(ctx, partial)
+			require.NoError(t, err)
+			fmt.Println("partial", partstr)
+
 			// Merge the two trees, setup and partial
 			final, err := tree.Merge(ctx, setup, partial)
 			require.NoError(t, err)
@@ -303,6 +338,7 @@ func removeSpace(s string) string {
 	s = strings.ReplaceAll(s, "\n", " ")
 	s = strings.ReplaceAll(s, "  ", "")
 	s = strings.ReplaceAll(s, "\t", "")
+	s = strings.ReplaceAll(s, "  ", " ")
 	return s
 }
 
@@ -383,7 +419,6 @@ func TestStatRange(t *testing.T) {
 	}
 }
 
-// TODO (@wkalt): This test should also test for tree deletions. No easy way to do so currently.
 func TestMerge(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
@@ -405,14 +440,14 @@ func TestMerge(t *testing.T) {
 			1,
 			[][]int64{{33}},
 			[][]int64{{100}},
-			"[0-4096 [<link> 0-64:1 (1b count=1) [leaf 1 msg]] [64-128:1 (1b count=1) [leaf 1 msg]]]",
+			"[0-4096 [<ref> 0-64:1 (1b count=1) [leaf 1 msg]] [64-128:1 (1b count=1) [leaf 1 msg]]]",
 		},
 		{
 			"merge into populated tree, overlapping",
 			1,
 			[][]int64{{33}, {120}},
 			[][]int64{{100}},
-			"[0-4096 [<link> 0-64:1 (1b count=1) [leaf 1 msg]] [64-128:1 (1b count=2) [leaf 1 msg]->[leaf 1 msg]]]",
+			"[0-4096 [<ref> 0-64:1 (1b count=1) [leaf 1 msg]] [64-128:1 (1b count=2) [leaf 1 msg]->[leaf 1 msg]]]",
 		},
 		{
 			"merge into a populated tree, multiple overlapping",
@@ -426,8 +461,8 @@ func TestMerge(t *testing.T) {
 			2,
 			[][]int64{{33}, {120}},
 			[][]int64{{1000}},
-			`[0-262144 [0-4096:1 (1b count=3) [<link> 0-64:1 (1b count=1) [leaf 1 msg]]
-			[<link> 64-128:2 (1b count=1) [leaf 1 msg]] [960-1024:1 (1b count=1) [leaf 1 msg]]]]`,
+			`[0-262144 [0-4096:1 (1b count=3) [<ref> 0-64:1 (1b count=1) [leaf 1 msg]]
+			[<ref> 64-128:2 (1b count=1) [leaf 1 msg]] [960-1024:1 (1b count=1) [leaf 1 msg]]]]`,
 		},
 	}
 

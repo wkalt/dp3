@@ -57,7 +57,6 @@ func (n *LeafNode) AncestorDeleted() bool {
 	return n.ancestorDeleteEnd > 0
 }
 
-// AncestorDeleteStart returns the start of the ancestor deletion range.
 func (n *LeafNode) AncestorDeleteStart() uint64 {
 	return n.ancestorDeleteStart
 }

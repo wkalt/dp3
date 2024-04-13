@@ -144,22 +144,41 @@ func DeleteMessagesInRange(
 			}
 			if start <= childStart*1e9 && end >= childEnd*1e9 { // TODO: check bounds
 				// The entire child is within the range.
-				node.PlaceTombstoneChild(uint64(i), uint64(0))
+				node.PlaceTombstoneChild(uint64(i), version)
 				continue
 			}
-			// The child is partially within the range.
-			// If the child is a leaf, error out...
-			if node.Height == 1 {
-				return nil, errors.New("range cannot partially span a leaf node")
+
+			if node.Height > 1 {
+				clonedChild := nodestore.NewInnerNode(node.Height-1, childStart, childEnd, len(node.Children))
+				clonedChildID := nodestore.RandomNodeID()
+				if err := tw.Put(ctx, clonedChildID, clonedChild); err != nil {
+					return nil, fmt.Errorf("failed to store new inner node: %w", err)
+				}
+				bucket := bucket(start, node)
+				node.PlaceChild(bucket, clonedChildID, version, nil)
+				stack = append(stack, clonedChild)
+				continue
 			}
-			clonedChild := nodestore.NewInnerNode(node.Height-1, childStart, childEnd, len(node.Children))
-			clonedChildID := nodestore.RandomNodeID()
-			if err := tw.Put(ctx, clonedChildID, clonedChild); err != nil {
-				return nil, fmt.Errorf("failed to store new inner node: %w", err)
+
+			// If we make it to this part, we are deleting part of a child. The
+			// child's bounds overlap with (start, end), but (start, end) are
+			// not necessarily within the child. We create an empty new child
+			// linked back to the previous ancestor, with a deletion range set
+			// equal to max(start, childStart) and min(end, childEnd).
+			rangeStart := max(start, childStart*1e9)
+			rangeEnd := min(end, childEnd*1e9)
+			bucket := bucket(rangeStart, node)
+			leafData := &bytes.Buffer{}
+			if err := writeEmptyMCAP(leafData); err != nil {
+				return nil, fmt.Errorf("failed to write empty MCAP: %w", err)
 			}
-			bucket := bucket(start, node)
-			node.PlaceChild(bucket, clonedChildID, version, nil)
-			stack = append(stack, clonedChild)
+			newLeafID := nodestore.RandomNodeID()
+			newLeaf := nodestore.NewLeafNode(leafData.Bytes(), nil, nil) // NB: filled in on merge.
+			newLeaf.DeleteRange(rangeStart, rangeEnd)
+			if err := tw.Put(ctx, newLeafID, newLeaf); err != nil {
+				return nil, fmt.Errorf("failed to store new leaf node: %w", err)
+			}
+			node.PlaceChild(bucket, newLeafID, version, nil)
 		}
 	}
 	tw.SetRoot(clonedRootID)
@@ -301,12 +320,13 @@ func mergeInnerNodes( // nolint: funlen // needs refactor
 			}
 			// If the child is marked as deleted, ignore all versions up to, and including that, child.
 			// TODO: reconcile statistics for tombstoned children.
-			if (child.ID == nodestore.NodeID{}) {
+			if child.IsTombstone() {
 				clear(conflictedNodes)
 				clear(conflictedTrees)
 				clear(statistics)
 				continue
 			}
+
 			conflictedNodes = append(conflictedNodes, child.ID)
 			conflictedTrees = append(conflictedTrees, trees[i])
 			for schemaHash, stats := range child.Statistics {
@@ -324,6 +344,9 @@ func mergeInnerNodes( // nolint: funlen // needs refactor
 		if len(conflictedNodes) > 0 {
 			merged, err = mergeLevel(ctx, pt, dest, destChild, destChildVersion, conflictedNodes, conflictedTrees)
 			if err != nil {
+				if errors.Is(err, errElideNode) {
+					continue
+				}
 				return nil, err
 			}
 		}
@@ -432,6 +455,8 @@ func Merge(
 	return output, nil
 }
 
+var errElideNode = errors.New("elide node")
+
 // mergeLeaves merges a set of leaf nodes into a single leaf node. Data is
 // merged in timestamp order.
 func mergeLeaves(
@@ -451,7 +476,19 @@ func mergeLeaves(
 		if err != nil {
 			return nil, fmt.Errorf("failed to read data: %w", err)
 		}
-		return nodestore.NewLeafNode(data, ancestorNodeID, ancestorVersion), nil
+
+		newLeaf := nodestore.NewLeafNode(data, ancestorNodeID, ancestorVersion)
+		if leaf.AncestorDeleted() {
+			// if we have an ancestor deleted here, but we have no ancestor node ID,
+			// then we are dealing with a deletion that spans unpopulated data. In
+			// this scenario we don't want to create a leaf node in the merged
+			// output.
+			if ancestorNodeID == nil {
+				return nil, errElideNode
+			}
+			newLeaf.DeleteRange(leaf.AncestorDeleteStart(), leaf.AncestorDeleteEnd())
+		}
+		return newLeaf, nil
 	}
 	iterators := make([]fmcap.MessageIterator, len(leaves))
 	for i, leaf := range leaves {
@@ -488,4 +525,18 @@ func bucket(nanos uint64, n *nodestore.InnerNode) uint64 {
 	bwidth := bwidth(n)
 	bucket := (nanos - n.Start*1e9) / (1e9 * bwidth)
 	return bucket
+}
+
+func writeEmptyMCAP(buf *bytes.Buffer) error {
+	writer, err := mcap.NewWriter(buf)
+	if err != nil {
+		return fmt.Errorf("failed to create writer: %w", err)
+	}
+	if err := writer.WriteHeader(&fmcap.Header{}); err != nil {
+		return fmt.Errorf("failed to write header: %w", err)
+	}
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("failed to close writer: %w", err)
+	}
+	return nil
 }
