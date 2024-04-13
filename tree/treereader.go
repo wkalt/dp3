@@ -90,9 +90,12 @@ func printLeaf(
 	} else {
 		sb.WriteString(fmt.Sprintf("[leaf %d msgs]", info.Statistics.MessageCount))
 	}
-
 	if (node.Ancestor() != nodestore.NodeID{}) {
-		sb.WriteString("->")
+		if node.AncestorDeleted() {
+			sb.WriteString(fmt.Sprintf("-<del %d-%d>->", node.AncestorDeleteStart()/1e9, node.AncestorDeleteEnd()/1e9))
+		} else {
+			sb.WriteString("->")
+		}
 		_, ancestor, err := getNode(ctx, node.Ancestor(), readers...)
 		if err != nil {
 			return "", fmt.Errorf("failed to get ancestor: %w", err)
@@ -102,7 +105,11 @@ func printLeaf(
 			return "", err
 		}
 		sb.WriteString(s)
+	} else if node.AncestorDeleted() {
+		// we can delete nodes before they get merged, and still want to print them.
+		sb.WriteString(fmt.Sprintf("-<del %d %d>-> ??", node.AncestorDeleteStart()/1e9, node.AncestorDeleteEnd()/1e9))
 	}
+
 	return sb.String(), nil
 }
 
@@ -115,7 +122,7 @@ func printInnerNode(
 	stats map[string]*nodestore.Statistics,
 ) (string, error) {
 	sb := &strings.Builder{}
-	remotestr := util.When(remote, "<link> ", "")
+	remotestr := util.When(remote, "<ref> ", "")
 	sb.WriteString(fmt.Sprintf("[%s%d-%d", remotestr, node.Start, node.End))
 	if version > 0 {
 		sb.WriteString(fmt.Sprintf(":%d %s", version, printStats(stats)))
@@ -124,6 +131,12 @@ func printInnerNode(
 		if child == nil {
 			continue
 		}
+
+		relation := "<ref>"
+		if child.IsTombstone() {
+			relation = "<del>"
+		}
+
 		remote, childNode, err := getNode(ctx, child.ID, readers...)
 		if err != nil && !errors.Is(err, nodestore.NodeNotFoundError{}) {
 			return "", fmt.Errorf("failed to get node %d: %w", child.ID, err)
@@ -131,7 +144,8 @@ func printInnerNode(
 		// the base reader was not included, so just print something useful
 		if childNode == nil {
 			width := (node.End - node.Start) / uint64(len(node.Children))
-			sb.WriteString(fmt.Sprintf(" [<link> %d-%d:%d]",
+			sb.WriteString(fmt.Sprintf(" [%s %d-%d:%d]",
+				relation,
 				node.Start+uint64(i)*width,
 				node.Start+uint64(i+1)*width,
 				child.Version,
@@ -153,7 +167,7 @@ func printInnerNode(
 			if err != nil {
 				return "", err
 			}
-			remotestr := util.When(remote, "<link> ", "")
+			remotestr := util.When(remote, relation+" ", "")
 			sb.WriteString(fmt.Sprintf(" [%s%d-%d:%d %s %s]",
 				remotestr,
 				node.Start+uint64(i)*width,
