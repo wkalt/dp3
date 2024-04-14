@@ -29,6 +29,7 @@ The following instructions will start dp3 with a data directory on local disk.
 
 ```
 $ ./dp3 client
+
 __        _      _____ 
 \ \    __| |_ __|___ / 
  \ \  / _` | '_ \ |_ \ 
@@ -46,19 +47,21 @@ supported dot commands are:
   .h [topic] to print help text. If topic is blank, prints this text.
   .statrange to run a statrange query
   .import to import data to the database
+  .delete to delete data from the database
 
 Available help topics are:
   query: Show examples of query syntax.
   statrange: Explain the .statrange command.
   import: Explain the .import command.
+  delete: Explain the .delete command.
 
-Any input aside from "help" that does not start with a dot is interpreted
-as a query. Queries are terminated with a semicolon.
+Any input aside from "help" that does not start with a dot is interpreted as
+a query. Queries are terminated with a semicolon.
 dp3 #
 dp3 # .import my-robot example-data/fix.mcap
 dp3 #
 dp3 # from my-robot /fix limit 1;
-{"topic":"/fix","sequence":1193398,"log_time":1479513060.001367422,"publish_time":1479513060.001367422,"data":{"header":{"seq":115877,"stamp":1479513060.000963926,"frame_id":"/imu"},"status":{"status":0,"service":0},"latitude":37.39954376220703,"longitude":-122.10643005371094,"altitude":-8.820882797241211,"position_covariance":[0,0,0,0,0,0,0,0,0],"position_covariance_type":0}}
+{"topic":"/fix","sequence":13,"log_time":1479512770.309617340,"publish_time":1479512770.309617340,"data":{"header":{"seq":1,"stamp":1479512770.308916091,"frame_id":"/imu"},"status":{"status":0,"service":0},"latitude":37.39973449707031,"longitude":-122.108154296875,"altitude":-8.731653213500977,"position_covariance":[0,0,0,0,0,0,0,0,0],"position_covariance_type":0}}
 ```
 
 ## Background
