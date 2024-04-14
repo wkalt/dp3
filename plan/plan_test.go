@@ -58,7 +58,7 @@ func TestCompileQuery(t *testing.T) {
 			"[merge [scan (a device all-time)] [scan (b device all-time)]]",
 		},
 		{
-			"ternary mj", // todo: pull the merges up
+			"ternary mj",
 			"from device a, b, c",
 			"[merge [scan (a device all-time)] [scan (b device all-time)] [scan (c device all-time)]]",
 		},
