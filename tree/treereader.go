@@ -90,12 +90,18 @@ func printLeaf(
 	} else {
 		sb.WriteString(fmt.Sprintf("[leaf %d msgs]", info.Statistics.MessageCount))
 	}
-	if (node.Ancestor() != nodestore.NodeID{}) {
-		if node.AncestorDeleted() {
-			sb.WriteString(fmt.Sprintf("-<del %d-%d>->", node.AncestorDeleteStart()/1e9, node.AncestorDeleteEnd()/1e9))
-		} else {
-			sb.WriteString("->")
-		}
+
+	switch {
+	case node.HasAncestor() && node.AncestorDeleted():
+		sb.WriteString(fmt.Sprintf("-<del %d-%d>->", node.AncestorDeleteStart()/1e9, node.AncestorDeleteEnd()/1e9))
+	case node.AncestorDeleted():
+		// this is for when a node has deleted but not been merged with an existing tree - so the ancestor is unpopulated.
+		sb.WriteString(fmt.Sprintf("-<del %d %d>-> ??", node.AncestorDeleteStart()/1e9, node.AncestorDeleteEnd()/1e9))
+	case node.HasAncestor():
+		sb.WriteString("->")
+	}
+
+	if node.HasAncestor() {
 		_, ancestor, err := getNode(ctx, node.Ancestor(), readers...)
 		if err != nil {
 			return "", fmt.Errorf("failed to get ancestor: %w", err)
@@ -105,11 +111,7 @@ func printLeaf(
 			return "", err
 		}
 		sb.WriteString(s)
-	} else if node.AncestorDeleted() {
-		// we can delete nodes before they get merged, and still want to print them.
-		sb.WriteString(fmt.Sprintf("-<del %d %d>-> ??", node.AncestorDeleteStart()/1e9, node.AncestorDeleteEnd()/1e9))
 	}
-
 	return sb.String(), nil
 }
 
@@ -122,8 +124,7 @@ func printInnerNode(
 	stats map[string]*nodestore.Statistics,
 ) (string, error) {
 	sb := &strings.Builder{}
-	remotestr := util.When(remote, "<ref> ", "")
-	sb.WriteString(fmt.Sprintf("[%s%d-%d", remotestr, node.Start, node.End))
+	sb.WriteString(fmt.Sprintf("[%s%d-%d", util.When(remote, "<ref> ", ""), node.Start, node.End))
 	if version > 0 {
 		sb.WriteString(fmt.Sprintf(":%d %s", version, printStats(stats)))
 	}
@@ -131,12 +132,7 @@ func printInnerNode(
 		if child == nil {
 			continue
 		}
-
-		relation := "<ref>"
-		if child.IsTombstone() {
-			relation = "<del>"
-		}
-
+		relationship := util.When(child.IsTombstone(), "<del>", "<ref>")
 		remote, childNode, err := getNode(ctx, child.ID, readers...)
 		if err != nil && !errors.Is(err, nodestore.NodeNotFoundError{}) {
 			return "", fmt.Errorf("failed to get node %d: %w", child.ID, err)
@@ -145,7 +141,7 @@ func printInnerNode(
 		if childNode == nil {
 			width := (node.End - node.Start) / uint64(len(node.Children))
 			sb.WriteString(fmt.Sprintf(" [%s %d-%d:%d]",
-				relation,
+				relationship,
 				node.Start+uint64(i)*width,
 				node.Start+uint64(i+1)*width,
 				child.Version,
@@ -167,9 +163,8 @@ func printInnerNode(
 			if err != nil {
 				return "", err
 			}
-			remotestr := util.When(remote, relation+" ", "")
 			sb.WriteString(fmt.Sprintf(" [%s%d-%d:%d %s %s]",
-				remotestr,
+				util.When(remote, relationship+" ", ""),
 				node.Start+uint64(i)*width,
 				node.Start+uint64(i+1)*width,
 				child.Version,

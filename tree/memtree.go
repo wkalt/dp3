@@ -87,6 +87,9 @@ func (m *MemTree) FromBytes(ctx context.Context, data []byte) error {
 				if child == nil {
 					continue
 				}
+				if child.IsTombstone() {
+					continue
+				}
 				ids = append(ids, child.ID)
 			}
 		}
