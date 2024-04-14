@@ -10,7 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	fmcap "github.com/foxglove/mcap/go/mcap"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/require"
 	"github.com/wkalt/dp3/mcap"
@@ -391,7 +390,10 @@ func runSequence(ctx context.Context, t *testing.T, tmgr *treemgr.TreeManager, s
 	return tmgr.PrintStream(ctx, "my-device", "topic-0")
 }
 
-func TestDeletionCases(t *testing.T) {
+// NB: this is really a tree iterator test, but the treemgr machinery is useful
+// for constructing detailed test scenarios. Maybe we can figure out a way to
+// extract it.
+func TestTreeIteration(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
 		assertion string
@@ -399,24 +401,74 @@ func TestDeletionCases(t *testing.T) {
 		messages  []uint64
 	}{
 		{
-			"single topic file, single message",
+			"single write",
 			"w(10,50)",
-			[]uint64{10e9, 50e9},
+			[]uint64{10, 50},
 		},
 		{
-			"write followed by a partial delete",
-			"w(10,50) d(40,70)",
-			[]uint64{10e9},
+			"two writes on two leaves",
+			"w(10,50) w(60,100)",
+			[]uint64{10, 50, 60, 100},
+		},
+		{
+			"two writes two leaves out of order",
+			"w(60,100) w(10,50)",
+			[]uint64{10, 50, 60, 100},
+		},
+		{
+			"two writes, overlapping, in order",
+			"w(10,50) w(40,70)",
+			[]uint64{10, 40, 50, 70},
+		},
+		{
+			"two writes, overlapping, two leaves, out of order",
+			"w(40,70) w(10,50)",
+			[]uint64{10, 40, 50, 70},
+		},
+		{
+			"two overlapping writes on single leaf",
+			"w(10,50) w(5,15)",
+			[]uint64{5, 10, 15, 50},
+		},
+		{
+			"two adjacent writes on a single leaf",
+			"w(5,10) w(15,20)",
+			[]uint64{5, 10, 15, 20},
+		},
+		{
+			"adjacent, out of order writes on single leaf",
+			"w(15,20) w(5,10)",
+			[]uint64{5, 10, 15, 20},
+		},
+		{
+			"partial delete covering the left side of a write",
+			"w(10,50) d(10,20)",
+			[]uint64{50},
+		},
+		{
+			"partial delete from the middle of a write, deleting no messages",
+			"w(10,50) d(20,30)",
+			[]uint64{10, 50},
+		},
+		{
+			"partial delete covering right side of a write",
+			"w(10,50) d(40,51)",
+			[]uint64{10},
+		},
+		{
+			"deletion adheres to [) semantics",
+			"w(10,50) d(40,50)",
+			[]uint64{10, 50},
 		},
 		{
 			"write delete write",
 			"w(10,50) d(40,70) w(60,100)",
-			[]uint64{10e9, 60e9, 100e9},
+			[]uint64{10, 60, 100},
 		},
 		{
 			"write, delete, write, delete",
 			"w(10,50) d(40,70) w(60,100) d(90,120)",
-			[]uint64{10e9, 60e9},
+			[]uint64{10, 60},
 		},
 		{
 			"write, delete, delete",
@@ -424,14 +476,14 @@ func TestDeletionCases(t *testing.T) {
 			[]uint64{},
 		},
 		{
-			"delete from middle of a range",
+			"delete from covered middle of a range",
 			"w(10,20) w(30,40) w(60,80) d(15,35)",
-			[]uint64{10e9, 40e9, 60e9, 80e9},
+			[]uint64{10, 40, 60, 80},
 		},
 		{
 			"delete spanning multiple pages",
 			"w(10,20) w(30,40) w(60,80) d(15,65)",
-			[]uint64{10e9, 80e9},
+			[]uint64{10, 80},
 		},
 	}
 
@@ -455,7 +507,7 @@ func TestDeletionCases(t *testing.T) {
 			require.Equal(t, len(c.messages), int(info.Statistics.MessageCount))
 
 			messages := []uint64{}
-			it, err := reader.Messages(fmcap.InOrder(fmcap.LogTimeOrder))
+			it, err := reader.Messages()
 			require.NoError(t, err)
 			for {
 				_, _, message, err := it.Next(nil)
@@ -463,7 +515,7 @@ func TestDeletionCases(t *testing.T) {
 					break
 				}
 				require.NoError(t, err)
-				messages = append(messages, message.LogTime)
+				messages = append(messages, message.LogTime/1e9)
 			}
 			require.Equal(t, c.messages, messages)
 		})

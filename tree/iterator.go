@@ -29,7 +29,7 @@ type Iterator struct {
 	tr          TreeReader
 	minVersion  uint64
 
-	stack []nodestore.NodeID
+	queue []nodestore.NodeID
 }
 
 // NewTreeIterator returns a new iterator over the given tree.
@@ -41,7 +41,7 @@ func NewTreeIterator(
 	minVersion uint64,
 ) *Iterator {
 	it := &Iterator{start: start, end: end, tr: tr, minVersion: minVersion}
-	it.stack = []nodestore.NodeID{tr.Root()}
+	it.queue = []nodestore.NodeID{tr.Root()}
 	return it
 }
 
@@ -52,7 +52,7 @@ func (ti *Iterator) Close() error {
 
 // More returns true if there are more elements in the iteration.
 func (ti *Iterator) More() bool {
-	return len(ti.readclosers) > 0 || len(ti.stack) > 0
+	return len(ti.readclosers) > 0 || len(ti.queue) > 0
 }
 
 func (ti *Iterator) closeActiveReaders() error {
@@ -111,9 +111,9 @@ func (ti *Iterator) Next(ctx context.Context) (*fmcap.Schema, *fmcap.Channel, *f
 // getNextLeaf returns the next leaf node ID in the iteration and advances the
 // internal node stack.
 func (ti *Iterator) getNextLeaf(ctx context.Context) (nodeID nodestore.NodeID, err error) {
-	for len(ti.stack) > 0 {
-		nodeID := ti.stack[len(ti.stack)-1]
-		ti.stack = ti.stack[:len(ti.stack)-1]
+	for len(ti.queue) > 0 {
+		nodeID := ti.queue[0]
+		ti.queue = ti.queue[1:]
 		node, err := ti.tr.Get(ctx, nodeID)
 		if err != nil {
 			return nodeID, fmt.Errorf("failed to get node %s: %w", nodeID, err)
@@ -131,7 +131,7 @@ func (ti *Iterator) getNextLeaf(ctx context.Context) (nodeID nodestore.NodeID, e
 		for _, child := range inner.Children {
 			if child != nil && child.Version > ti.minVersion {
 				if ti.start < right*1e9 && ti.end >= left*1e9 {
-					ti.stack = append(ti.stack, child.ID)
+					ti.queue = append(ti.queue, child.ID)
 				}
 			}
 			left += step
