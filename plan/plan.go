@@ -267,44 +267,48 @@ func CompileQuery(ast ql.Query) (*Node, error) {
 	where := compileOr(ast.Where)
 	traverse(
 		base,
-		func(n *Node) {
-			// Pre-order: Pull up nested merge joins.
-			if n.Type != MergeJoin {
-				return
-			}
-			newChildren := []*Node{}
-			queue := []*Node{n}
-			for len(queue) > 0 {
-				node := queue[0]
-				queue = queue[1:]
-				if node.Type == MergeJoin {
-					queue = append(queue, node.Children...)
-					continue
-				}
-				newChildren = append(newChildren, node)
-			}
-			n.Children = newChildren
-		},
-		func(n *Node) {
-			// Post-order: push the entire where clause down to each scan node,
-			// since we don't know about schemas here. The executor will resolve
-			// it according to the schema of the data and error if nonsense is
-			// submitted.
-			if n.Type != Scan {
-				return
-			}
-			if len(where.Children) > 0 {
-				n.Children = append(n.Children, where)
-			}
-			n.Args = append(n.Args, producer)
-			if start == 0 && end == math.MaxInt64 {
-				n.Args = append(n.Args, "all-time")
-				return
-			}
-			n.Args = append(n.Args, uint64(start), uint64(end))
-		})
+		pullUpMergeJoins,
+		func(n *Node) { pushDownFilters(n, where, producer, uint64(start), uint64(end)) })
 	if len(ast.PagingClause) > 0 {
 		base = wrapWithPaging(base, ast.PagingClause)
 	}
 	return base, nil
+}
+
+// Post-order: push the entire where clause down to each scan node,
+// since we don't know about schemas here. The executor will resolve
+// it according to the schema of the data and error if nonsense is
+// submitted.
+func pushDownFilters(n *Node, where *Node, producer string, start, end uint64) {
+	if n.Type != Scan {
+		return
+	}
+	if len(where.Children) > 0 {
+		n.Children = append(n.Children, where)
+	}
+	n.Args = append(n.Args, producer)
+	if start == 0 && end == math.MaxInt64 {
+		n.Args = append(n.Args, "all-time")
+		return
+	}
+	n.Args = append(n.Args, start, end)
+}
+
+// Pull children of nested merge joins up to the top level.
+func pullUpMergeJoins(n *Node) {
+	if n.Type != MergeJoin {
+		return
+	}
+	newChildren := []*Node{}
+	queue := []*Node{n}
+	for len(queue) > 0 {
+		node := queue[0]
+		queue = queue[1:]
+		if node.Type == MergeJoin {
+			queue = append(queue, node.Children...)
+			continue
+		}
+		newChildren = append(newChildren, node)
+	}
+	n.Children = newChildren
 }
