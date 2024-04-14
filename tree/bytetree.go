@@ -47,9 +47,12 @@ func (b *byteTree) Get(ctx context.Context, id nodestore.NodeID) (nodestore.Node
 		return nil, fmt.Errorf("failed to seek to offset: %w", err)
 	}
 	buf := make([]byte, length)
-	_, err = io.ReadFull(b.r, buf)
+	n, err := io.ReadFull(b.r, buf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read node data: %w", err)
+	}
+	if n < 1 {
+		return nil, errors.New("node data is empty")
 	}
 	if isLeaf(buf) {
 		node := nodestore.NewLeafNode(nil, nil, nil)

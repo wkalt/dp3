@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 
 	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/mcap"
@@ -23,13 +24,12 @@ type Iterator struct {
 	start uint64
 	end   uint64
 
-	readers     []*fmcap.Reader
-	closers     []io.Closer
+	readclosers []io.ReadSeekCloser
 	msgIterator fmcap.MessageIterator
 	tr          TreeReader
 	minVersion  uint64
 
-	stack []nodestore.NodeID
+	queue []nodestore.NodeID
 }
 
 // NewTreeIterator returns a new iterator over the given tree.
@@ -41,7 +41,7 @@ func NewTreeIterator(
 	minVersion uint64,
 ) *Iterator {
 	it := &Iterator{start: start, end: end, tr: tr, minVersion: minVersion}
-	it.stack = []nodestore.NodeID{tr.Root()}
+	it.queue = []nodestore.NodeID{tr.Root()}
 	return it
 }
 
@@ -52,15 +52,15 @@ func (ti *Iterator) Close() error {
 
 // More returns true if there are more elements in the iteration.
 func (ti *Iterator) More() bool {
-	return len(ti.readers) > 0 || len(ti.stack) > 0
+	return len(ti.readclosers) > 0 || len(ti.queue) > 0
 }
 
 func (ti *Iterator) closeActiveReaders() error {
-	for _, reader := range ti.readers {
+	for _, reader := range ti.readclosers {
 		reader.Close()
 	}
-	errs := make([]error, 0, len(ti.closers))
-	for _, closer := range ti.closers {
+	errs := make([]error, 0, len(ti.readclosers))
+	for _, closer := range ti.readclosers {
 		if err := closer.Close(); err != nil {
 			errs = append(errs, err)
 		}
@@ -77,8 +77,7 @@ func (ti *Iterator) advance(ctx context.Context) error {
 	if err := ti.closeActiveReaders(); err != nil {
 		return fmt.Errorf("failed to close leaf reader: %w", err)
 	}
-	ti.readers = nil
-	ti.closers = nil
+	ti.readclosers = nil
 	ti.msgIterator = nil
 	if err := ti.openNextLeaf(ctx); err != nil {
 		return fmt.Errorf("failed to open next leaf: %w", err)
@@ -112,9 +111,9 @@ func (ti *Iterator) Next(ctx context.Context) (*fmcap.Schema, *fmcap.Channel, *f
 // getNextLeaf returns the next leaf node ID in the iteration and advances the
 // internal node stack.
 func (ti *Iterator) getNextLeaf(ctx context.Context) (nodeID nodestore.NodeID, err error) {
-	for len(ti.stack) > 0 {
-		nodeID := ti.stack[len(ti.stack)-1]
-		ti.stack = ti.stack[:len(ti.stack)-1]
+	for len(ti.queue) > 0 {
+		nodeID := ti.queue[0]
+		ti.queue = ti.queue[1:]
 		node, err := ti.tr.Get(ctx, nodeID)
 		if err != nil {
 			return nodeID, fmt.Errorf("failed to get node %s: %w", nodeID, err)
@@ -132,7 +131,7 @@ func (ti *Iterator) getNextLeaf(ctx context.Context) (nodeID nodestore.NodeID, e
 		for _, child := range inner.Children {
 			if child != nil && child.Version > ti.minVersion {
 				if ti.start < right*1e9 && ti.end >= left*1e9 {
-					ti.stack = append(ti.stack, child.ID)
+					ti.queue = append(ti.queue, child.ID)
 				}
 			}
 			left += step
@@ -142,45 +141,66 @@ func (ti *Iterator) getNextLeaf(ctx context.Context) (nodeID nodestore.NodeID, e
 	return nodeID, io.EOF
 }
 
-func (ti *Iterator) openLeaf(ctx context.Context, nodeID nodestore.NodeID) (
-	nodestore.NodeID, fmcap.MessageIterator, error,
-) {
-	ancestor, rsc, err := ti.tr.GetLeafData(ctx, nodeID)
-	if err != nil {
-		return ancestor, nil, fmt.Errorf("failed to get reader: %w", err)
-	}
-	reader, err := mcap.NewReader(rsc)
-	if err != nil {
-		return ancestor, nil, fmt.Errorf("failed to create reader: %w", err)
-	}
-	it, err := reader.Messages(fmcap.AfterNanos(ti.start), fmcap.BeforeNanos(ti.end))
-	if err != nil {
-		return ancestor, nil, fmt.Errorf("failed to create message iterator: %w", err)
-	}
-	ti.readers = append(ti.readers, reader)
-	ti.closers = append(ti.closers, rsc)
-	return ancestor, it, nil
-}
-
-// openNextLeaf opens the next leaf in the iterator.
+// openNextLeaf opens the next iterator to scan. A leaf may be a single node, or
+// it may be the tail of a linked list, pointing backward at one or more
+// ancestor nodes. This occurs either when new data is inserted over an existing
+// leaf, or when data from a leaf is deleted. We need to take care to ensure we
+// handle both situations correctly, and also efficiently.
+//
+//	Example: w(1, 5) -> w(6, 10) -> d(4, 8) ->  w(7, 15)
+//
+// 1. Create a [][][]uint64
+// 2. Traverse all the way back to the start of the list
+// 3. Add the first element: {{{1, 5}}}
+// 4. Add the second element: {{{1, 5}}, {{6, 10}}}
+// 5. Split previous ranges, possibly subdividing them: {{{1, 4}}, {{8, 10}}}
+// 6. Add a new element: {{{1, 4}}, {{8, 10}}, {{7, 15}}}. Merge these.
 func (ti *Iterator) openNextLeaf(ctx context.Context) error {
 	leafID, err := ti.getNextLeaf(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get next leaf: %w", err)
 	}
 	// merge iterator of mcap iterators, or just the singleton.
-	ancestor, it, err := ti.openLeaf(ctx, leafID)
+	nodes := []*nodestore.LeafNode{}
+	readers := []io.ReadSeekCloser{}
+
+	leaf, rsc, err := ti.tr.GetLeafNode(ctx, leafID)
 	if err != nil {
-		return fmt.Errorf("failed to open leaf: %w", err)
+		return fmt.Errorf("failed to get leaf: %w", err)
 	}
-	iterators := []fmcap.MessageIterator{it}
+	nodes = append(nodes, leaf)
+	readers = append(readers, rsc)
+
+	ancestor := leaf.Ancestor()
 	for (ancestor != nodestore.NodeID{}) {
-		ancestor, it, err = ti.openLeaf(ctx, ancestor)
+		leaf, rsc, err := ti.tr.GetLeafNode(ctx, ancestor)
 		if err != nil {
 			return fmt.Errorf("failed to get ancestor: %w", err)
 		}
-		iterators = append(iterators, it)
+		nodes = append(nodes, leaf)
+		readers = append(readers, rsc)
+		ancestor = leaf.Ancestor()
 	}
+	// now we have the full list of ancestors, and readers, in reverse
+	// chronological order. Most likely (technically up to the storage
+	// implementation) no IO has been performed. Now go forward through the list
+	// to figure out what time ranges we need to grab from each element.
+	slices.Reverse(nodes)
+	slices.Reverse(readers)
+	rangesets := [][][]uint64{}
+	for _, leaf := range nodes {
+		if leaf.AncestorDeleted() {
+			for i, rangeset := range rangesets {
+				rangesets[i] = SplitRangeSet(rangeset, leaf.AncestorDeleteStart(), leaf.AncestorDeleteEnd())
+			}
+		}
+		rangesets = append(rangesets, [][]uint64{{ti.start, ti.end}})
+	}
+	iterators := make([]fmcap.MessageIterator, len(rangesets))
+	for i := range rangesets {
+		iterators[i] = mcap.NewConcatIterator(readers[i], rangesets[i])
+	}
+	ti.readclosers = readers
 	if len(iterators) == 1 {
 		ti.msgIterator = iterators[0]
 	} else {
@@ -190,4 +210,21 @@ func (ti *Iterator) openNextLeaf(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+func SplitRangeSet(rangeset [][]uint64, left uint64, right uint64) [][]uint64 {
+	newRangeset := [][]uint64{}
+	for _, r := range rangeset {
+		if r[1] < left || r[0] > right {
+			newRangeset = append(newRangeset, r)
+			continue
+		}
+		if r[0] < left {
+			newRangeset = append(newRangeset, []uint64{r[0], left})
+		}
+		if r[1] > right {
+			newRangeset = append(newRangeset, []uint64{right, r[1]})
+		}
+	}
+	return newRangeset
 }

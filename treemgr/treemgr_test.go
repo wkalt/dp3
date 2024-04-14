@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -353,6 +354,172 @@ func TestReceiveDifferentSchemas(t *testing.T) {
 		str := tmgr.PrintStream(ctx, "my-device", "topic-0")
 		assertEqualTrees(t, expected, str)
 	})
+}
+
+func runSequence(ctx context.Context, t *testing.T, tmgr *treemgr.TreeManager, s string) string {
+	t.Helper()
+	buf := &bytes.Buffer{}
+	for len(s) > 0 {
+		buf.Reset()
+		switch s[0] {
+		case ' ':
+			s = s[1:]
+			continue
+		case 'w': // w(10, 100)
+			nums := strings.Split(s[2:strings.Index(s, ")")], ",")
+			left, err := strconv.ParseInt(nums[0], 10, 64)
+			require.NoError(t, err)
+			right, err := strconv.ParseInt(nums[1], 10, 64)
+			require.NoError(t, err)
+			mcap.WriteFile(t, buf, [][]int64{{1e9 * left, 1e9 * right}}...)
+			require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
+		case 'd':
+			nums := strings.Split(s[2:strings.Index(s, ")")], ",")
+			left, err := strconv.ParseInt(nums[0], 10, 64)
+			require.NoError(t, err)
+			right, err := strconv.ParseInt(nums[1], 10, 64)
+			require.NoError(t, err)
+			mcap.WriteFile(t, buf, [][]int64{{left}, {right}}...)
+			require.NoError(t, tmgr.DeleteMessages(ctx, "my-device", "topic-0", 1e9*uint64(left), 1e9*uint64(right)))
+		default:
+			require.Fail(t, "unknown command")
+		}
+		require.NoError(t, tmgr.ForceFlush(ctx))
+		s = s[strings.Index(s, ")")+1:]
+	}
+	return tmgr.PrintStream(ctx, "my-device", "topic-0")
+}
+
+// NB: this is really a tree iterator test, but the treemgr machinery is useful
+// for constructing detailed test scenarios. Maybe we can figure out a way to
+// extract it.
+func TestTreeIteration(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		assertion string
+		input     string
+		messages  []uint64
+	}{
+		{
+			"single write",
+			"w(10,50)",
+			[]uint64{10, 50},
+		},
+		{
+			"two writes on two leaves",
+			"w(10,50) w(60,100)",
+			[]uint64{10, 50, 60, 100},
+		},
+		{
+			"two writes two leaves out of order",
+			"w(60,100) w(10,50)",
+			[]uint64{10, 50, 60, 100},
+		},
+		{
+			"two writes, overlapping, in order",
+			"w(10,50) w(40,70)",
+			[]uint64{10, 40, 50, 70},
+		},
+		{
+			"two writes, overlapping, two leaves, out of order",
+			"w(40,70) w(10,50)",
+			[]uint64{10, 40, 50, 70},
+		},
+		{
+			"two overlapping writes on single leaf",
+			"w(10,50) w(5,15)",
+			[]uint64{5, 10, 15, 50},
+		},
+		{
+			"two adjacent writes on a single leaf",
+			"w(5,10) w(15,20)",
+			[]uint64{5, 10, 15, 20},
+		},
+		{
+			"adjacent, out of order writes on single leaf",
+			"w(15,20) w(5,10)",
+			[]uint64{5, 10, 15, 20},
+		},
+		{
+			"partial delete covering the left side of a write",
+			"w(10,50) d(10,20)",
+			[]uint64{50},
+		},
+		{
+			"partial delete from the middle of a write, deleting no messages",
+			"w(10,50) d(20,30)",
+			[]uint64{10, 50},
+		},
+		{
+			"partial delete covering right side of a write",
+			"w(10,50) d(40,51)",
+			[]uint64{10},
+		},
+		{
+			"deletion adheres to [) semantics",
+			"w(10,50) d(40,50)",
+			[]uint64{10, 50},
+		},
+		{
+			"write delete write",
+			"w(10,50) d(40,70) w(60,100)",
+			[]uint64{10, 60, 100},
+		},
+		{
+			"write, delete, write, delete",
+			"w(10,50) d(40,70) w(60,100) d(90,120)",
+			[]uint64{10, 60},
+		},
+		{
+			"write, delete, delete",
+			"w(10,50) d(5,20) d(40,60)",
+			[]uint64{},
+		},
+		{
+			"delete from covered middle of a range",
+			"w(10,20) w(30,40) w(60,80) d(15,35)",
+			[]uint64{10, 40, 60, 80},
+		},
+		{
+			"delete spanning multiple pages",
+			"w(10,20) w(30,40) w(60,80) d(15,65)",
+			[]uint64{10, 80},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			tmgr, finish := treemgr.TestTreeManager(ctx, t)
+			defer finish()
+			runSequence(ctx, t, tmgr, c.input)
+
+			output := &bytes.Buffer{}
+			roots, err := tmgr.GetLatestRoots(ctx, "my-device", map[string]uint64{"topic-0": 0})
+			require.NoError(t, err)
+
+			require.NoError(t, tmgr.GetMessages(ctx, output, 0, ^uint64(0), roots))
+
+			reader, err := mcap.NewReader(bytes.NewReader(output.Bytes()))
+			require.NoError(t, err)
+
+			info, err := reader.Info()
+			require.NoError(t, err)
+			require.Equal(t, len(c.messages), int(info.Statistics.MessageCount))
+
+			messages := []uint64{}
+			it, err := reader.Messages()
+			require.NoError(t, err)
+			for {
+				_, _, message, err := it.Next(nil)
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				require.NoError(t, err)
+				messages = append(messages, message.LogTime/1e9)
+			}
+			require.Equal(t, c.messages, messages)
+		})
+	}
 }
 
 func TestReceive(t *testing.T) {

@@ -54,7 +54,7 @@ func TestMemtreeSerialization(t *testing.T) {
 			data := &bytes.Buffer{}
 			mcap.WriteFile(t, data, []int64{ts})
 			schema := tree.GetSchema(t, bytes.NewReader(data.Bytes()))
-			schemaHash := util.CryptoHash(schema.Data)
+			schemaHash := util.CryptographicHash(schema.Data)
 			stats := map[string]*nodestore.Statistics{
 				schemaHash: {MessageCount: 1},
 			}

@@ -124,9 +124,9 @@ func Min[T cmp.Ordered](a, b T) T {
 	return b
 }
 
-// CryptoHash returns a stable hex-encoded cryptographic hash for use in the
+// CryptographicHash returns a stable hex-encoded cryptographic hash for use in the
 // project.
-func CryptoHash(data []byte) string {
+func CryptographicHash(data []byte) string {
 	h := sha256.New()
 	h.Write(data)
 	return hex.EncodeToString(h.Sum(nil))

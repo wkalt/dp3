@@ -44,7 +44,7 @@ func MergeInserts(
 		buf := &bytes.Buffer{}
 		mcap.WriteFile(t, buf, batch)
 		schema := GetSchema(t, bytes.NewReader(buf.Bytes()))
-		hash := util.CryptoHash(schema.Data)
+		hash := util.CryptographicHash(schema.Data)
 		stats := map[string]*nodestore.Statistics{
 			hash: {
 				MessageCount:    int64(len(batch)),

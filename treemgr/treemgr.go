@@ -66,8 +66,6 @@ func (tm *TreeManager) NewRoot(ctx context.Context, producer string, topic strin
 	if err != nil {
 		return fmt.Errorf("failed to create new root: %w", err)
 	}
-
-	// todo two inserts can race here and get a unique violation. need to handle that.
 	if err := tm.rootmap.Put(ctx, producer, topic, version, prefix, rootID); err != nil {
 		return fmt.Errorf("failed to put root: %w", err)
 	}
@@ -123,6 +121,43 @@ func NewTreeManager(
 
 	// ready for requests
 	return tm, nil
+}
+
+func (tm *TreeManager) DeleteMessages(
+	ctx context.Context,
+	producer string,
+	topic string,
+	start, end uint64,
+) error {
+	prefix, nodeID, _, err := tm.rootmap.GetLatest(ctx, producer, topic)
+	if err != nil {
+		return fmt.Errorf("failed to get latest root: %w", err)
+	}
+	root, err := tm.ns.Get(ctx, prefix, nodeID)
+	if err != nil {
+		return fmt.Errorf("failed to get root: %w", err)
+	}
+	version, err := tm.vs.Next(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get next version: %w", err)
+	}
+	inner, ok := root.(*nodestore.InnerNode)
+	if !ok {
+		return fmt.Errorf("unexpected node type: %w", tree.NewUnexpectedNodeError(nodestore.Inner, root))
+	}
+	mt, err := tree.DeleteMessagesInRange(ctx, inner, version, start, end)
+	if err != nil {
+		return fmt.Errorf("failed to delete messages: %w", err)
+	}
+	serialized, err := mt.ToBytes(ctx, 0)
+	if err != nil {
+		return fmt.Errorf("failed to serialize tree: %w", err)
+	}
+	_, err = tm.wal.Insert(ctx, producer, topic, serialized)
+	if err != nil {
+		return fmt.Errorf("failed to insert into WAL: %w", err)
+	}
+	return nil
 }
 
 // Receive an MCAP data stream on behalf of a particular producer. The data is
@@ -300,14 +335,14 @@ func (tm *TreeManager) newRoot(
 	leafWidthSecs int,
 	bfactor int,
 ) (nodestore.NodeID, uint64, error) {
-	var height int
+	var height uint8
 	span := end - start
-	coverage := leafWidthSecs
-	for uint64(coverage) < span {
-		coverage *= bfactor
+	coverage := uint64(leafWidthSecs)
+	for coverage < span {
+		coverage *= uint64(bfactor)
 		height++
 	}
-	root := nodestore.NewInnerNode(uint8(height), start, start+uint64(coverage), bfactor)
+	root := nodestore.NewInnerNode(height, start, start+coverage, bfactor)
 	data := root.ToBytes()
 	version, err := tm.vs.Next(ctx)
 	if err != nil {

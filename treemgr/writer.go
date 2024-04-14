@@ -145,7 +145,7 @@ func (w *writer) initialize(ts uint64) (err error) {
 		w.parsers[schema.ID] = parser
 		fields := ros1msg.AnalyzeSchema(*msgdef)
 		w.schemaStats[schema.ID] = nodestore.NewStatistics(fields)
-		w.schemaHashes[schema.ID] = util.CryptoHash(schema.Data)
+		w.schemaHashes[schema.ID] = util.CryptographicHash(schema.Data)
 	}
 	for _, channel := range w.channels {
 		if err := w.w.WriteChannel(channel); err != nil {
