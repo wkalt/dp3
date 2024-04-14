@@ -28,7 +28,6 @@ func TestTreeIterator(t *testing.T) {
 			[][]int64{{100}},
 			1,
 		},
-
 		{
 			"three messages",
 			[][]int64{{100, 1000, 10000}},
@@ -52,6 +51,39 @@ func TestTreeIterator(t *testing.T) {
 			}
 			require.Equal(t, c.expectedMessageCount, count)
 			require.NoError(t, it.Close())
+		})
+	}
+}
+
+func TestSplitRangeSet(t *testing.T) {
+	cases := []struct {
+		assertion string
+		input     [][]uint64
+		split     []uint64
+		expected  [][]uint64
+	}{
+		{
+			"split on left side",
+			[][]uint64{{10, 20}},
+			[]uint64{0, 15},
+			[][]uint64{{15, 20}},
+		},
+		{
+			"split on right side",
+			[][]uint64{{10, 20}},
+			[]uint64{15, 25},
+			[][]uint64{{10, 15}},
+		},
+		{
+			"split in the middle",
+			[][]uint64{{10, 20}},
+			[]uint64{15, 17},
+			[][]uint64{{10, 15}, {17, 20}},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			require.Equal(t, c.expected, tree.SplitRangeSet(c.input, c.split[0], c.split[1]))
 		})
 	}
 }

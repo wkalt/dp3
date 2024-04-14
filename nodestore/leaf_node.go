@@ -70,8 +70,6 @@ func (n *LeafNode) AncestorDeleteEnd() uint64 {
 // FromBytes deserializes the node from a byte slice.
 func (n *LeafNode) FromBytes(data []byte) error {
 	var version uint8
-	var ancestorDeleted bool
-	var ancestorVersion, ancestorDeleteStart, ancestorDeleteEnd uint64
 	offset := util.ReadU8(data, &version)
 	if version < 128 {
 		return errors.New("not a leaf node")
@@ -79,9 +77,9 @@ func (n *LeafNode) FromBytes(data []byte) error {
 	n.leafNodeVersion = version - 128
 
 	offset += copy(n.ancestor[:], data[offset:])
-	offset += util.ReadU64(data[offset:], &ancestorVersion)
-	offset += util.ReadU64(data[offset:], &ancestorDeleteStart)
-	offset += util.ReadU64(data[offset:], &ancestorDeleteEnd)
+	offset += util.ReadU64(data[offset:], &n.ancestorVersion)
+	offset += util.ReadU64(data[offset:], &n.ancestorDeleteStart)
+	offset += util.ReadU64(data[offset:], &n.ancestorDeleteEnd)
 	n.data = data[offset:]
 	return nil
 }
@@ -109,6 +107,11 @@ func (n *LeafNode) Type() NodeType {
 // Ancestor returns the ID of the ancestor node.
 func (n *LeafNode) Ancestor() NodeID {
 	return n.ancestor
+}
+
+// HasAncestor returns true if the node has an ancestor.
+func (n *LeafNode) HasAncestor() bool {
+	return n.ancestor != NodeID{}
 }
 
 // AncestorVersion returns the version of the ancestor node.
