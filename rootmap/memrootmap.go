@@ -2,6 +2,7 @@ package rootmap
 
 import (
 	"context"
+	"sort"
 
 	"github.com/wkalt/dp3/nodestore"
 )
@@ -18,6 +19,7 @@ type root struct {
 	topic      string
 	version    uint64
 	prefix     string
+	timestamp  string
 	nodeID     nodestore.NodeID
 }
 
@@ -29,6 +31,25 @@ func NewMemRootmap() Rootmap {
 	return &memrootmap{
 		roots: []root{},
 	}
+}
+
+func (rm *memrootmap) GetHistorical(ctx context.Context, producer string, topic string) ([]RootListing, error) {
+	result := []RootListing{}
+	for _, root := range rm.roots {
+		if root.producerID != producer {
+			continue
+		}
+		if root.topic != topic {
+			continue
+		}
+		result = append(result, RootListing{
+			root.prefix, root.producerID, root.topic, root.nodeID, root.version, root.timestamp, 0,
+		})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Version > result[j].Version
+	})
+	return result, nil
 }
 
 func (rm *memrootmap) GetLatestByTopic(
@@ -55,7 +76,9 @@ func (rm *memrootmap) GetLatestByTopic(
 				maxVersion = item.version
 			}
 		}
-		listings = append(listings, RootListing{max.prefix, topic, max.nodeID, max.version, topics[topic]})
+		listings = append(listings, RootListing{
+			max.prefix, producerID, topic, max.nodeID, max.version, max.timestamp, topics[topic],
+		})
 	}
 	return listings, nil
 }
@@ -86,10 +109,12 @@ func (rm *memrootmap) Put(
 	ctx context.Context, producerID string, topic string,
 	version uint64, prefix string, nodeID nodestore.NodeID,
 ) error {
+	timestamp := ""
 	rm.roots = append(rm.roots, root{
 		producerID: producerID,
 		topic:      topic,
 		version:    version,
+		timestamp:  timestamp,
 		prefix:     prefix,
 		nodeID:     nodeID,
 	})

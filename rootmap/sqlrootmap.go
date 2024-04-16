@@ -77,27 +77,67 @@ func (rm *sqlRootmap) Put(
 	return nil
 }
 
+func (rm *sqlRootmap) GetHistorical(
+	ctx context.Context,
+	producer string,
+	topic string,
+) ([]RootListing, error) {
+	sql := `
+	select storage_prefix, node_id, version, timestamp
+	from rootmap
+	where producer_id = $1 and topic = $2
+	order by version desc
+	`
+	rows, err := rm.db.QueryContext(ctx, sql, producer, topic)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read from rootmap: %w", err)
+	}
+	defer rows.Close()
+	listings := []RootListing{}
+	for rows.Next() {
+		var prefix, timestamp, nodeID string
+		var version uint64
+		if err := rows.Scan(&prefix, &nodeID, &version, &timestamp); err != nil {
+			return nil, fmt.Errorf("failed to read from rootmap: %w", err)
+		}
+		decoded, err := hex.DecodeString(nodeID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode node ID: %w", err)
+		}
+		listings = append(listings, RootListing{
+			prefix, producer, topic, nodestore.NodeID(decoded), version, timestamp, 0,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read from rootmap: %w", err)
+	}
+	return listings, nil
+}
+
 func (rm *sqlRootmap) GetLatestByTopic(
 	ctx context.Context,
 	producerID string,
 	topics map[string]uint64,
 ) ([]RootListing, error) {
 	sb := strings.Builder{}
-	params := []any{producerID}
 	sb.WriteString(`
-	select r1.topic, r1.storage_prefix, r1.node_id, r1.version
+	select r1.topic, r1.producer_id, r1.storage_prefix, r1.node_id, r1.version, r1.timestamp
 	from rootmap r1 left join rootmap r2
 	on (r1.topic = r2.topic and r1.producer_id = r2.producer_id and r1.version < r2.version)
 	where r2.rowid is null
-	and r1.producer_id = $1
 	`)
+	params := []any{}
+	if producerID != "" {
+		sb.WriteString(" and r1.producer_id = ? ")
+		params = append(params, producerID)
+	}
 	if len(topics) > 0 {
 		sb.WriteString(" and r1.topic in (")
 		for i, topic := range maps.Keys(topics) {
 			if i > 0 {
 				sb.WriteString(", ")
 			}
-			sb.WriteString(fmt.Sprintf("$%d", i+2))
+			sb.WriteString("?")
 			params = append(params, topic)
 		}
 		sb.WriteString(")")
@@ -111,11 +151,9 @@ func (rm *sqlRootmap) GetLatestByTopic(
 
 	listings := make([]RootListing, 0, len(topics))
 	for rows.Next() {
-		var nodeID string
 		var version uint64
-		var topic string
-		var prefix string
-		if err := rows.Scan(&topic, &prefix, &nodeID, &version); err != nil {
+		var nodeID, topic, prefix, producerID, timestamp string
+		if err := rows.Scan(&topic, &producerID, &prefix, &nodeID, &version, &timestamp); err != nil {
 			return nil, fmt.Errorf("failed to read from rootmap: %w", err)
 		}
 		if version > maxVersion {
@@ -127,7 +165,7 @@ func (rm *sqlRootmap) GetLatestByTopic(
 		}
 		if version > topics[topic] {
 			listings = append(listings, RootListing{
-				prefix, topic, nodestore.NodeID(decoded), version, topics[topic],
+				prefix, producerID, topic, nodestore.NodeID(decoded), version, timestamp, topics[topic],
 			})
 		}
 	}
@@ -135,6 +173,68 @@ func (rm *sqlRootmap) GetLatestByTopic(
 		return nil, fmt.Errorf("failed to read from rootmap: %w", err)
 	}
 	return listings, nil
+}
+
+// Topics returns a unique list of topics with the requested prefix, for the
+// requested producer. If producer is an empty string, returns topics for all
+// producers. Note that this is currently implemented on the rootmap table, but
+// in actual usage that will become slow, and will need to be replaced with a
+// dedicated, unique table.
+func (rm *sqlRootmap) Topics(
+	ctx context.Context,
+	producer string,
+	prefix string,
+) ([]string, error) {
+	params := []any{prefix + "%"}
+	sql := `select distinct topic from rootmap where topic like $1`
+	if producer != "" {
+		sql += ` and producer_id = $2`
+		params = append(params, producer)
+	}
+	rows, err := rm.db.QueryContext(ctx, sql, params...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read from rootmap: %w", err)
+	}
+	defer rows.Close()
+	result := []string{}
+	for rows.Next() {
+		var topic string
+		if err := rows.Scan(&topic); err != nil {
+			return nil, fmt.Errorf("failed to read from rootmap: %w", err)
+		}
+		result = append(result, topic)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read from rootmap: %w", err)
+	}
+	return result, nil
+}
+
+// Producers returns a list of producers with the requested prefix. Note that
+// this is currently implemented on the rootmap table, but in actual usage that
+// will become slow, and will need to be replaced with a dedicated, unique
+// table.
+func (rm *sqlRootmap) Producers(ctx context.Context, prefix string) ([]string, error) {
+	rows, err := rm.db.QueryContext(ctx,
+		`select distinct producer_id from rootmap where producer_id like $1`,
+		prefix+"%",
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read from rootmap: %w", err)
+	}
+	defer rows.Close()
+	result := []string{}
+	for rows.Next() {
+		var producer string
+		if err := rows.Scan(&producer); err != nil {
+			return nil, fmt.Errorf("failed to read from rootmap: %w", err)
+		}
+		result = append(result, producer)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read from rootmap: %w", err)
+	}
+	return result, nil
 }
 
 func (rm *sqlRootmap) GetLatest(

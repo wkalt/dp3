@@ -256,6 +256,48 @@ func (tm *TreeManager) GetStatistics(
 	return ranges, nil
 }
 
+type Table struct {
+	Root     rootmap.RootListing `json:"root"`
+	Children []*nodestore.Child  `json:"children"`
+}
+
+func (tm *TreeManager) GetTables(ctx context.Context, producer string, topic string, historical bool) ([]Table, error) {
+	var roots []rootmap.RootListing
+	var err error
+	if historical {
+		roots, err = tm.rootmap.GetHistorical(ctx, producer, topic)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get historical roots: %w", err)
+		}
+	} else {
+		topics := make(map[string]uint64)
+		if topic != "" {
+			topics[topic] = 0
+		}
+		roots, err = tm.rootmap.GetLatestByTopic(ctx, producer, topics)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get latest roots: %w", err)
+		}
+	}
+
+	tables := make([]Table, 0, len(roots))
+	for _, root := range roots {
+		node, err := tm.ns.Get(ctx, root.Prefix, root.NodeID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get node: %w", err)
+		}
+		rootnode, ok := node.(*nodestore.InnerNode)
+		if !ok {
+			return nil, fmt.Errorf("unexpected node type: %w", tree.NewUnexpectedNodeError(nodestore.Inner, node))
+		}
+		tables = append(tables, Table{
+			Root:     root,
+			Children: rootnode.Children,
+		})
+	}
+	return tables, nil
+}
+
 func (tm *TreeManager) GetMessages(
 	ctx context.Context,
 	w io.Writer,
