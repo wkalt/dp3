@@ -22,11 +22,13 @@ recover.
 var ErrRootAlreadyExists = errors.New("root already exists")
 
 type RootListing struct {
-	Prefix              string
-	Topic               string
-	NodeID              nodestore.NodeID
-	NewMinVersion       uint64
-	RequestedMinVersion uint64
+	Prefix              string           `json:"prefix"`
+	Producer            string           `json:"producer"`
+	Topic               string           `json:"topic"`
+	NodeID              nodestore.NodeID `json:"nodeId"`
+	Version             uint64           `json:"version"`
+	Timestamp           string           `json:"timestamp"`
+	RequestedMinVersion uint64           `json:"requestedMinVersion"`
 }
 
 type Rootmap interface {
@@ -34,4 +36,7 @@ type Rootmap interface {
 	GetLatestByTopic(ctx context.Context, producerID string, topics map[string]uint64) ([]RootListing, error)
 	Get(ctx context.Context, producerID string, topic string, version uint64) (string, nodestore.NodeID, error)
 	Put(ctx context.Context, producerID string, topic string, version uint64, prefix string, nodeID nodestore.NodeID) error
+
+	// Catalog features - producer/topic autocompletion
+	GetHistorical(ctx context.Context, producer string, topic string) ([]RootListing, error)
 }

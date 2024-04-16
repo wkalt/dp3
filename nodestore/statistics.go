@@ -142,13 +142,13 @@ func NewStatRange(
 
 // Statistics represents the statistics we store on each child element of an inner node.
 type Statistics struct {
-	Fields          []util.Named[schema.PrimitiveType] `json:"fields,omitempty"`
-	NumStats        map[int]*NumericalSummary          `json:"numeric,omitempty"`
-	TextStats       map[int]*TextSummary               `json:"text,omitempty"`
-	MessageCount    int64                              `json:"messageCount"`
-	ByteCount       int64                              `json:"byteCount"`
-	MaxObservedTime int64                              `json:"maxObservedTime"`
-	MinObservedTime int64                              `json:"minObservedTime"`
+	Fields            []util.Named[schema.PrimitiveType] `json:"fields,omitempty"`
+	NumStats          map[int]*NumericalSummary          `json:"numeric,omitempty"`
+	TextStats         map[int]*TextSummary               `json:"text,omitempty"`
+	MessageCount      int64                              `json:"messageCount"`
+	BytesUncompressed int64                              `json:"bytesUncompressed"`
+	MaxObservedTime   int64                              `json:"maxObservedTime"`
+	MinObservedTime   int64                              `json:"minObservedTime"`
 }
 
 // Ranges converts a statistics object into an array of StatRange objects,
@@ -180,8 +180,8 @@ func (s *Statistics) Ranges(start, end uint64, schemaHash string) []StatRange {
 			Type:       Int,
 			Field:      "",
 			SchemaHash: schemaHash,
-			Name:       "byteCount",
-			Value:      s.ByteCount,
+			Name:       "bytesUncompressed",
+			Value:      s.BytesUncompressed,
 		},
 		{
 			Start:      start,
@@ -295,7 +295,7 @@ func (s *Statistics) ObserveMessage(message *fmcap.Message, values []any) error 
 		}
 	}
 	s.MessageCount++
-	s.ByteCount += int64(len(message.Data))
+	s.BytesUncompressed += int64(len(message.Data))
 	if message.LogTime < uint64(s.MinObservedTime) {
 		s.MinObservedTime = int64(message.LogTime)
 	}
@@ -330,13 +330,13 @@ func (s *Statistics) Clone() *Statistics {
 		textStats[i] = &stat
 	}
 	return &Statistics{
-		Fields:          fields,
-		NumStats:        numStats,
-		TextStats:       textStats,
-		MessageCount:    s.MessageCount,
-		ByteCount:       s.ByteCount,
-		MinObservedTime: s.MinObservedTime,
-		MaxObservedTime: s.MaxObservedTime,
+		Fields:            fields,
+		NumStats:          numStats,
+		TextStats:         textStats,
+		MessageCount:      s.MessageCount,
+		BytesUncompressed: s.BytesUncompressed,
+		MinObservedTime:   s.MinObservedTime,
+		MaxObservedTime:   s.MaxObservedTime,
 	}
 }
 
@@ -349,7 +349,7 @@ func (s *Statistics) Add(other *Statistics) error {
 		return nil
 	}
 	s.MessageCount += other.MessageCount
-	s.ByteCount += other.ByteCount
+	s.BytesUncompressed += other.BytesUncompressed
 	s.MinObservedTime = min(s.MinObservedTime, other.MinObservedTime)
 	s.MaxObservedTime = max(s.MaxObservedTime, other.MaxObservedTime)
 	if len(s.Fields) != len(other.Fields) {

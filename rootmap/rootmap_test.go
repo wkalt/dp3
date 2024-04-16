@@ -80,10 +80,15 @@ func TestRootmaps(t *testing.T) {
 				listings, err := rm.GetLatestByTopic(ctx, "my-device", map[string]uint64{"topic1": 0, "topic2": 0})
 				require.NoError(t, err)
 
+				converted := make([]rootmap.RootListing, 0, len(listings))
+				for _, listing := range listings {
+					listing.Timestamp = ""
+					converted = append(converted, listing)
+				}
 				require.ElementsMatch(t, []rootmap.RootListing{
-					{testPrefix, "topic1", node1, 40, 0},
-					{testPrefix, "topic2", node2, 50, 0},
-				}, listings)
+					{testPrefix, "my-device", "topic1", node1, 40, "", 0},
+					{testPrefix, "my-device", "topic2", node2, 50, "", 0},
+				}, converted)
 			})
 			t.Run("get version that does not exist", func(t *testing.T) {
 				_, _, err := rm.Get(ctx, "fake-device", "my-topic", 1e9)

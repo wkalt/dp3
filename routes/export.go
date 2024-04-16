@@ -42,7 +42,7 @@ func newExportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		// send back an argument in the headers that the client can use to poll
 		header := make(map[string]uint64)
 		for _, root := range roots {
-			header[root.Topic] = root.NewMinVersion
+			header[root.Topic] = root.Version
 		}
 		headerData, err := json.Marshal(header)
 		if err != nil {
