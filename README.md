@@ -48,12 +48,14 @@ supported dot commands are:
   .statrange to run a statrange query
   .import to import data to the database
   .delete to delete data from the database
+  .tables to inspect tables available in the database
 
 Available help topics are:
   query: Show examples of query syntax.
   statrange: Explain the .statrange command.
   import: Explain the .import command.
   delete: Explain the .delete command.
+  tables: Explain the .tables command.
 
 Any input aside from "help" that does not start with a dot is interpreted as
 a query. Queries are terminated with a semicolon.
