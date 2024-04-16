@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -14,12 +15,15 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/chzyer/readline"
 	"github.com/relvacode/iso8601"
 	"github.com/spf13/cobra"
-	"github.com/wkalt/dp3/client/dp3/util"
+	cutil "github.com/wkalt/dp3/client/dp3/util"
 	"github.com/wkalt/dp3/routes"
+	"github.com/wkalt/dp3/treemgr"
+	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/httputil"
 )
 
@@ -109,7 +113,7 @@ func executeQuery(s string) error {
 	}
 	pager := maybePager()
 	return withPaging(pager, func(w io.Writer) error {
-		return util.MCAPToJSON(w, resp.Body)
+		return cutil.MCAPToJSON(w, resp.Body)
 	})
 }
 
@@ -185,6 +189,11 @@ func run() error {
 			continue
 		case strings.HasPrefix(line, ".delete"):
 			if err := handleDelete(line); err != nil {
+				printError(err.Error())
+			}
+			continue
+		case strings.HasPrefix(line, ".tables"):
+			if err := handleTables(line); err != nil {
 				printError(err.Error())
 			}
 			continue
@@ -306,6 +315,154 @@ func handleStatRange(line string) error {
 	})
 }
 
+func printTables(w io.Writer, producerID string, topic string) error {
+	var historical bool
+	if producerID != "" && topic != "" {
+		historical = true
+	}
+	req := &routes.TablesRequest{
+		Producer:   producerID,
+		Topic:      topic,
+		Historical: historical,
+	}
+	buf := &bytes.Buffer{}
+	if err := json.NewEncoder(buf).Encode(req); err != nil {
+		return fmt.Errorf("error encoding request: %s", err)
+	}
+	resp, err := http.Post("http://localhost:8089/tables", "application/json", buf)
+	if err != nil {
+		return fmt.Errorf("error calling statrange: %s", err)
+	}
+	defer resp.Body.Close()
+	cutil.MustOK(resp)
+
+	response := []treemgr.Table{}
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		return fmt.Errorf("error decoding response: %s", err)
+	}
+
+	// Display a grouping appropriate to the request.
+
+	switch {
+	case producerID == "" && topic == "":
+		// present an aggregation over producers
+		headers := []string{
+			"Topic",
+			"Timestamp",
+			"Message count",
+			"Bytes uncompressed",
+			"Min observed time",
+			"Max observed time",
+		}
+		data := [][]string{}
+		topicListings := map[string][]treemgr.Table{}
+		for _, table := range response {
+			topicListings[table.Root.Topic] = append(topicListings[table.Root.Topic], table)
+		}
+		for topic, listings := range topicListings {
+			var timestamp string
+			var messageCount, byteCount uint64
+			minObservedTime := int64(math.MaxInt64)
+			maxObservedTime := int64(0)
+			for _, listing := range listings {
+				if listing.Root.Timestamp > timestamp {
+					timestamp = listing.Root.Timestamp
+				}
+				for _, child := range listing.Children {
+					if child == nil {
+						continue
+					}
+					for _, stats := range child.Statistics {
+						messageCount += uint64(stats.MessageCount)
+						byteCount += uint64(stats.BytesUncompressed)
+						if stats.MinObservedTime < minObservedTime {
+							minObservedTime = stats.MinObservedTime
+						}
+						if stats.MaxObservedTime > maxObservedTime {
+							maxObservedTime = stats.MaxObservedTime
+						}
+					}
+				}
+			}
+			data = append(data, []string{
+				topic,
+				timestamp,
+				strconv.FormatUint(messageCount, 10),
+				util.HumanBytes(byteCount),
+				time.Unix(0, minObservedTime).Format(time.RFC3339),
+				time.Unix(0, maxObservedTime).Format(time.RFC3339),
+			})
+		}
+		cutil.PrintTable(w, headers, data)
+		return nil
+	case topic != "":
+		headers := []string{
+			"Topic",
+			"Producer",
+			"Version",
+			"Timestamp",
+			"Message count",
+			"Bytes uncompressed",
+			"Min observed time",
+			"Max observed time",
+		}
+		data := [][]string{}
+		for _, table := range response {
+			var messageCount uint64
+			var byteCount uint64
+			minObservedTime := int64(math.MaxInt64)
+			maxObservedTime := int64(0)
+			for _, child := range table.Children {
+				if child == nil {
+					continue
+				}
+				for _, stats := range child.Statistics {
+					messageCount += uint64(stats.MessageCount)
+					byteCount += uint64(stats.BytesUncompressed)
+					if stats.MinObservedTime < minObservedTime {
+						minObservedTime = stats.MinObservedTime
+					}
+					if stats.MaxObservedTime > maxObservedTime {
+						maxObservedTime = stats.MaxObservedTime
+					}
+				}
+			}
+			data = append(data, []string{
+				table.Root.Topic,
+				table.Root.Producer,
+				strconv.FormatUint(table.Root.Version, 10),
+				table.Root.Timestamp,
+				strconv.FormatUint(messageCount, 10),
+				util.HumanBytes(byteCount),
+				time.Unix(0, minObservedTime).Format(time.RFC3339),
+				time.Unix(0, maxObservedTime).Format(time.RFC3339),
+			})
+		}
+		cutil.PrintTable(w, headers, data)
+		return nil
+	}
+
+	return nil
+}
+
+func handleTables(line string) error {
+	parts := strings.Split(line, " ")[1:]
+
+	switch len(parts) {
+	case 0:
+		// all topics, all producers
+		return printTables(os.Stdout, "", "")
+	case 1:
+		topic := parts[0]
+		return printTables(os.Stdout, "", topic)
+	case 2:
+		topic, producer := parts[0], parts[1]
+		return printTables(os.Stdout, producer, topic)
+	default:
+		return errors.New("too many arguments")
+	}
+}
+
 // NB: editing the text in here can be very prone to hard to spot alignment bugs
 // for code examples and list items. Justify all text to the left margin, and
 // indent list items with two spaces.
@@ -319,12 +476,14 @@ supported dot commands are:
   .statrange to run a statrange query
   .import to import data to the database
   .delete to delete data from the database
+  .tables to inspect tables available in the database
 
 Available help topics are:
   query: Show examples of query syntax.
   statrange: Explain the .statrange command.
   import: Explain the .import command.
   delete: Explain the .delete command.
+  tables: Explain the .tables command.
 
 Any input aside from "help" that does not start with a dot is interpreted as
 a query. Queries are terminated with a semicolon.`,
@@ -403,6 +562,21 @@ immediately (on flush of the deletion to the WAL). There will be a delay of
 a few seconds before the WAL is flushed to storage and the effects of the
 delete are visible.
   `,
+	"tables": `The .tables command is used to inspect tables available in the database.
+It can be called in three ways:
+
+  1. .tables
+  2. .tables topic
+  3. .tables topic producer
+
+With no arguments, it will show a listing of all available topics, with
+count/size statistics aggregated across producers.
+
+When supplied a topic, it will give a listing for that topic for each
+producer.
+
+When supplied both a topic and a producer, it will list all historical tree
+versions for that producer/topic.`,
 }
 
 // clientCmd represents the client command
