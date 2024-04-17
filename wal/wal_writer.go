@@ -80,10 +80,14 @@ func (w *Writer) WriteMergeComplete(rec MergeCompleteRecord) (Address, int, erro
 func (w *Writer) WriteMergeRequest(rec MergeRequestRecord) (Address, int, error) {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
-
-	length := 4 + len(rec.Producer) + 4 + len(rec.Topic) + 4 + len(rec.BatchID) + 24*len(rec.Addrs)
+	length := 4 + len(rec.Database) +
+		4 + len(rec.Producer) +
+		4 + len(rec.Topic) +
+		4 + len(rec.BatchID) +
+		24*len(rec.Addrs)
 	data := make([]byte, length)
-	offset := util.WritePrefixedString(data, rec.Producer)
+	offset := util.WritePrefixedString(data, rec.Database)
+	offset += util.WritePrefixedString(data[offset:], rec.Producer)
 	offset += util.WritePrefixedString(data[offset:], rec.Topic)
 	offset += util.WritePrefixedString(data[offset:], rec.BatchID)
 	for _, addr := range rec.Addrs {
@@ -97,8 +101,9 @@ func (w *Writer) WriteInsert(rec InsertRecord) (Address, int, error) {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
 
-	header := make([]byte, 4+len(rec.Producer)+4+len(rec.Topic)+4+len(rec.BatchID)+24)
+	header := make([]byte, 4+len(rec.Database)+4+len(rec.Producer)+4+len(rec.Topic)+4+len(rec.BatchID)+24)
 	var offset int
+	offset += util.WritePrefixedString(header[offset:], rec.Database)
 	offset += util.WritePrefixedString(header[offset:], rec.Producer)
 	offset += util.WritePrefixedString(header[offset:], rec.Topic)
 	offset += util.WritePrefixedString(header[offset:], rec.BatchID)

@@ -18,10 +18,11 @@ import (
 
 var (
 	importProducerID  string
+	importDatabase    string
 	importWorkerCount int
 )
 
-func doImport(producer string, paths []string, workers int) error {
+func doImport(database string, producer string, paths []string, workers int) error {
 	g := &errgroup.Group{}
 	g.SetLimit(workers)
 	for _, path := range paths {
@@ -31,6 +32,7 @@ func doImport(producer string, paths []string, workers int) error {
 				return fmt.Errorf("error getting absolute path: %w", err)
 			}
 			req := &routes.ImportRequest{
+				Database:   database,
 				ProducerID: producer,
 				Path:       abs,
 			}
@@ -67,7 +69,7 @@ var importCmd = &cobra.Command{
 			cmd.Usage()
 			return
 		}
-		if err := doImport(importProducerID, paths, importWorkerCount); err != nil {
+		if err := doImport(importDatabase, importProducerID, paths, importWorkerCount); err != nil {
 			bailf("Import error: %s", err)
 		}
 	},
@@ -76,6 +78,7 @@ var importCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(importCmd)
 	importCmd.PersistentFlags().StringVarP(&importProducerID, "producer", "p", "", "Producer ID")
+	importCmd.PersistentFlags().StringVarP(&importDatabase, "database", "d", "", "Database")
 	importCmd.PersistentFlags().IntVarP(&importWorkerCount, "workers", "w", 1, "Worker count")
 	importCmd.MarkFlagRequired("producer")
 }

@@ -67,7 +67,7 @@ func TestWALReader(t *testing.T) {
 			Producer: "producer",
 			Topic:    "topic",
 			BatchID:  "foobar",
-			Addr:     wal.NewAddress(1, 8, 72),
+			Addr:     wal.NewAddress(1, 8, 76),
 			Data:     []byte("data"),
 		}
 		buf := &bytes.Buffer{}

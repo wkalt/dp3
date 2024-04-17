@@ -9,6 +9,7 @@ import (
 )
 
 type TablesRequest struct {
+	Database   string `json:"database"`
 	Producer   string `json:"producer"`
 	Topic      string `json:"topic"`
 	Historical bool   `json:"historical"`
@@ -24,7 +25,7 @@ func newTablesHandler(
 			httputil.BadRequest(ctx, w, "failed to decode request: %s", err)
 			return
 		}
-		tables, err := tmgr.GetTables(ctx, req.Producer, req.Topic, req.Historical)
+		tables, err := tmgr.GetTables(ctx, req.Database, req.Producer, req.Topic, req.Historical)
 		if err != nil {
 			httputil.InternalServerError(ctx, w, "failed to get tables: %s", err)
 			return

@@ -92,9 +92,10 @@ func withPaging(pager string, f func(io.Writer) error) error {
 	}
 }
 
-func executeQuery(s string) error {
+func executeQuery(database string, query string) error {
 	req := &routes.QueryRequest{
-		Query: s,
+		Database: database,
+		Query:    query,
 	}
 	buf := &bytes.Buffer{}
 	if err := json.NewEncoder(buf).Encode(req); err != nil {
@@ -139,7 +140,7 @@ func printError(s string) {
 
 func run() error {
 	l, err := readline.NewEx(&readline.Config{
-		Prompt:          "dp3 # ",
+		Prompt:          "dp3:[default] # ",
 		HistoryFile:     "/tmp/dp3-history.tmp",
 		InterruptPrompt: "^C",
 		EOFPrompt:       "exit",
@@ -156,11 +157,12 @@ func run() error {
 	log.SetOutput(l.Stderr())
 
 	lines := []string{}
+	database := "default"
 	for {
 		line, err := l.Readline()
 		if err != nil {
 			if errors.Is(err, readline.ErrInterrupt) {
-				l.SetPrompt("dp3 # ")
+				l.SetPrompt(fmt.Sprintf("dp3:[%s] # ", database))
 				continue
 			}
 			if errors.Is(err, io.EOF) {
@@ -177,23 +179,32 @@ func run() error {
 			_, topic, _ := strings.Cut(line, " ")
 			fmt.Println(help[topic])
 			continue
+		case strings.HasPrefix(line, ".connect"):
+			parts := strings.Split(line, " ")[1:]
+			if len(parts) != 1 {
+				printError("usage: .connect <database>")
+				continue
+			}
+			database = parts[0]
+			l.SetPrompt(fmt.Sprintf("dp3:[%s] # ", database))
+			continue
 		case strings.HasPrefix(line, ".statrange"):
 			if err := handleStatRange(line); err != nil {
 				printError(err.Error())
 			}
 			continue
 		case strings.HasPrefix(line, ".import"):
-			if err := handleImport(line); err != nil {
+			if err := handleImport(database, line); err != nil {
 				printError(err.Error())
 			}
 			continue
 		case strings.HasPrefix(line, ".delete"):
-			if err := handleDelete(line); err != nil {
+			if err := handleDelete(database, line); err != nil {
 				printError(err.Error())
 			}
 			continue
 		case strings.HasPrefix(line, ".tables"):
-			if err := handleTables(line); err != nil {
+			if err := handleTables(database, line); err != nil {
 				printError(err.Error())
 			}
 			continue
@@ -209,9 +220,9 @@ func run() error {
 		}
 		query := strings.Join(lines, " ")
 		lines = lines[:0]
-		l.SetPrompt("dp3 # ")
+		l.SetPrompt(fmt.Sprintf("dp3:[%s] # ", database))
 		l.SaveHistory(query)
-		if err := executeQuery(strings.TrimSuffix(query, ";")); err != nil {
+		if err := executeQuery(database, strings.TrimSuffix(query, ";")); err != nil {
 			printError(err.Error())
 		}
 	}
@@ -219,7 +230,7 @@ func run() error {
 	return nil
 }
 
-func handleDelete(line string) error {
+func handleDelete(database string, line string) error {
 	parts := strings.Split(line, " ")[1:]
 	if len(parts) < 4 {
 		return errors.New("not enough arguments")
@@ -234,11 +245,12 @@ func handleDelete(line string) error {
 	if err != nil {
 		return fmt.Errorf("failed to parse end time: %w", err)
 	}
-	return doDelete(producer, topic, starttime.UnixNano(), endtime.UnixNano())
+	return doDelete(database, producer, topic, starttime.UnixNano(), endtime.UnixNano())
 }
 
-func doDelete(producer, topic string, start, end int64) error {
+func doDelete(database, producer, topic string, start, end int64) error {
 	req := &routes.DeleteRequest{
+		Database:   database,
 		ProducerID: producer,
 		Topic:      topic,
 		Start:      uint64(start),
@@ -262,7 +274,7 @@ func doDelete(producer, topic string, start, end int64) error {
 	return nil
 }
 
-func handleImport(line string) error {
+func handleImport(database string, line string) error {
 	parts := strings.Split(line, " ")[1:]
 	if len(parts) < 2 {
 		return errors.New("not enough arguments")
@@ -277,7 +289,7 @@ func handleImport(line string) error {
 		return fmt.Errorf("no files found matching %s", pattern)
 	}
 	workers := runtime.NumCPU() / 2
-	return doImport(producer, paths, workers)
+	return doImport(database, producer, paths, workers)
 }
 
 func handleStatRange(line string) error {
@@ -315,12 +327,13 @@ func handleStatRange(line string) error {
 	})
 }
 
-func printTables(w io.Writer, producerID string, topic string) error {
+func printTables(w io.Writer, database string, producerID string, topic string) error {
 	var historical bool
 	if producerID != "" && topic != "" {
 		historical = true
 	}
 	req := &routes.TablesRequest{
+		Database:   database,
 		Producer:   producerID,
 		Topic:      topic,
 		Historical: historical,
@@ -445,19 +458,19 @@ func printTables(w io.Writer, producerID string, topic string) error {
 	return nil
 }
 
-func handleTables(line string) error {
+func handleTables(database string, line string) error {
 	parts := strings.Split(line, " ")[1:]
 
 	switch len(parts) {
 	case 0:
 		// all topics, all producers
-		return printTables(os.Stdout, "", "")
+		return printTables(os.Stdout, database, "", "")
 	case 1:
 		topic := parts[0]
-		return printTables(os.Stdout, "", topic)
+		return printTables(os.Stdout, database, "", topic)
 	case 2:
 		topic, producer := parts[0], parts[1]
-		return printTables(os.Stdout, producer, topic)
+		return printTables(os.Stdout, database, producer, topic)
 	default:
 		return errors.New("too many arguments")
 	}

@@ -38,7 +38,7 @@ func Run(
 	ctx context.Context,
 	w io.Writer,
 	node *plan.Node,
-	scanFactory func(ctx context.Context, producer string, table string, start, end uint64) (*tree.Iterator, error),
+	scanFactory ScanFactory,
 ) error {
 	root, err := CompilePlan(ctx, node, scanFactory)
 	if err != nil {
@@ -79,7 +79,13 @@ func Run(
 	return nil
 }
 
-type ScanFactory func(ctx context.Context, producer string, table string, start, end uint64) (*tree.Iterator, error)
+type ScanFactory func(
+	ctx context.Context,
+	database string,
+	producer string,
+	table string,
+	start, end uint64,
+) (*tree.Iterator, error)
 
 // CompilePlan compiles a "plan tree" -- a tree of plan nodes -- to a tree of
 // executor nodes.
@@ -191,26 +197,30 @@ func compileScan(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, er
 	if !ok {
 		return nil, fmt.Errorf("expected string alias, got %T", node.Args[1])
 	}
-	producer, ok := node.Args[2].(string)
+	database, ok := node.Args[2].(string)
+	if !ok {
+		return nil, fmt.Errorf("expected string database, got %T", node.Args[2])
+	}
+	producer, ok := node.Args[3].(string)
 	if !ok {
 		return nil, fmt.Errorf("expected string producer, got %T", node.Args[1])
 	}
 	var err error
 	var start, end uint64
-	if node.Args[3] == "all-time" {
+	if node.Args[4] == "all-time" {
 		start = 0
 		end = ^uint64(0)
 	} else {
-		start, ok = node.Args[3].(uint64)
+		start, ok = node.Args[4].(uint64)
 		if !ok {
-			return nil, fmt.Errorf("expected uint64 start time, got %T", node.Args[2])
+			return nil, fmt.Errorf("expected uint64 start time, got %T", node.Args[4])
 		}
-		end, ok = node.Args[4].(uint64)
+		end, ok = node.Args[5].(uint64)
 		if !ok {
-			return nil, fmt.Errorf("expected uint64 end time, got %T", node.Args[3])
+			return nil, fmt.Errorf("expected uint64 end time, got %T", node.Args[5])
 		}
 	}
-	it, err := sf(ctx, producer, table, start, end)
+	it, err := sf(ctx, database, producer, table, start, end)
 	if err != nil {
 		return nil, err
 	}

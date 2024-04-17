@@ -10,6 +10,7 @@ import (
 
 // StatRangeRequest is the request body for the statrange endpoint.
 type StatRangeRequest struct {
+	Database    string `json:"database"`
 	ProducerID  string `json:"producerId"`
 	Start       uint64 `json:"start"`
 	End         uint64 `json:"end"`
@@ -27,10 +28,11 @@ func newStatRangeHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		}
 		summary, err := tmgr.GetStatisticsLatest(
 			ctx,
-			req.Start,
-			req.End,
+			req.Database,
 			req.ProducerID,
 			req.Topic,
+			req.Start,
+			req.End,
 			req.Granularity,
 		)
 		if err != nil {

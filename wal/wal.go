@@ -43,6 +43,7 @@ const (
 // InsertRecord is a record of a single insert operation. The data is a byte
 // representation of a partial tree.
 type InsertRecord struct {
+	Database string
 	Producer string
 	Topic    string
 	BatchID  string
@@ -53,6 +54,7 @@ type InsertRecord struct {
 // MergeRequestRecord records a request to merge a batch of inserts into
 // storage.
 type MergeRequestRecord struct {
+	Database string
 	Producer string
 	Topic    string
 	BatchID  string
@@ -71,6 +73,7 @@ type MergeCompleteRecord struct {
 // based on either size or inactivity.
 type Batch struct {
 	ID         string
+	Database   string
 	ProducerID string
 	Topic      string
 	Size       int
@@ -114,10 +117,15 @@ func (a Address) String() string {
 
 // TreeID is a unique identifier for a tree in the WAL.
 type TreeID struct {
+	Database string
 	Producer string
 	Topic    string
 }
 
+func NewTreeID(database, producer, topic string) TreeID {
+	return TreeID{Database: database, Producer: producer, Topic: topic}
+}
+
 func (id TreeID) String() string {
-	return id.Producer + id.Topic
+	return id.Database + id.Producer + id.Topic
 }

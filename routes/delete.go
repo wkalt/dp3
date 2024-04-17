@@ -10,6 +10,7 @@ import (
 )
 
 type DeleteRequest struct {
+	Database   string `json:"database"`
 	ProducerID string `json:"producerId"`
 	Topic      string `json:"topic"`
 	Start      uint64 `json:"start"`
@@ -26,7 +27,7 @@ func newDeleteHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		}
 		defer r.Body.Close()
 		ctx = log.AddTags(ctx, "producer", req.ProducerID, "topic", req.Topic)
-		if err := tmgr.DeleteMessages(ctx, req.ProducerID, req.Topic, req.Start, req.End); err != nil {
+		if err := tmgr.DeleteMessages(ctx, req.Database, req.ProducerID, req.Topic, req.Start, req.End); err != nil {
 			httputil.InternalServerError(ctx, w, "error deleting: %s", err)
 			return
 		}

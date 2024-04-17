@@ -132,14 +132,20 @@ func NewWALManager(
 
 // Insert data into the WAL for a producer and topic. The data should be the
 // serialized representation of a memtree, i.e a partial tree.
-func (w *WALManager) Insert(ctx context.Context, producer string, topic string, data []byte) (Address, error) {
+func (w *WALManager) Insert(
+	ctx context.Context,
+	database string,
+	producer string,
+	topic string,
+	data []byte,
+) (Address, error) {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
-	tid := TreeID{producer, topic}
+	tid := TreeID{database, producer, topic}
 	bat, ok := w.pendingInserts[tid]
 	if !ok {
 		id := uuid.New().String()
-		bat = w.newBatch(id, producer, topic)
+		bat = w.newBatch(id, database, producer, topic)
 		w.pendingInserts[tid] = bat
 	}
 	addr, err := w.insert(tid, bat.ID, data)
@@ -290,6 +296,8 @@ func (w *WALManager) Recover(ctx context.Context) error {
 	// todo this can block if there is a lot of pending merges. Ensure the
 	// channel consumers are started up first.
 	keys := maps.Keys(w.pendingMerges)
+
+	// todo why do we need to sort these?
 	sort.Slice(keys, func(i, j int) bool {
 		return w.pendingMerges[keys[i]].Topic > w.pendingMerges[keys[j]].Topic
 	})
@@ -325,6 +333,7 @@ func listDir(dir string) ([]string, error) {
 
 func (w *WALManager) mergeBatch(batch *Batch) error {
 	if _, _, err := w.writer.WriteMergeRequest(MergeRequestRecord{
+		Database: batch.Database,
 		Producer: batch.ProducerID,
 		Topic:    batch.Topic,
 		BatchID:  batch.ID,
@@ -332,7 +341,9 @@ func (w *WALManager) mergeBatch(batch *Batch) error {
 	}); err != nil {
 		return err
 	}
-	delete(w.pendingInserts, TreeID{Producer: batch.ProducerID, Topic: batch.Topic})
+	delete(w.pendingInserts, TreeID{
+		Database: batch.Database, Producer: batch.ProducerID, Topic: batch.Topic,
+	})
 	w.pendingMerges[batch.ID] = batch
 	w.merges <- batch
 	return nil
@@ -369,6 +380,7 @@ func (w *WALManager) mergeInactiveBatches(ctx context.Context) error {
 
 func (w *WALManager) insert(tid TreeID, batchID string, data []byte) (Address, error) {
 	addr, _, err := w.writer.WriteInsert(InsertRecord{
+		Database: tid.Database,
 		Producer: tid.Producer,
 		Topic:    tid.Topic,
 		BatchID:  batchID,
@@ -501,10 +513,11 @@ func (w *WALManager) scanfile(ctx context.Context, id uint64) error {
 		switch rectype {
 		case WALInsert:
 			rec := ParseInsertRecord(data)
-			bat, ok := w.pendingInserts[TreeID{Producer: rec.Producer, Topic: rec.Topic}]
+			bat, ok := w.pendingInserts[NewTreeID(rec.Database, rec.Producer, rec.Topic)]
 			if !ok {
 				bat = &Batch{
 					ID:         rec.BatchID,
+					Database:   rec.Database,
 					ProducerID: rec.Producer,
 					Topic:      rec.Topic,
 					Addrs:      []Address{},
@@ -512,13 +525,13 @@ func (w *WALManager) scanfile(ctx context.Context, id uint64) error {
 						return w.completeMerge(rec.BatchID)
 					},
 				}
-				w.pendingInserts[TreeID{Producer: rec.Producer, Topic: rec.Topic}] = bat
+				w.pendingInserts[NewTreeID(rec.Database, rec.Producer, rec.Topic)] = bat
 			}
 			bat.Size += len(rec.Data)
 			bat.Addrs = append(bat.Addrs, rec.Addr)
 		case WALMergeRequest:
 			rec := ParseMergeRequestRecord(data)
-			key := TreeID{Producer: rec.Producer, Topic: rec.Topic}
+			key := NewTreeID(rec.Database, rec.Producer, rec.Topic)
 			batch := w.pendingInserts[key]
 			delete(w.pendingInserts, key)
 			w.pendingMerges[rec.BatchID] = batch
@@ -549,11 +562,13 @@ func (w *WALManager) setfile(id uint64) error {
 
 func (w *WALManager) newBatch(
 	id string,
+	database string,
 	producerID string,
 	topic string,
 ) *Batch {
 	return &Batch{
 		ID:         id,
+		Database:   database,
 		ProducerID: producerID,
 		Topic:      topic,
 		Size:       0,

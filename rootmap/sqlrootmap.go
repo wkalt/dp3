@@ -32,6 +32,7 @@ func (rm *sqlRootmap) initialize() error {
 	}
 	if _, err := rm.db.Exec(`
 	create table if not exists rootmap (
+		database text not null,
 		producer_id text not null,
 		topic text not null,
 		version bigint not null,
@@ -55,6 +56,7 @@ func (rm *sqlRootmap) initialize() error {
 
 func (rm *sqlRootmap) Put(
 	ctx context.Context,
+	database string,
 	producerID string,
 	topic string,
 	version uint64,
@@ -64,8 +66,15 @@ func (rm *sqlRootmap) Put(
 	rm.mtx.Lock()
 	defer rm.mtx.Unlock()
 	_, err := rm.db.ExecContext(ctx, `
-	insert into rootmap (producer_id, topic, version, storage_prefix, node_id) values ($1, $2, $3, $4, $5)`,
-		producerID, topic, version, prefix, hex.EncodeToString(nodeID[:]),
+	insert into rootmap (
+		database,
+		producer_id,
+		topic,
+		version,
+		storage_prefix,
+		node_id
+	) values ($1, $2, $3, $4, $5, $6)`,
+		database, producerID, topic, version, prefix, hex.EncodeToString(nodeID[:]),
 	)
 	if err != nil {
 		var err sqlite3.Error
@@ -79,16 +88,17 @@ func (rm *sqlRootmap) Put(
 
 func (rm *sqlRootmap) GetHistorical(
 	ctx context.Context,
+	database string,
 	producer string,
 	topic string,
 ) ([]RootListing, error) {
 	sql := `
 	select storage_prefix, node_id, version, timestamp
 	from rootmap
-	where producer_id = $1 and topic = $2
+	where database = ? and producer_id = ? and topic = ? 
 	order by version desc
 	`
-	rows, err := rm.db.QueryContext(ctx, sql, producer, topic)
+	rows, err := rm.db.QueryContext(ctx, sql, database, producer, topic)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read from rootmap: %w", err)
 	}
@@ -116,6 +126,7 @@ func (rm *sqlRootmap) GetHistorical(
 
 func (rm *sqlRootmap) GetLatestByTopic(
 	ctx context.Context,
+	database string,
 	producerID string,
 	topics map[string]uint64,
 ) ([]RootListing, error) {
@@ -123,10 +134,11 @@ func (rm *sqlRootmap) GetLatestByTopic(
 	sb.WriteString(`
 	select r1.topic, r1.producer_id, r1.storage_prefix, r1.node_id, r1.version, r1.timestamp
 	from rootmap r1 left join rootmap r2
-	on (r1.topic = r2.topic and r1.producer_id = r2.producer_id and r1.version < r2.version)
+	on (r1.database = r2.database and r1.topic = r2.topic and r1.producer_id = r2.producer_id and r1.version < r2.version)
 	where r2.rowid is null
+	and r1.database = ?
 	`)
-	params := []any{}
+	params := []any{database}
 	if producerID != "" {
 		sb.WriteString(" and r1.producer_id = ? ")
 		params = append(params, producerID)
@@ -182,13 +194,14 @@ func (rm *sqlRootmap) GetLatestByTopic(
 // dedicated, unique table.
 func (rm *sqlRootmap) Topics(
 	ctx context.Context,
+	database string,
 	producer string,
 	prefix string,
 ) ([]string, error) {
-	params := []any{prefix + "%"}
-	sql := `select distinct topic from rootmap where topic like $1`
+	params := []any{database, prefix + "%"}
+	sql := `select distinct topic from rootmap where database = ? and topic like ?`
 	if producer != "" {
-		sql += ` and producer_id = $2`
+		sql += ` and producer_id = ?`
 		params = append(params, producer)
 	}
 	rows, err := rm.db.QueryContext(ctx, sql, params...)
@@ -214,10 +227,14 @@ func (rm *sqlRootmap) Topics(
 // this is currently implemented on the rootmap table, but in actual usage that
 // will become slow, and will need to be replaced with a dedicated, unique
 // table.
-func (rm *sqlRootmap) Producers(ctx context.Context, prefix string) ([]string, error) {
+func (rm *sqlRootmap) Producers(
+	ctx context.Context,
+	database string,
+	prefix string,
+) ([]string, error) {
 	rows, err := rm.db.QueryContext(ctx,
-		`select distinct producer_id from rootmap where producer_id like $1`,
-		prefix+"%",
+		`select distinct producer_id from rootmap where database = ? producer_id like ?`,
+		database, prefix+"%",
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read from rootmap: %w", err)
@@ -239,6 +256,7 @@ func (rm *sqlRootmap) Producers(ctx context.Context, prefix string) ([]string, e
 
 func (rm *sqlRootmap) GetLatest(
 	ctx context.Context,
+	database string,
 	producerID string,
 	topic string,
 ) (string, nodestore.NodeID, uint64, error) {
@@ -248,13 +266,13 @@ func (rm *sqlRootmap) GetLatest(
 	err := rm.db.QueryRowContext(ctx, `
 	select storage_prefix, node_id, version
 	from rootmap
-	where producer_id = $1 and topic = $2
+	where database = ? and producer_id = ? and topic = ?
 	order by version desc limit 1`,
-		producerID, topic,
+		database, producerID, topic,
 	).Scan(&prefix, &nodeID, &version)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return prefix, nodestore.NodeID{}, 0, StreamNotFoundError{producerID, topic}
+			return prefix, nodestore.NodeID{}, 0, NewStreamNotFoundError(database, producerID, topic)
 		}
 		return prefix, nodestore.NodeID{}, 0, fmt.Errorf("failed to read from rootmap: %w", err)
 	}
@@ -266,16 +284,24 @@ func (rm *sqlRootmap) GetLatest(
 }
 
 func (rm *sqlRootmap) Get(
-	ctx context.Context, producerID string, topic string, version uint64) (string, nodestore.NodeID, error) {
+	ctx context.Context,
+	database string,
+	producerID string,
+	topic string,
+	version uint64,
+) (string, nodestore.NodeID, error) {
 	var nodeID string
 	var prefix string
 	err := rm.db.QueryRowContext(ctx, `
-	select storage_prefix, node_id from rootmap where producer_id = $1 and topic = $2 and version = $3`,
-		producerID, topic, version,
+	select storage_prefix,
+	node_id
+	from rootmap
+	where database = ? and producer_id = ? and topic = ? and version = ?`,
+		database, producerID, topic, version,
 	).Scan(&prefix, &nodeID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return prefix, nodestore.NodeID{}, StreamNotFoundError{producerID, topic}
+			return prefix, nodestore.NodeID{}, NewStreamNotFoundError(database, producerID, topic)
 		}
 		return prefix, nodestore.NodeID{}, fmt.Errorf("failed to read from rootmap: %w", err)
 	}
