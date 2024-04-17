@@ -189,7 +189,7 @@ func run() error {
 			l.SetPrompt(fmt.Sprintf("dp3:[%s] # ", database))
 			continue
 		case strings.HasPrefix(line, ".statrange"):
-			if err := handleStatRange(line); err != nil {
+			if err := handleStatRange(database, line); err != nil {
 				printError(err.Error())
 			}
 			continue
@@ -292,7 +292,7 @@ func handleImport(database string, line string) error {
 	return doImport(database, producer, paths, workers)
 }
 
-func handleStatRange(line string) error {
+func handleStatRange(database string, line string) error {
 	parts := strings.Split(line, " ")[1:]
 	if len(parts) < 2 {
 		return errors.New("not enough arguments")
@@ -323,7 +323,7 @@ func handleStatRange(line string) error {
 	}
 	pager := maybePager()
 	return withPaging(pager, func(w io.Writer) error {
-		return printStatRange(w, producer, topic, uint64(granularity)*1e9, starttime, endtime)
+		return printStatRange(w, database, producer, topic, uint64(granularity)*1e9, starttime, endtime)
 	})
 }
 
