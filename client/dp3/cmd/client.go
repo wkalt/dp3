@@ -56,7 +56,7 @@ func withPaging(pager string, f func(io.Writer) error) error {
 	stdout := os.Stdout
 	os.Stdout = w
 
-	cmd := exec.Command(pager)
+	cmd := exec.Command(pager, "-F")
 	cmd.Stdin = r
 	cmd.Stdout = stdout
 	cmd.Stderr = os.Stderr
@@ -344,7 +344,7 @@ func printTables(w io.Writer, database string, producerID string, topic string) 
 	}
 	resp, err := http.Post("http://localhost:8089/tables", "application/json", buf)
 	if err != nil {
-		return fmt.Errorf("error calling statrange: %s", err)
+		return fmt.Errorf("error calling tables: %s", err)
 	}
 	defer resp.Body.Close()
 	cutil.MustOK(resp)
