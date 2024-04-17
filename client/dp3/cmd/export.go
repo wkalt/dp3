@@ -14,6 +14,7 @@ import (
 
 var (
 	exportProducerID string
+	exportDatabase   string
 	exportEndDate    string
 	exportStartDate  string
 	exportTopics     []string
@@ -49,6 +50,7 @@ var exportCmd = &cobra.Command{
 			topics[topic] = 0
 		}
 		messageRequest := &routes.ExportRequest{
+			Database:   exportDatabase,
 			Start:      uint64(start.UnixNano()),
 			End:        uint64(end.UnixNano()),
 			ProducerID: exportProducerID,
@@ -80,6 +82,7 @@ var exportCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(exportCmd)
 
+	exportCmd.PersistentFlags().StringVarP(&exportDatabase, "database", "d", "", "Database name")
 	exportCmd.PersistentFlags().StringVarP(&exportProducerID, "producer", "p", "", "Producer ID")
 	exportCmd.PersistentFlags().StringVarP(&exportStartDate, "start", "s", "", "Start date")
 	exportCmd.PersistentFlags().StringVarP(&exportEndDate, "end", "e", "", "End date")
@@ -87,4 +90,5 @@ func init() {
 	exportCmd.PersistentFlags().BoolVarP(&exportJSON, "json", "", false, "Output in JSON format")
 
 	exportCmd.MarkFlagRequired("producer")
+	exportCmd.MarkFlagRequired("database")
 }
