@@ -2,6 +2,7 @@ package routes
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/wkalt/dp3/treemgr"
@@ -18,6 +19,16 @@ type ExportRequest struct {
 	End        uint64            `json:"end"`
 }
 
+func (req ExportRequest) validate() error {
+	if req.Database == "" {
+		return errors.New("missing database")
+	}
+	if req.ProducerID == "" {
+		return errors.New("missing producerId")
+	}
+	return nil
+}
+
 func newExportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -32,7 +43,10 @@ func newExportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			"start", req.Start,
 			"end", req.End,
 		)
-
+		if err := req.validate(); err != nil {
+			httputil.BadRequest(ctx, w, "invalid request: %s", err)
+			return
+		}
 		// negotiate request -> versioned roots
 		roots, err := tmgr.GetLatestRoots(ctx, req.Database, req.ProducerID, req.Topics)
 		if err != nil {

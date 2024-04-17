@@ -27,6 +27,16 @@ type QueryRequest struct {
 	Query    string `json:"query"`
 }
 
+func (req QueryRequest) validate() error {
+	if req.Database == "" {
+		return errors.New("missing database")
+	}
+	if req.Query == "" {
+		return errors.New("missing query")
+	}
+	return nil
+}
+
 // newQueryHandler creates a new query handler.
 func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 	parser := ql.NewParser()
@@ -41,6 +51,10 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			"database", req.Database,
 			"query", req.Query,
 		)
+		if err := req.validate(); err != nil {
+			httputil.BadRequest(ctx, w, "invalid request: %s", err)
+			return
+		}
 		ast, err := parser.ParseString("", req.Query)
 		if err != nil {
 			httputil.BadRequest(ctx, w, "error parsing query: %s", err)
