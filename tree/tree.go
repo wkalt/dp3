@@ -11,6 +11,7 @@ import (
 	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
+	"github.com/wkalt/dp3/util"
 )
 
 /*
@@ -248,20 +249,6 @@ func GetStatRange(
 	return ranges, nil
 }
 
-// sortByChildVersion sorts the provided inner nodes by the version of the child
-// at the given index (in ascending order).
-func sortByChildVersion(nodes []*nodestore.InnerNode, index int) []*nodestore.InnerNode {
-	sorted := make([]*nodestore.InnerNode, len(nodes))
-	copy(sorted, nodes)
-	sort.Slice(sorted, func(i, j int) bool {
-		if sorted[i].Children[index] == nil || sorted[j].Children[index] == nil {
-			return false
-		}
-		return sorted[i].Children[index].Version < sorted[j].Children[index].Version
-	})
-	return sorted
-}
-
 // mergeInnerNodes merges a set of inner nodes into a single inner node. The
 // nodes must all be of the same height. The resulting node is written to the
 // provided tree writer. The resulting node is returned.
@@ -270,19 +257,18 @@ func mergeInnerNodes( // nolint: funlen // needs refactor
 	pt TreeWriter,
 	dest TreeReader,
 	destID *nodestore.NodeID,
-	nodes []*nodestore.InnerNode,
-	trees []*MemTree,
+	pairs []util.Pair[*nodestore.InnerNode, *MemTree],
 ) (nodestore.Node, error) {
 	conflicts := []int{}
-	node := nodes[0]
-	singleton := len(nodes) == 1
+	node := pairs[0].First
+	singleton := len(pairs) == 1
 	for i, child := range node.Children {
 		if child != nil && singleton {
 			conflicts = append(conflicts, i)
 			continue
 		}
-		for _, sibling := range nodes[1:] {
-			cousin := sibling.Children[i]
+		for _, sibling := range pairs[1:] {
+			cousin := sibling.First.Children[i]
 			if child == nil && cousin != nil ||
 				child != nil && cousin == nil ||
 				child != nil && cousin != nil {
@@ -309,8 +295,6 @@ func mergeInnerNodes( // nolint: funlen // needs refactor
 		newInner.Children = destInnerNode.Children
 	}
 	for _, conflict := range conflicts {
-		conflictedNodes := make([]nodestore.NodeID, 0, len(trees))
-		conflictedTrees := make([]*MemTree, 0, len(trees))
 		statistics := map[string]*nodestore.Statistics{}
 		var destChild *nodestore.NodeID
 		var destChildVersion *uint64
@@ -324,10 +308,18 @@ func mergeInnerNodes( // nolint: funlen // needs refactor
 		}
 		// Sort nodes by version of the conflicted child, if it exists.
 		// This is necessary to ensure that the highest version is used.
-		sortedNodes := sortByChildVersion(nodes, conflict)
+		sort.Slice(pairs, func(i, j int) bool {
+			left := pairs[i].First
+			right := pairs[j].First
+			if left.Children[conflict] == nil || right.Children[conflict] == nil {
+				return false
+			}
+			return left.Children[conflict].Version < right.Children[conflict].Version
+		})
+		conflictedNodes := make([]util.Pair[nodestore.NodeID, *MemTree], 0, len(pairs))
 		maxVersion := uint64(0)
-		for i, node := range sortedNodes {
-			child := node.Children[conflict]
+		for _, pair := range pairs {
+			child := pair.First.Children[conflict]
 			if child == nil {
 				continue
 			}
@@ -337,14 +329,11 @@ func mergeInnerNodes( // nolint: funlen // needs refactor
 			// If the child is marked as deleted, ignore all versions up to, and including that, child.
 			// TODO: reconcile statistics for tombstoned children.
 			if child.IsTombstone() {
-				clear(conflictedNodes)
-				clear(conflictedTrees)
+				conflictedNodes = conflictedNodes[:0]
 				clear(statistics)
 				continue
 			}
-
-			conflictedNodes = append(conflictedNodes, child.ID)
-			conflictedTrees = append(conflictedTrees, trees[i])
+			conflictedNodes = append(conflictedNodes, util.NewPair(child.ID, pair.Second))
 			for schemaHash, stats := range child.Statistics {
 				if existing, ok := statistics[schemaHash]; ok {
 					if err := existing.Add(stats); err != nil {
@@ -356,7 +345,7 @@ func mergeInnerNodes( // nolint: funlen // needs refactor
 			}
 		}
 		if len(conflictedNodes) > 0 {
-			merged, err := mergeLevel(ctx, pt, dest, destChild, destChildVersion, conflictedNodes, conflictedTrees)
+			merged, err := mergeLevel(ctx, pt, dest, destChild, destChildVersion, conflictedNodes)
 			if err != nil {
 				if errors.Is(err, errElideNode) {
 					continue
@@ -376,23 +365,23 @@ func mergeInnerNodes( // nolint: funlen // needs refactor
 }
 
 // mergeLevel merges the nodes provided into a single node of the same type. The
-// nodes must all be of the same type. The resulting node is written to the
-// provided tree writer. The resulting node is returned.
+// nodes must all be of the same type. The ids argument must be in the same
+// order as trees and in 1:1 correspondence. The resulting node is written to
+// the provided tree writer. The resulting node is returned.
 func mergeLevel(
 	ctx context.Context,
 	mt TreeWriter,
 	dest TreeReader,
 	destID *nodestore.NodeID,
 	destVersion *uint64,
-	ids []nodestore.NodeID,
-	trees []*MemTree,
+	pairs []util.Pair[nodestore.NodeID, *MemTree],
 ) (nodeID nodestore.NodeID, err error) {
-	if len(ids) == 0 {
+	if len(pairs) == 0 {
 		return nodeID, errors.New("no nodes to merge")
 	}
-	nodes := make([]nodestore.Node, 0, len(ids)+1) // may include dest
-	for i, id := range ids {
-		node, err := trees[i].Get(ctx, id)
+	nodes := make([]nodestore.Node, 0, len(pairs)) // may include dest
+	for _, pair := range pairs {
+		node, err := pair.Second.Get(ctx, pair.First)
 		if err != nil {
 			return nodeID, fmt.Errorf("failed to get node: %w", err)
 		}
@@ -411,11 +400,11 @@ func mergeLevel(
 			return nodeID, fmt.Errorf("failed to merge leaves: %w", err)
 		}
 	case nodestore.Inner:
-		innerNodes := make([]*nodestore.InnerNode, len(nodes))
+		innerPairs := make([]util.Pair[*nodestore.InnerNode, *MemTree], len(pairs))
 		for i, node := range nodes {
-			innerNodes[i] = node.(*nodestore.InnerNode)
+			innerPairs[i] = util.NewPair(node.(*nodestore.InnerNode), pairs[i].Second)
 		}
-		node, err = mergeInnerNodes(ctx, mt, dest, destID, innerNodes, trees)
+		node, err = mergeInnerNodes(ctx, mt, dest, destID, innerPairs)
 		if err != nil {
 			return nodeID, fmt.Errorf("failed to merge inner nodes: %w", err)
 		}
@@ -443,7 +432,7 @@ func Merge(
 		return nil, errors.New("no trees to merge")
 	}
 	destRoot := dest.Root()
-	ids := make([]nodestore.NodeID, 0, len(trees))
+	pairs := make([]util.Pair[nodestore.NodeID, *MemTree], 0, len(trees))
 	roots := make([]*nodestore.InnerNode, 0, len(trees))
 	for _, tree := range trees {
 		id := tree.Root()
@@ -456,14 +445,14 @@ func Merge(
 			return nil, NewUnexpectedNodeError(nodestore.Inner, root)
 		}
 		roots = append(roots, innerNode)
-		ids = append(ids, id)
+		pairs = append(pairs, util.NewPair(id, tree))
 	}
 	for _, root := range roots {
 		if root.Height != roots[0].Height {
 			return nil, MismatchedHeightsError{root.Height, roots[0].Height}
 		}
 	}
-	mergedRoot, err := mergeLevel(ctx, output, dest, &destRoot, nil, ids, trees)
+	mergedRoot, err := mergeLevel(ctx, output, dest, &destRoot, nil, pairs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to merge: %w", err)
 	}

@@ -1,6 +1,7 @@
 package tree_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"math"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/tree"
 	"github.com/wkalt/dp3/util"
@@ -407,6 +409,28 @@ func TestStatRange(t *testing.T) {
 			require.Equal(t, c.expected, statrange)
 		})
 	}
+}
+
+func TestMergingOutOfVersionOrder(t *testing.T) {
+	ctx := context.Background()
+
+	root1 := nodestore.NewInnerNode(1, 0, 4096, 64)
+	buf1 := &bytes.Buffer{}
+	mcap.WriteFile(t, buf1, []int64{100})
+	buf2 := &bytes.Buffer{}
+	mcap.WriteFile(t, buf2, []int64{100})
+
+	tw1, err := tree.Insert(ctx, root1, 1, 100, buf1.Bytes(), nil)
+	require.NoError(t, err)
+
+	root2 := nodestore.NewInnerNode(1, 0, 4096, 64)
+	tw2, err := tree.Insert(ctx, root2, 2, 100, buf2.Bytes(), nil)
+	require.NoError(t, err)
+
+	dest1 := tree.NewMemTree(nodestore.RandomNodeID(), root1)
+
+	_, err = tree.Merge(ctx, dest1, tw2, tw1)
+	require.NoError(t, err)
 }
 
 func TestMerge(t *testing.T) {
