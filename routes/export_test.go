@@ -17,6 +17,7 @@ func TestExportHandler(t *testing.T) {
 	tmgr, done := treemgr.TestTreeManager(ctx, t)
 	defer done()
 	requestBody := ExportRequest{
+		Database:   "db",
 		ProducerID: "sampleProducerID",
 		Topics:     map[string]uint64{"topic1": 0, "topic2": 0},
 		Start:      123,
