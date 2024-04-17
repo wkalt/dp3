@@ -30,6 +30,11 @@ func writeErrorResponse(ctx context.Context, w http.ResponseWriter, code int, ms
 	}
 }
 
+func NotFound(ctx context.Context, w http.ResponseWriter, msg string, args ...any) {
+	log.Debugw(ctx, "Not found", "msg", fmt.Sprintf(msg, args...))
+	writeErrorResponse(ctx, w, http.StatusNotFound, fmt.Sprintf(msg, args...))
+}
+
 func BadRequest(ctx context.Context, w http.ResponseWriter, msg string, args ...any) {
 	log.Errorw(ctx, "Bad request", "msg", fmt.Sprintf(msg, args...))
 	writeErrorResponse(ctx, w, http.StatusBadRequest, fmt.Sprintf(msg, args...))

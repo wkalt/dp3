@@ -52,25 +52,29 @@ func withPaging(pager string, f func(io.Writer) error) error {
 	if err != nil {
 		return fmt.Errorf("failed to make a pipe: %w", err)
 	}
+	defer w.Close()
 
 	stdout := os.Stdout
+	stderr := os.Stderr
+	stdin := os.Stdin
 	os.Stdout = w
 
 	cmd := exec.Command(pager, "-F")
 	cmd.Stdin = r
 	cmd.Stdout = stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = stderr
 
 	defer func() {
+		cmd.Process.Kill()
 		os.Stdout = stdout
+		os.Stderr = stderr
+		os.Stdin = stdin
 	}()
 
 	done := make(chan struct{})
 
 	go func() {
-		if err := cmd.Run(); err != nil {
-			fmt.Fprintln(os.Stderr, "error running pager: "+err.Error())
-		}
+		_ = cmd.Run()
 		done <- struct{}{}
 	}()
 
@@ -105,6 +109,7 @@ func executeQuery(database string, query string) error {
 	if err != nil {
 		return fmt.Errorf("error calling export: %w", err)
 	}
+	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		response := &httputil.ErrorResponse{}
 		if err := json.NewDecoder(resp.Body).Decode(response); err != nil {
@@ -327,6 +332,14 @@ func handleStatRange(database string, line string) error {
 	})
 }
 
+func parseErrorResponse(resp *http.Response) error {
+	response := &httputil.ErrorResponse{}
+	if err := json.NewDecoder(resp.Body).Decode(response); err != nil {
+		return fmt.Errorf("error decoding response: %w", err)
+	}
+	return errors.New(response.Error)
+}
+
 func printTables(w io.Writer, database string, producerID string, topic string) error {
 	var historical bool
 	if producerID != "" && topic != "" {
@@ -347,7 +360,9 @@ func printTables(w io.Writer, database string, producerID string, topic string) 
 		return fmt.Errorf("error calling tables: %s", err)
 	}
 	defer resp.Body.Close()
-	cutil.MustOK(resp)
+	if resp.StatusCode != http.StatusOK {
+		return parseErrorResponse(resp)
+	}
 
 	response := []treemgr.Table{}
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
