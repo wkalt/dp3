@@ -11,12 +11,12 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/bmatcuk/doublestar/v4"
 	"github.com/chzyer/readline"
 	"github.com/relvacode/iso8601"
 	"github.com/spf13/cobra"
@@ -281,7 +281,7 @@ func handleImport(database string, line string) error {
 	}
 	producer := parts[0]
 	pattern := parts[1]
-	paths, err := filepath.Glob(pattern)
+	paths, err := doublestar.FilepathGlob(pattern)
 	if err != nil {
 		return fmt.Errorf("error globbing: %w", err)
 	}
