@@ -34,8 +34,7 @@ const (
 	gigabyte = 1024 * 1024 * 1024
 )
 
-type DP3 struct {
-}
+type DP3 struct{}
 
 // NewDP3Service creates a new DP3 service.
 func NewDP3Service() *DP3 {
