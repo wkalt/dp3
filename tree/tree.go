@@ -279,19 +279,17 @@ func mergeInnerNodes( // nolint: funlen // needs refactor
 	}
 	// Create a new merged child in the location of each conflict
 	var destInnerNode *nodestore.InnerNode
-	var ok bool
+	newInner := nodestore.NewInnerNode(node.Height, node.Start, node.End, len(node.Children))
 	if destID != nil {
 		destNode, err := dest.Get(ctx, *destID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get dest node: %w", err)
 		}
-		destInnerNode, ok = destNode.(*nodestore.InnerNode)
+		inner, ok := destNode.(*nodestore.InnerNode)
 		if !ok {
 			return nil, NewUnexpectedNodeError(nodestore.Inner, destNode)
 		}
-	}
-	newInner := nodestore.NewInnerNode(node.Height, node.Start, node.End, len(node.Children))
-	if destInnerNode != nil {
+		destInnerNode = inner.Clone()
 		newInner.Children = destInnerNode.Children
 	}
 	for _, conflict := range conflicts {
@@ -379,7 +377,7 @@ func mergeLevel(
 	if len(pairs) == 0 {
 		return nodeID, errors.New("no nodes to merge")
 	}
-	nodes := make([]nodestore.Node, 0, len(pairs)) // may include dest
+	nodes := make([]nodestore.Node, 0, len(pairs))
 	for _, pair := range pairs {
 		node, err := pair.Second.Get(ctx, pair.First)
 		if err != nil {

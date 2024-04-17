@@ -47,6 +47,15 @@ func (c *Child) IsTombstone() bool {
 	return c.ID == NodeID{} && c.Version > 0
 }
 
+func (c *Child) Clone() *Child {
+	clone := *c
+	clone.Statistics = make(map[string]*Statistics, len(c.Statistics))
+	for k, v := range c.Statistics {
+		clone.Statistics[k] = v.Clone()
+	}
+	return &clone
+}
+
 // Size returns the size of the node in bytes.
 func (n *InnerNode) Size() uint64 {
 	return 8 + 8 + 1 + uint64(len(n.Children)*24)
@@ -73,6 +82,17 @@ func (n *InnerNode) FromBytes(data []byte) error {
 		return fmt.Errorf("error unmarshalling inner node: %w", err)
 	}
 	return nil
+}
+
+func (n *InnerNode) Clone() *InnerNode {
+	clone := *n
+	clone.Children = make([]*Child, len(n.Children))
+	for i, child := range n.Children {
+		if child != nil {
+			clone.Children[i] = child.Clone()
+		}
+	}
+	return &clone
 }
 
 // PlaceChild sets the child at the given index to the given ID and version.
