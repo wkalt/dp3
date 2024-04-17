@@ -32,11 +32,38 @@ type RootListing struct {
 }
 
 type Rootmap interface {
-	GetLatest(ctx context.Context, producerID string, topic string) (string, nodestore.NodeID, uint64, error)
-	GetLatestByTopic(ctx context.Context, producerID string, topics map[string]uint64) ([]RootListing, error)
-	Get(ctx context.Context, producerID string, topic string, version uint64) (string, nodestore.NodeID, error)
-	Put(ctx context.Context, producerID string, topic string, version uint64, prefix string, nodeID nodestore.NodeID) error
-
-	// Catalog features - producer/topic autocompletion
-	GetHistorical(ctx context.Context, producer string, topic string) ([]RootListing, error)
+	GetLatest(
+		ctx context.Context,
+		database string,
+		producerID string,
+		topic string,
+	) (string, nodestore.NodeID, uint64, error)
+	GetLatestByTopic(
+		ctx context.Context,
+		database string,
+		producerID string,
+		topics map[string]uint64,
+	) ([]RootListing, error)
+	Get(
+		ctx context.Context,
+		database string,
+		producerID string,
+		topic string,
+		version uint64,
+	) (string, nodestore.NodeID, error)
+	Put(
+		ctx context.Context,
+		database string,
+		producerID string,
+		topic string,
+		version uint64,
+		prefix string,
+		nodeID nodestore.NodeID,
+	) error
+	GetHistorical(
+		ctx context.Context,
+		database string,
+		producer string,
+		topic string,
+	) ([]RootListing, error)
 }

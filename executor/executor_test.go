@@ -107,7 +107,7 @@ func TestQueryExecution(t *testing.T) {
 					parser := ql.NewParser()
 					ast, err := parser.ParseString("", c.query)
 					require.NoError(t, err)
-					qp, err := plan.CompileQuery(*ast)
+					qp, err := plan.CompileQuery("db", *ast)
 					require.NoError(t, err)
 					actual, err := executor.CompilePlan(ctx, qp, tmgr.NewTreeIterator)
 					require.NoError(t, err)
@@ -146,7 +146,7 @@ func TestQueryExecution(t *testing.T) {
 				query := "from device topic-0 where topic-0.s " + query
 				ast, err := parser.ParseString("", query)
 				require.NoError(t, err)
-				qp, err := plan.CompileQuery(*ast)
+				qp, err := plan.CompileQuery("db", *ast)
 				require.NoError(t, err)
 				actual, err := executor.CompilePlan(ctx, qp, tmgr.NewTreeIterator)
 				require.NoError(t, err)
@@ -201,7 +201,7 @@ func TestQueryExecution(t *testing.T) {
 					}
 					ast, err := parser.ParseString("", query)
 					require.NoError(t, err)
-					qp, err := plan.CompileQuery(*ast)
+					qp, err := plan.CompileQuery("db", *ast)
 					require.NoError(t, err)
 					actual, err := executor.CompilePlan(ctx, qp, tmgr.NewTreeIterator)
 					require.NoError(t, err)
@@ -280,7 +280,7 @@ func TestCompilePlan(t *testing.T) {
 			ast, err := parser.ParseString("", c.query)
 			require.NoError(t, err)
 
-			qp, err := plan.CompileQuery(*ast)
+			qp, err := plan.CompileQuery("db", *ast)
 			require.NoError(t, err)
 
 			actual, err := executor.CompilePlan(ctx, qp, tmgr.NewTreeIterator)
@@ -294,7 +294,7 @@ func prepTmgr(t *testing.T, ctx context.Context, tmgr *treemgr.TreeManager) {
 	t.Helper()
 	buf := &bytes.Buffer{}
 	mcap.WriteFile(t, buf, [][]int64{{1, 3, 5}, {2, 4, 6}}...)
-	require.NoError(t, tmgr.Receive(ctx, "device", buf))
+	require.NoError(t, tmgr.Receive(ctx, "db", "device", buf))
 	require.NoError(t, tmgr.ForceFlush(ctx))
 }
 
@@ -356,7 +356,7 @@ func prepTmgr2(t *testing.T, ctx context.Context, tmgr *treemgr.TreeManager) {
 			c++
 		}
 		require.NoError(t, w.Close())
-		require.NoError(t, tmgr.Receive(ctx, "device", buf))
+		require.NoError(t, tmgr.Receive(ctx, "db", "device", buf))
 		require.NoError(t, tmgr.ForceFlush(ctx))
 		buf.Reset()
 	}

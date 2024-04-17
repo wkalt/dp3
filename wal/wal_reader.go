@@ -40,7 +40,8 @@ func NewReader(r io.ReadSeeker) (*walReader, error) {
 // ParseMergeRequestRecord parses a merge request record.
 func ParseMergeRequestRecord(data []byte) *MergeRequestRecord {
 	offset := 0
-	var producer, topic, batchID string
+	var database, producer, topic, batchID string
+	offset += util.ReadPrefixedString(data[offset:], &database)
 	offset += util.ReadPrefixedString(data[offset:], &producer)
 	offset += util.ReadPrefixedString(data[offset:], &topic)
 	offset += util.ReadPrefixedString(data[offset:], &batchID)
@@ -51,6 +52,7 @@ func ParseMergeRequestRecord(data []byte) *MergeRequestRecord {
 		addrs = append(addrs, a)
 	}
 	return &MergeRequestRecord{
+		Database: database,
 		Producer: producer,
 		Topic:    topic,
 		BatchID:  batchID,
@@ -68,7 +70,8 @@ func ParseMergeCompleteRecord(data []byte) *MergeCompleteRecord {
 // ParseInsertRecord parses an insert record.
 func ParseInsertRecord(data []byte) *InsertRecord {
 	offset := 0
-	var producer, topic, batchID string
+	var database, producer, topic, batchID string
+	offset += util.ReadPrefixedString(data[offset:], &database)
 	offset += util.ReadPrefixedString(data[offset:], &producer)
 	offset += util.ReadPrefixedString(data[offset:], &topic)
 	offset += util.ReadPrefixedString(data[offset:], &batchID)
@@ -76,6 +79,7 @@ func ParseInsertRecord(data []byte) *InsertRecord {
 	var addr Address
 	offset += copy(addr[:], data[offset:offset+24])
 	return &InsertRecord{
+		Database: database,
 		Producer: producer,
 		Topic:    topic,
 		BatchID:  batchID,

@@ -11,6 +11,7 @@ import (
 
 // ExportRequest is the request body for the export endpoint.
 type ExportRequest struct {
+	Database   string            `json:"database"`
 	ProducerID string            `json:"producerId"`
 	Topics     map[string]uint64 `json:"topics"`
 	Start      uint64            `json:"start"`
@@ -33,7 +34,7 @@ func newExportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		)
 
 		// negotiate request -> versioned roots
-		roots, err := tmgr.GetLatestRoots(ctx, req.ProducerID, req.Topics)
+		roots, err := tmgr.GetLatestRoots(ctx, req.Database, req.ProducerID, req.Topics)
 		if err != nil {
 			httputil.InternalServerError(ctx, w, "error getting latest roots: %s", err)
 			return

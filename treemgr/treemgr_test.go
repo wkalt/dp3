@@ -133,14 +133,14 @@ func TestGetStatisticsLatest(t *testing.T) {
 			mcap.WriteFile(t, buf, c.input...)
 			tmgr, finish := treemgr.TestTreeManager(ctx, t)
 			defer finish()
-			require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
+			require.NoError(t, tmgr.Receive(ctx, "db", "my-device", buf))
 			require.NoError(t, tmgr.ForceFlush(ctx))
 			start := c.bounds[0]
 			end := c.bounds[1]
 
 			result := make(map[string][]nodestore.StatRange)
 			for _, topic := range c.topics {
-				ranges, err := tmgr.GetStatisticsLatest(ctx, start, end, "my-device", topic, c.granularity)
+				ranges, err := tmgr.GetStatisticsLatest(ctx, "db", "my-device", topic, start, end, c.granularity)
 				require.NoError(t, err)
 				result[topic] = ranges
 			}
@@ -238,7 +238,7 @@ func TestGetMessages(t *testing.T) {
 			mcap.WriteFile(t, buf, c.input...)
 			tmgr, finish := treemgr.TestTreeManager(ctx, t)
 			defer finish()
-			require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
+			require.NoError(t, tmgr.Receive(ctx, "db", "my-device", buf))
 			require.NoError(t, tmgr.ForceFlush(ctx))
 
 			output := &bytes.Buffer{}
@@ -248,7 +248,7 @@ func TestGetMessages(t *testing.T) {
 			for _, topic := range c.topics {
 				topics[topic] = 0
 			}
-			roots, err := tmgr.GetLatestRoots(ctx, "my-device", topics)
+			roots, err := tmgr.GetLatestRoots(ctx, "db", "my-device", topics)
 			require.NoError(t, err)
 
 			require.NoError(t, tmgr.GetMessages(ctx, output, start, end, roots))
@@ -293,23 +293,23 @@ func TestStreamingAcrossMultipleReceives(t *testing.T) {
 
 	tmgr, finish := treemgr.TestTreeManager(ctx, t)
 	defer finish()
-	require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
+	require.NoError(t, tmgr.Receive(ctx, "db", "my-device", buf))
 	require.NoError(t, tmgr.ForceFlush(ctx))
 
 	// overlapping
 	buf.Reset()
 	mcap.WriteFile(t, buf, []int64{10e9})
-	require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
+	require.NoError(t, tmgr.Receive(ctx, "db", "my-device", buf))
 	require.NoError(t, tmgr.ForceFlush(ctx))
 
 	// nonoverlapping
 	buf.Reset()
 	mcap.WriteFile(t, buf, []int64{1000e9})
-	require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
+	require.NoError(t, tmgr.Receive(ctx, "db", "my-device", buf))
 	require.NoError(t, tmgr.ForceFlush(ctx))
 
 	output := &bytes.Buffer{}
-	roots, err := tmgr.GetLatestRoots(ctx, "my-device", map[string]uint64{"topic-0": 0})
+	roots, err := tmgr.GetLatestRoots(ctx, "db", "my-device", map[string]uint64{"topic-0": 0})
 	require.NoError(t, err)
 
 	require.NoError(t, tmgr.GetMessages(ctx, output, 0, 100000e9, roots))
@@ -338,20 +338,20 @@ func TestReceiveDifferentSchemas(t *testing.T) {
 		buf := &bytes.Buffer{}
 
 		mcap.WriteFileExtended(t, buf, 1, []int64{10e9})
-		require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
+		require.NoError(t, tmgr.Receive(ctx, "db", "my-device", buf))
 		require.NoError(t, tmgr.ForceFlush(ctx))
 
 		buf.Reset()
 
 		mcap.WriteFileExtended(t, buf, 2, []int64{100e9})
-		require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
+		require.NoError(t, tmgr.Receive(ctx, "db", "my-device", buf))
 		require.NoError(t, tmgr.ForceFlush(ctx))
 
 		expected := `[0-64424509440 [0-1006632960:5 (12 count=1 13 count=1)
 		[0-15728640:5 (12 count=1 13 count=1) [0-245760:5 (12 count=1 13 count=1) [0-3840:5 (12 count=1 13 count=1)
 		[0-60:3 (13 count=1) [leaf 1 msg]] [60-120:5 (12 count=1) [leaf 1 msg]]]]]]]`
 
-		str := tmgr.PrintStream(ctx, "my-device", "topic-0")
+		str := tmgr.PrintStream(ctx, "db", "my-device", "topic-0")
 		assertEqualTrees(t, expected, str)
 	})
 }
@@ -372,7 +372,7 @@ func runSequence(ctx context.Context, t *testing.T, tmgr *treemgr.TreeManager, s
 			right, err := strconv.ParseInt(nums[1], 10, 64)
 			require.NoError(t, err)
 			mcap.WriteFile(t, buf, [][]int64{{1e9 * left, 1e9 * right}}...)
-			require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
+			require.NoError(t, tmgr.Receive(ctx, "db", "my-device", buf))
 		case 'd':
 			nums := strings.Split(s[2:strings.Index(s, ")")], ",")
 			left, err := strconv.ParseInt(nums[0], 10, 64)
@@ -380,14 +380,15 @@ func runSequence(ctx context.Context, t *testing.T, tmgr *treemgr.TreeManager, s
 			right, err := strconv.ParseInt(nums[1], 10, 64)
 			require.NoError(t, err)
 			mcap.WriteFile(t, buf, [][]int64{{left}, {right}}...)
-			require.NoError(t, tmgr.DeleteMessages(ctx, "my-device", "topic-0", 1e9*uint64(left), 1e9*uint64(right)))
+			require.NoError(t, tmgr.DeleteMessages(
+				ctx, "db", "my-device", "topic-0", 1e9*uint64(left), 1e9*uint64(right)))
 		default:
 			require.Fail(t, "unknown command")
 		}
 		require.NoError(t, tmgr.ForceFlush(ctx))
 		s = s[strings.Index(s, ")")+1:]
 	}
-	return tmgr.PrintStream(ctx, "my-device", "topic-0")
+	return tmgr.PrintStream(ctx, "db", "my-device", "topic-0")
 }
 
 // NB: this is really a tree iterator test, but the treemgr machinery is useful
@@ -494,7 +495,9 @@ func TestTreeIteration(t *testing.T) {
 			runSequence(ctx, t, tmgr, c.input)
 
 			output := &bytes.Buffer{}
-			roots, err := tmgr.GetLatestRoots(ctx, "my-device", map[string]uint64{"topic-0": 0})
+			roots, err := tmgr.GetLatestRoots(
+				ctx, "db", "my-device", map[string]uint64{"topic-0": 0},
+			)
 			require.NoError(t, err)
 
 			require.NoError(t, tmgr.GetMessages(ctx, output, 0, ^uint64(0), roots))
@@ -564,13 +567,13 @@ func TestReceive(t *testing.T) {
 			mcap.WriteFile(t, buf, c.input...)
 			tmgr, finish := treemgr.TestTreeManager(ctx, t)
 			defer finish()
-			require.NoError(t, tmgr.Receive(ctx, "my-device", buf))
+			require.NoError(t, tmgr.Receive(ctx, "db", "my-device", buf))
 			require.NoError(t, tmgr.ForceFlush(ctx))
 
 			for i := range c.output {
 				topic := fmt.Sprintf("topic-%d", i)
 				t.Run("comparing"+topic, func(t *testing.T) {
-					str := tmgr.PrintStream(ctx, "my-device", topic)
+					str := tmgr.PrintStream(ctx, "db", "my-device", topic)
 					assertEqualTrees(t, c.output[i], str)
 				})
 			}

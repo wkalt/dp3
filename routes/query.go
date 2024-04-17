@@ -23,7 +23,8 @@ into an execution tree, and executes the query.
 
 // QueryRequest represents a query request.
 type QueryRequest struct {
-	Query string `json:"query"`
+	Database string `json:"database"`
+	Query    string `json:"query"`
 }
 
 // newQueryHandler creates a new query handler.
@@ -37,6 +38,7 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			return
 		}
 		log.Infow(ctx, "query request",
+			"database", req.Database,
 			"query", req.Query,
 		)
 		ast, err := parser.ParseString("", req.Query)
@@ -44,7 +46,7 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			httputil.BadRequest(ctx, w, "error parsing query: %s", err)
 			return
 		}
-		qp, err := plan.CompileQuery(*ast)
+		qp, err := plan.CompileQuery(req.Database, *ast)
 		if err != nil {
 			httputil.InternalServerError(ctx, w, "error compiling query: %s", err)
 			return

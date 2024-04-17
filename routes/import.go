@@ -12,6 +12,7 @@ import (
 
 // ImportRequest is the request body for the import endpoint.
 type ImportRequest struct {
+	Database   string `json:"database"`
 	ProducerID string `json:"producerId"`
 	Path       string `json:"path"`
 }
@@ -25,7 +26,7 @@ func newImportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			return
 		}
 		defer r.Body.Close()
-		ctx = log.AddTags(ctx, "producer", req.ProducerID, "path", req.Path)
+		ctx = log.AddTags(ctx, "database", req.Database, "producer", req.ProducerID, "path", req.Path)
 		f, err := os.Open(req.Path) // todo - get from storage provider
 		if err != nil {
 			httputil.BadRequest(ctx, w, "error opening file: %s", err)
@@ -33,7 +34,7 @@ func newImportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		}
 		defer f.Close()
 		log.Infof(ctx, "Importing file")
-		if err := tmgr.Receive(ctx, req.ProducerID, f); err != nil {
+		if err := tmgr.Receive(ctx, req.Database, req.ProducerID, f); err != nil {
 			httputil.InternalServerError(ctx, w, "error receiving file: %s", err)
 			return
 		}

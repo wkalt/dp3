@@ -15,6 +15,7 @@ suitable for usage in testing.
 ////////////////////////////////////////////////////////////////////////////////
 
 type root struct {
+	database   string
 	producerID string
 	topic      string
 	version    uint64
@@ -33,9 +34,17 @@ func NewMemRootmap() Rootmap {
 	}
 }
 
-func (rm *memrootmap) GetHistorical(ctx context.Context, producer string, topic string) ([]RootListing, error) {
+func (rm *memrootmap) GetHistorical(
+	ctx context.Context,
+	database string,
+	producer string,
+	topic string,
+) ([]RootListing, error) {
 	result := []RootListing{}
 	for _, root := range rm.roots {
+		if root.database != database {
+			continue
+		}
 		if root.producerID != producer {
 			continue
 		}
@@ -54,13 +63,20 @@ func (rm *memrootmap) GetHistorical(ctx context.Context, producer string, topic 
 
 func (rm *memrootmap) GetLatestByTopic(
 	ctx context.Context,
+	database string,
 	producerID string,
 	topics map[string]uint64,
 ) ([]RootListing, error) {
 	groups := make(map[string][]root)
 	for i := len(rm.roots) - 1; i >= 0; i-- {
 		root := rm.roots[i]
-		if _, ok := topics[root.topic]; ok && root.producerID == producerID {
+		if root.database != database {
+			continue
+		}
+		if root.producerID != producerID {
+			continue
+		}
+		if _, ok := topics[root.topic]; ok {
 			groups[root.topic] = append(groups[root.topic], root)
 		}
 	}
@@ -84,33 +100,48 @@ func (rm *memrootmap) GetLatestByTopic(
 }
 
 func (rm *memrootmap) GetLatest(
-	ctx context.Context, producerID string, topic string) (string, nodestore.NodeID, uint64, error) {
+	ctx context.Context,
+	database string,
+	producerID string,
+	topic string,
+) (string, nodestore.NodeID, uint64, error) {
 	for i := len(rm.roots) - 1; i >= 0; i-- { // nb: assumes roots added in ascending order
 		root := rm.roots[i]
-		if root.producerID == producerID && root.topic == topic {
+		if root.database == database && root.producerID == producerID && root.topic == topic {
 			return root.prefix, root.nodeID, root.version, nil
 		}
 	}
-	return "", nodestore.NodeID{}, 0, StreamNotFoundError{producerID, topic}
+	return "", nodestore.NodeID{}, 0, NewStreamNotFoundError(database, producerID, topic)
 }
 
 func (rm *memrootmap) Get(
-	ctx context.Context, producerID string, topic string, version uint64) (string, nodestore.NodeID, error) {
+	ctx context.Context,
+	database string,
+	producerID string,
+	topic string,
+	version uint64,
+) (string, nodestore.NodeID, error) {
 	for i := len(rm.roots) - 1; i >= 0; i-- {
 		root := rm.roots[i]
-		if root.producerID == producerID && root.topic == topic && root.version == version {
+		if root.database == database && root.producerID == producerID && root.topic == topic && root.version == version {
 			return root.prefix, root.nodeID, nil
 		}
 	}
-	return "", nodestore.NodeID{}, StreamNotFoundError{producerID, topic}
+	return "", nodestore.NodeID{}, NewStreamNotFoundError(database, producerID, topic)
 }
 
 func (rm *memrootmap) Put(
-	ctx context.Context, producerID string, topic string,
-	version uint64, prefix string, nodeID nodestore.NodeID,
+	ctx context.Context,
+	database string,
+	producerID string,
+	topic string,
+	version uint64,
+	prefix string,
+	nodeID nodestore.NodeID,
 ) error {
 	timestamp := ""
 	rm.roots = append(rm.roots, root{
+		database:   database,
 		producerID: producerID,
 		topic:      topic,
 		version:    version,

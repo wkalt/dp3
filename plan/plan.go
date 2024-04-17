@@ -248,7 +248,7 @@ func compileOr(ast []ql.OrClause) *Node {
 }
 
 // CompileQuery compiles an AST query to a plan node.
-func CompileQuery(ast ql.Query) (*Node, error) {
+func CompileQuery(database string, ast ql.Query) (*Node, error) {
 	start := int64(0)
 	end := int64(math.MaxInt64)
 	var err error
@@ -268,7 +268,7 @@ func CompileQuery(ast ql.Query) (*Node, error) {
 	traverse(
 		base,
 		pullUpMergeJoins,
-		func(n *Node) { pushDownFilters(n, where, producer, uint64(start), uint64(end)) })
+		func(n *Node) { pushDownFilters(n, where, database, producer, uint64(start), uint64(end)) })
 	if len(ast.PagingClause) > 0 {
 		base = wrapWithPaging(base, ast.PagingClause)
 	}
@@ -279,14 +279,14 @@ func CompileQuery(ast ql.Query) (*Node, error) {
 // since we don't know about schemas here. The executor will resolve
 // it according to the schema of the data and error if nonsense is
 // submitted.
-func pushDownFilters(n *Node, where *Node, producer string, start, end uint64) {
+func pushDownFilters(n *Node, where *Node, database string, producer string, start, end uint64) {
 	if n.Type != Scan {
 		return
 	}
 	if len(where.Children) > 0 {
 		n.Children = append(n.Children, where)
 	}
-	n.Args = append(n.Args, producer)
+	n.Args = append(n.Args, database, producer)
 	if start == 0 && end == math.MaxInt64 {
 		n.Args = append(n.Args, "all-time")
 		return

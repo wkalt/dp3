@@ -24,14 +24,14 @@ func TestWALRotation(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, wm.Recover(ctx))
 	for i := 0; i < 100; i++ {
-		_, err := wm.Insert(ctx, "producer", "topic", []byte{0x01, 0x02})
+		_, err := wm.Insert(ctx, "db", "producer", "topic", []byte{0x01, 0x02})
 		require.NoError(t, err)
 	}
 
 	paths, err := os.ReadDir(tmpdir)
 	require.NoError(t, err)
 
-	require.Len(t, paths, 10)
+	require.Len(t, paths, 11)
 }
 
 func TestWALLookups(t *testing.T) {
@@ -70,7 +70,7 @@ func TestWALLookups(t *testing.T) {
 			data := make([]byte, 100)
 			for _, record := range c.records {
 				if record == wal.WALInsert {
-					addr, err := wm.Insert(ctx, "producer", "topic", data)
+					addr, err := wm.Insert(ctx, "db", "producer", "topic", data)
 					require.NoError(t, err)
 					addrs = append(addrs, addr)
 				}
@@ -198,7 +198,7 @@ func TestWALRecovery(t *testing.T) {
 				topic := "topic"
 				for _, producer := range c.inserts {
 					data := make([]byte, 100)
-					_, err := wm.Insert(ctx, producer, topic, data)
+					_, err := wm.Insert(ctx, "db", producer, topic, data)
 					require.NoError(t, err)
 				}
 				await(c.expectedBatchCount) // wait for any batches to process prior to shutdown
@@ -212,8 +212,8 @@ func TestWALRecovery(t *testing.T) {
 				require.NoError(t, wm2.Recover(ctx))
 				teardown()
 
-				for treeID, count := range wm2.Stats().PendingInserts {
-					require.Equal(t, len(count), c.expectedInsertsCounts[treeID.Producer])
+				for treeID, inserts := range wm2.Stats().PendingInserts {
+					require.Equal(t, len(inserts), c.expectedInsertsCounts[treeID.Producer])
 				}
 
 				foundMerges := map[string]int{}
@@ -237,7 +237,7 @@ func TestScenarios(t *testing.T) {
 			require.NoError(t, batch.Finish())
 		})
 		require.NoError(t, wm.Recover(ctx))
-		_, err = wm.Insert(ctx, "producer", "topic", []byte{0x01, 0x02})
+		_, err = wm.Insert(ctx, "db", "producer", "topic", []byte{0x01, 0x02})
 		require.NoError(t, err)
 		teardown()
 
@@ -256,7 +256,7 @@ func TestScenarios(t *testing.T) {
 		})
 		require.NoError(t, wm2.Recover(ctx))
 		require.Empty(t, wm2.Stats().PendingInserts)
-		_, err = wm2.Insert(ctx, "producer", "topic", []byte{0x01, 0x02})
+		_, err = wm2.Insert(ctx, "db", "producer", "topic", []byte{0x01, 0x02})
 		require.NoError(t, err)
 		require.Len(t, wm2.Stats().PendingInserts, 1)
 		teardown()
@@ -288,7 +288,7 @@ func TestScenarios(t *testing.T) {
 			require.NoError(t, batch.Finish())
 		})
 		require.NoError(t, wm.Recover(ctx))
-		_, err = wm.Insert(ctx, "producer", "topic", []byte{0x01, 0x02})
+		_, err = wm.Insert(ctx, "db", "producer", "topic", []byte{0x01, 0x02})
 		require.NoError(t, err)
 
 		removed, err := wm.RemoveStaleFiles(ctx)
