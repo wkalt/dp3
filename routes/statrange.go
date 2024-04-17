@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/wkalt/dp3/rootmap"
 	"github.com/wkalt/dp3/treemgr"
 	"github.com/wkalt/dp3/util/httputil"
 	"github.com/wkalt/dp3/util/log"
@@ -62,11 +63,15 @@ func newStatRangeHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			req.End,
 			req.Granularity,
 		)
+		w.Header().Set("Content-Type", "application/json")
 		if err != nil {
+			if errors.Is(err, rootmap.StreamNotFoundError{}) {
+				httputil.NotFound(ctx, w, "no matching data")
+				return
+			}
 			httputil.InternalServerError(ctx, w, "error getting statistics: %s", err)
 			return
 		}
-		w.Header().Set("Content-Type", "application/json")
 		if err := json.NewEncoder(w).Encode(summary); err != nil {
 			httputil.InternalServerError(ctx, w, "error encoding response: %s", err)
 		}

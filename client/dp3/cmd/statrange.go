@@ -80,7 +80,9 @@ func printStatRange(
 	}
 	defer resp.Body.Close()
 
-	cutil.MustOK(resp)
+	if resp.StatusCode != http.StatusOK {
+		return parseErrorResponse(resp)
+	}
 
 	response := []nodestore.StatRange{}
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
