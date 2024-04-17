@@ -486,6 +486,7 @@ multimodal log database for low-latency playback and analytics.
 The client supports interaction via either queries or dot commands. The
 supported dot commands are:
   .h [topic] to print help text. If topic is blank, prints this text.
+  .connect [database] to connect to a database
   .statrange to run a statrange query
   .import to import data to the database
   .delete to delete data from the database

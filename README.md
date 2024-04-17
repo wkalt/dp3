@@ -38,13 +38,14 @@ __        _      _____
            |_|         
 Type "help" for help.
 
-dp3 # help
+dp3:[default] # help
 The dp3 client is an interactive interpreter for dp3.  dp3 is a
 multimodal log database for low-latency playback and analytics.
 
 The client supports interaction via either queries or dot commands. The
 supported dot commands are:
   .h [topic] to print help text. If topic is blank, prints this text.
+  .connect [database] to connect to a database
   .statrange to run a statrange query
   .import to import data to the database
   .delete to delete data from the database
@@ -59,11 +60,12 @@ Available help topics are:
 
 Any input aside from "help" that does not start with a dot is interpreted as
 a query. Queries are terminated with a semicolon.
-dp3 #
-dp3 # .import my-robot example-data/fix.mcap
-dp3 #
-dp3 # from my-robot /fix limit 1;
+dp3:[default] #
+dp3:[default] # .import my-robot example-data/fix.mcap
+dp3:[default] #
+dp3:[default] # from my-robot /fix limit 1;
 {"topic":"/fix","sequence":13,"log_time":1479512770.309617340,"publish_time":1479512770.309617340,"data":{"header":{"seq":1,"stamp":1479512770.308916091,"frame_id":"/imu"},"status":{"status":0,"service":0},"latitude":37.39973449707031,"longitude":-122.108154296875,"altitude":-8.731653213500977,"position_covariance":[0,0,0,0,0,0,0,0,0],"position_covariance_type":0}}
+
 ```
 
 ## Background
