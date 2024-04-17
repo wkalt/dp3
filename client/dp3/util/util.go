@@ -1,6 +1,8 @@
 package util
 
-import "os"
+import (
+	"os"
+)
 
 // StdoutRedirected returns true if stdout is redirected to a file or pipe.
 func StdoutRedirected() bool {

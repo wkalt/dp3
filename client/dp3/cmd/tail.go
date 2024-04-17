@@ -20,6 +20,7 @@ var (
 	tailProducerID string
 	tailEndDate    string
 	tailStartDate  string
+	tailDatabase   string
 	tailTopics     []string
 )
 
@@ -49,6 +50,7 @@ var tailCmd = &cobra.Command{
 
 		for {
 			messageRequest := &routes.ExportRequest{
+				Database:   tailDatabase,
 				Start:      uint64(start.UnixNano()),
 				End:        uint64(end.UnixNano()),
 				ProducerID: tailProducerID,
@@ -83,10 +85,12 @@ var tailCmd = &cobra.Command{
 func init() {
 	rootCmd.AddCommand(tailCmd)
 
+	tailCmd.PersistentFlags().StringVarP(&tailDatabase, "database", "d", "", "Database name")
 	tailCmd.PersistentFlags().StringVarP(&tailProducerID, "producer", "p", "", "Producer ID")
 	tailCmd.PersistentFlags().StringVarP(&tailStartDate, "start", "s", "", "Start date")
 	tailCmd.PersistentFlags().StringVarP(&tailEndDate, "end", "e", "", "End date")
 	tailCmd.PersistentFlags().StringArrayVarP(&tailTopics, "topics", "t", []string{}, "Topics to query")
 
 	tailCmd.MarkFlagRequired("producer")
+	tailCmd.MarkFlagRequired("database")
 }
