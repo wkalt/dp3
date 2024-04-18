@@ -128,7 +128,7 @@ func printTree(prefix string, rootID nodestore.NodeID, only bool) error {
 			if err != nil {
 				return fmt.Errorf("failed to get leaf summary: %w", err)
 			}
-			c.Fprintf(sb, "%s%s", space, leafstr)
+			c.Fprintf(sb, "%s%s %s", space, nodeID.OID(), leafstr)
 			anc := node
 			for anc.HasAncestor() {
 				ancestorID := anc.Ancestor()
@@ -143,7 +143,7 @@ func printTree(prefix string, rootID nodestore.NodeID, only bool) error {
 				if err != nil {
 					return fmt.Errorf("failed to get ancestor summary: %w", err)
 				}
-				c.Fprintf(sb, "-> %s", s)
+				c.Fprintf(sb, "-> %s %s", ancestorID.OID(), s)
 			}
 			fmt.Println(sb.String())
 		}
