@@ -91,7 +91,7 @@ func (n *Nodestore) Get(ctx context.Context, prefix string, id NodeID) (Node, er
 	if err != nil {
 		return nil, fmt.Errorf("failed to read node: %w", err)
 	}
-	node, err := n.BytesToNode(data)
+	node, err := BytesToNode(data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse node: %w", err)
 	}
@@ -129,7 +129,7 @@ func isLeaf(data []byte) bool {
 	return data[0] > 128
 }
 
-func (n *Nodestore) BytesToNode(value []byte) (Node, error) {
+func BytesToNode(value []byte) (Node, error) {
 	if isLeaf(value) {
 		node := NewLeafNode(nil, nil, nil)
 		if err := node.FromBytes(value); err != nil {
