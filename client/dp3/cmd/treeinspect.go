@@ -113,6 +113,7 @@ func printTree(prefix string, rootID nodestore.NodeID, only bool) error {
 					continue
 				}
 				if only && child.ID.OID() != nodeID.OID() {
+					c := getColor(child.ID.OID())
 					if treeInspectShowLinks {
 						c.Println(space, "->")
 					}
