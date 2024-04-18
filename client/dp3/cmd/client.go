@@ -65,7 +65,9 @@ func withPaging(pager string, f func(io.Writer) error) error {
 	cmd.Stderr = stderr
 
 	defer func() {
-		cmd.Process.Kill()
+		if cmd.Process != nil {
+			cmd.Process.Kill()
+		}
 		os.Stdout = stdout
 		os.Stderr = stderr
 		os.Stdin = stdin
