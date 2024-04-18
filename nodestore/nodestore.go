@@ -79,7 +79,7 @@ func (n *Nodestore) Get(ctx context.Context, prefix string, id NodeID) (Node, er
 	if value, ok := n.cache.Get(id); ok {
 		return value, nil
 	}
-	reader, err := n.store.GetRange(ctx, prefix+"/"+id.OID(), int(id.Offset()), int(id.Length()))
+	reader, err := n.store.GetRange(ctx, prefix+"/"+id.Object(), int(id.Offset()), int(id.Length()))
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotFound) {
 			return nil, NodeNotFoundError{prefix, id}
@@ -105,7 +105,7 @@ func (n *Nodestore) Get(ctx context.Context, prefix string, id NodeID) (Node, er
 func (n *Nodestore) GetLeafNode(ctx context.Context, prefix string, id NodeID) (
 	node *LeafNode, reader io.ReadSeekCloser, err error,
 ) {
-	reader, err = n.store.GetRange(ctx, prefix+"/"+id.OID(), int(id.Offset()), int(id.Length()))
+	reader, err = n.store.GetRange(ctx, prefix+"/"+id.Object(), int(id.Offset()), int(id.Length()))
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotFound) {
 			return nil, nil, NodeNotFoundError{prefix, id}

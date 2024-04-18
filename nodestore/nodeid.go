@@ -22,8 +22,8 @@ location. Many nodes may be stored in a single object.
 // NodeID is a 24-byte identifier for a node in the nodestore.
 type NodeID [24]byte
 
-// OID returns the object identifier of the node.
-func (n NodeID) OID() string {
+// Object returns the object identifier of the node.
+func (n NodeID) Object() string {
 	return strconv.FormatUint(binary.LittleEndian.Uint64(n[:8]), 10)
 }
 
@@ -48,7 +48,7 @@ func NewNodeID(oid, offset, length uint64) NodeID {
 
 // String returns a string representation of the node ID.
 func (n NodeID) String() string {
-	return fmt.Sprintf("%s:%d:%d", n.OID(), n.Offset(), n.Length())
+	return fmt.Sprintf("%s:%d:%d", n.Object(), n.Offset(), n.Length())
 }
 
 func (n NodeID) MarshalJSON() ([]byte, error) {

@@ -46,7 +46,7 @@ func getColor(s string) *color.Color {
 }
 
 func getNode(prefix string, nodeID nodestore.NodeID) (nodestore.Node, error) {
-	f, err := os.Open(path.Join(prefix, nodeID.OID()))
+	f, err := os.Open(path.Join(prefix, nodeID.Object()))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open node: %w", err)
 	}
@@ -100,20 +100,20 @@ func printTree(prefix string, rootID nodestore.NodeID, only bool) error {
 		if err != nil {
 			return fmt.Errorf("failed to get node: %w", err)
 		}
-		c := getColor(nodeID.OID())
+		c := getColor(nodeID.Object())
 		switch node := node.(type) {
 		case *nodestore.InnerNode:
 			start := time.Unix(int64(node.Start), 0).Format("2006-01-02 15:04:05")
 			end := time.Unix(int64(node.End), 0).Format("2006-01-02 15:04:05")
 			space := strings.Repeat(" ", indent)
-			str := fmt.Sprintf("%s%s [%s %s]", space, nodeID.OID(), start, end)
+			str := fmt.Sprintf("%s%s [%s %s]", space, nodeID.Object(), start, end)
 			c.Println(str)
 			for _, child := range node.Children {
 				if child == nil {
 					continue
 				}
-				if only && child.ID.OID() != nodeID.OID() {
-					c := getColor(child.ID.OID())
+				if only && child.ID.Object() != nodeID.Object() {
+					c := getColor(child.ID.Object())
 					if treeInspectShowLinks {
 						c.Println(space, "->")
 					}
@@ -129,7 +129,7 @@ func printTree(prefix string, rootID nodestore.NodeID, only bool) error {
 			if err != nil {
 				return fmt.Errorf("failed to get leaf summary: %w", err)
 			}
-			c.Fprintf(sb, "%s%s %s", space, nodeID.OID(), leafstr)
+			c.Fprintf(sb, "%s%s %s", space, nodeID.Object(), leafstr)
 			anc := node
 			for anc.HasAncestor() {
 				ancestorID := anc.Ancestor()
@@ -139,12 +139,12 @@ func printTree(prefix string, rootID nodestore.NodeID, only bool) error {
 				}
 
 				anc = n.(*nodestore.LeafNode)
-				c := getColor(ancestorID.OID())
+				c := getColor(ancestorID.Object())
 				s, err := leafSummary(anc)
 				if err != nil {
 					return fmt.Errorf("failed to get ancestor summary: %w", err)
 				}
-				c.Fprintf(sb, " -> %s %s", ancestorID.OID(), s)
+				c.Fprintf(sb, " -> %s %s", ancestorID.Object(), s)
 			}
 			fmt.Println(sb.String())
 		}
