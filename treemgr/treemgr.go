@@ -403,10 +403,13 @@ func (tm *TreeManager) newRoot(
 	if err != nil {
 		return nodestore.NodeID{}, 0, fmt.Errorf("failed to get next version: %w", err)
 	}
-	if err := tm.ns.Put(ctx, prefix, version, data); err != nil {
+	nodeID := nodestore.NewNodeID(version, 0, uint64(len(data)))
+	buf := make([]byte, 0, len(data)+24)
+	buf = append(buf, data...)
+	buf = append(buf, nodeID[:]...)
+	if err := tm.ns.Put(ctx, prefix, version, buf); err != nil {
 		return nodestore.NodeID{}, 0, fmt.Errorf("failed to put root: %w", err)
 	}
-	nodeID := nodestore.NewNodeID(version, 0, uint64(len(data)))
 	return nodeID, version, nil
 }
 
