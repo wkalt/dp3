@@ -447,7 +447,7 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 		return fmt.Errorf("failed to serialize partial tree: %w", err)
 	}
 	rootID := data[len(data)-24:]
-	if err := tm.ns.Put(ctx, prefix, version, data[:len(data)-24]); err != nil {
+	if err := tm.ns.Put(ctx, prefix, version, data); err != nil {
 		return fmt.Errorf("failed to put tree: %w", err)
 	}
 	if err := tm.rootmap.Put(
