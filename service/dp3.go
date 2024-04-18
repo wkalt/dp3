@@ -68,7 +68,7 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 	vs := versionstore.NewSQLVersionstore(db, 1e9)
 	walopts := []wal.Option{
 		wal.WithInactiveBatchMergeInterval(2 * time.Second),
-		wal.WithGCInterval(1 * time.Minute),
+		wal.WithGCInterval(10 * time.Second),
 	}
 	waldir := "waldir"
 	if err := util.EnsureDirectoryExists(waldir); err != nil {
