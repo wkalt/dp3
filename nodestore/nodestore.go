@@ -20,27 +20,15 @@ typical height is 5 (just an example).
 
 The Nodestore is responsible for providing access to nodes by node ID. It does
 this using a heirarchical storage scheme:
-* Nodes are initially written to a WAL. After a period of time, they are flushed
-  from WAL to permanent storage. This allows for write batching to counteract
-  variations in input file sizes.
 * Permanent storage is "store", a storage.Provider. In production
   contexts this will be S3-compatible object storage.
 * Nodes are cached on read in a byte capacity-limited LRU cache. If future reads
   reference the same node, it will be served from cache. Nodes are never modified.
   In ideal operation, all inner nodes of the tree are cached in "cache".
-* During the course of insert and WAL flush operations, nodes are staged in an
-  in-memory map ("staging") to support temporary manipulations prior to final
-  persistence.
-
-I think the staging map can and should probably go away, if the tree can
-communicate to the nodestore about the association between temporary node IDs
-and the in-memory nodes. Currently Insert returns a path of node IDs and the
-order is significant, so a bit of refactoring will be required beyond just
-changing the return type to a map.
-
-The nodestore is also responsible for orchestrating tree merge operations across
-the levels of its hierarchy, such as flushing staged nodes to WAL, or WAL nodes
-to storage.
+* An insert to the tree returns a "memtree", which is a linked representation of
+  a partial tree overlay. Once any required modifications are performed, this
+  structure is serialized to a byte array and written to the WAL, and from there
+  to storage.
 */
 
 ////////////////////////////////////////////////////////////////////////////////
