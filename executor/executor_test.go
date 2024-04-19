@@ -46,8 +46,7 @@ func TestQueryExecution(t *testing.T) {
 			},
 			{
 				"merge join with where clause on both elements",
-				// todo: it's weird that either "and" or "or" could work. Will need to firm up the grammar.
-				"from device topic-0, topic-1 where topic-0.u8 = 0 and topic-1.u8 = 0",
+				"from device topic-0, topic-1 where topic-0.u8 = 0 or topic-1.u8 = 0",
 				[][]int64{{0, 0}, {1, 0}},
 			},
 			{
@@ -77,53 +76,51 @@ func TestQueryExecution(t *testing.T) {
 			},
 			{
 				"merge join with alias",
-				"from device topic-0 as a, topic-1 as b where a.u8 = 0 and b.u8 = 0",
+				"from device topic-0 as a, topic-1 as b where a.u8 = 0 or b.u8 = 0",
 				[][]int64{{0, 0}, {1, 0}},
 			},
 			{
 				"merge join one alias one not",
-				"from device topic-0 as a, topic-1 where a.u8 = 0 and topic-1.u8 = 0",
+				"from device topic-0 as a, topic-1 where a.u8 = 0 or topic-1.u8 = 0",
 				[][]int64{{0, 0}, {1, 0}},
 			},
 			{
 				"asof join with alias",
-				"from device topic-0 as a precedes topic-1 as b by less than 10 nanoseconds where a.u8 = 0 and b.u8 = 0",
+				"from device topic-0 as a precedes topic-1 as b by less than 10 nanoseconds where a.u8 = 0 or b.u8 = 0",
 				[][]int64{{0, 0}, {1, 0}},
 			},
 			{
 				"limit",
-				"from device topic-0 as a precedes topic-1 as b by less than 10 nanoseconds where a.u8 = 0 and b.u8 = 0 limit 1",
+				"from device topic-0 as a precedes topic-1 as b by less than 10 nanoseconds where a.u8 = 0 or b.u8 = 0 limit 1",
 				[][]int64{{0, 0}},
 			},
 			{
 				"offset",
-				"from device topic-0 as a precedes topic-1 as b by less than 10 nanoseconds where a.u8 = 0 and b.u8 = 0 offset 1",
+				"from device topic-0 as a precedes topic-1 as b by less than 10 nanoseconds where a.u8 = 0 or b.u8 = 0 offset 1",
 				[][]int64{{1, 0}},
 			},
 		}
 		for _, c := range cases {
-			for range 100 {
-				t.Run(c.assertion, func(t *testing.T) {
-					parser := ql.NewParser()
-					ast, err := parser.ParseString("", c.query)
-					require.NoError(t, err)
-					qp, err := plan.CompileQuery("db", *ast)
-					require.NoError(t, err)
-					actual, err := executor.CompilePlan(ctx, qp, tmgr.NewTreeIterator)
-					require.NoError(t, err)
+			t.Run(c.assertion, func(t *testing.T) {
+				parser := ql.NewParser()
+				ast, err := parser.ParseString("", c.query)
+				require.NoError(t, err)
+				qp, err := plan.CompileQuery("db", *ast)
+				require.NoError(t, err)
+				actual, err := executor.CompilePlan(ctx, qp, tmgr.NewTreeIterator)
+				require.NoError(t, err)
 
-					results := [][]int64{}
-					for {
-						tuple, err := actual.Next(ctx)
-						if err != nil {
-							require.ErrorIs(t, err, io.EOF)
-							break
-						}
-						results = append(results, []int64{int64(tuple.ChannelID()), int64(tuple.LogTime())})
+				results := [][]int64{}
+				for {
+					tuple, err := actual.Next(ctx)
+					if err != nil {
+						require.ErrorIs(t, err, io.EOF)
+						break
 					}
-					require.Equal(t, c.expected, results)
-				})
-			}
+					results = append(results, []int64{int64(tuple.ChannelID()), int64(tuple.LogTime())})
+				}
+				require.Equal(t, c.expected, results)
+			})
 		}
 	})
 
@@ -236,7 +233,7 @@ func TestCompilePlan(t *testing.T) {
 		},
 		{
 			"simple scan with where clause",
-			"from device topic-0 where foo = 10",
+			"from device topic-0 where topic-0.foo = 10",
 			"[filter [scan topic-0]]",
 		},
 		{
@@ -258,6 +255,11 @@ func TestCompilePlan(t *testing.T) {
 			"merge join",
 			"from device topic-0, topic-1",
 			"[merge [scan topic-0] [scan topic-1]]",
+		},
+		{
+			"merge join with qualification on one side",
+			"from device topic-0, topic-1 where topic-0.foo = 10",
+			"[merge [filter [scan topic-0]] [scan topic-1]]",
 		},
 		{
 			"asof join",

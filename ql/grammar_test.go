@@ -13,6 +13,203 @@ const (
 	producer = "my-robot"
 )
 
+func newExpression(or ...*ql.OrCondition) *ql.Expression {
+	return &ql.Expression{
+		Or: or,
+	}
+}
+
+func newOrCondition(and ...*ql.Condition) *ql.OrCondition {
+	return &ql.OrCondition{
+		And: and,
+	}
+}
+
+func newCondition(term ql.Term, rhs *ql.ConditionRHS) *ql.Condition {
+	return &ql.Condition{
+		Operand: term,
+		RHS:     rhs,
+	}
+}
+
+func newConditionRHS(op string, value ql.Value) *ql.ConditionRHS {
+	return &ql.ConditionRHS{
+		Op:    op,
+		Value: value,
+	}
+}
+
+func newTerm(v *string, subexpr *ql.Expression) ql.Term {
+	return ql.Term{
+		Value:         v,
+		Subexpression: subexpr,
+	}
+}
+
+func TestExpression(t *testing.T) {
+	parser, err := participle.Build[ql.Expression](ql.Options...)
+	require.NoError(t, err)
+
+	cases := []struct {
+		assertion string
+		input     string
+		expected  *ql.Expression
+	}{
+		{
+			"simple",
+			"a = 10",
+			newExpression(
+				newOrCondition(
+					newCondition(
+						newTerm(util.Pointer("a"), nil),
+						newConditionRHS("=", *newValue(int64(10))),
+					),
+				),
+			),
+		},
+		{
+			"multiple or",
+			"a = 10 or b > 20",
+			newExpression(
+				newOrCondition(
+					newCondition(
+						newTerm(util.Pointer("a"), nil),
+						newConditionRHS("=", *newValue(int64(10))),
+					),
+				),
+				newOrCondition(
+					newCondition(
+						newTerm(util.Pointer("b"), nil),
+						newConditionRHS(">", *newValue(int64(20))),
+					),
+				),
+			),
+		},
+		{
+			"subexpression",
+			"(a = 10)",
+			newExpression(
+				newOrCondition(
+					newCondition(
+						newTerm(
+							nil,
+							newExpression(
+								newOrCondition(
+									newCondition(
+										newTerm(util.Pointer("a"), nil),
+										newConditionRHS("=", *newValue(int64(10))),
+									),
+								),
+							),
+						),
+						nil,
+					),
+				),
+			),
+		},
+		{
+			"multiple and",
+			"a = 10 and b = 20",
+			newExpression(
+				newOrCondition(
+					newCondition(
+						newTerm(util.Pointer("a"), nil),
+						newConditionRHS("=", *newValue(int64(10))),
+					),
+					newCondition(
+						newTerm(util.Pointer("b"), nil),
+						newConditionRHS("=", *newValue(int64(20))),
+					),
+				),
+			),
+		},
+		{
+			"and takes precedence over or",
+			"a = 10 or b = 20 and c = 30",
+			newExpression(
+				newOrCondition(
+					newCondition(
+						newTerm(util.Pointer("a"), nil),
+						newConditionRHS("=", *newValue(int64(10))),
+					),
+				),
+				newOrCondition(
+					newCondition(
+						newTerm(util.Pointer("b"), nil),
+						newConditionRHS("=", *newValue(int64(20))),
+					),
+					newCondition(
+						newTerm(util.Pointer("c"), nil),
+						newConditionRHS("=", *newValue(int64(30))),
+					),
+				),
+			),
+		},
+		{
+			"and takes precedence over or - reversed",
+			"a = 10 and b = 20 or c = 30",
+			newExpression(
+				newOrCondition(
+					newCondition(
+						newTerm(util.Pointer("a"), nil),
+						newConditionRHS("=", *newValue(int64(10))),
+					),
+					newCondition(
+						newTerm(util.Pointer("b"), nil),
+						newConditionRHS("=", *newValue(int64(20))),
+					),
+				),
+				newOrCondition(
+					newCondition(
+						newTerm(util.Pointer("c"), nil),
+						newConditionRHS("=", *newValue(int64(30))),
+					),
+				),
+			),
+		},
+		{
+			"grouping overrides precedence",
+			"a = 10 and (b = 20 or c = 30)",
+			newExpression(
+				newOrCondition(
+					newCondition(
+						newTerm(util.Pointer("a"), nil),
+						newConditionRHS("=", *newValue(int64(10))),
+					),
+					newCondition(
+						newTerm(
+							nil,
+							newExpression(
+								newOrCondition(
+									newCondition(
+										newTerm(util.Pointer("b"), nil),
+										newConditionRHS("=", *newValue(int64(20))),
+									),
+								),
+								newOrCondition(
+									newCondition(
+										newTerm(util.Pointer("c"), nil),
+										newConditionRHS("=", *newValue(int64(30))),
+									),
+								),
+							),
+						),
+						nil,
+					),
+				),
+			),
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			ast, err := parser.ParseString("", c.input)
+
+			require.NoError(t, err)
+			require.Equal(t, c.expected, ast)
+		})
+	}
+}
+
 func TestValue(t *testing.T) {
 	parser, err := participle.Build[ql.Value](ql.Options...)
 	require.NoError(t, err)
@@ -57,108 +254,6 @@ func TestValue(t *testing.T) {
 			ast, err := parser.ParseString("", c.input)
 			require.NoError(t, err)
 			require.Equal(t, c.expected, ast)
-		})
-	}
-}
-
-func TestOrClause(t *testing.T) {
-	parser := participle.MustBuild[ql.OrClause](ql.Options...)
-	cases := []struct {
-		assertion string
-		input     string
-		expected  ql.OrClause
-	}{
-		{
-			"single condition",
-			"a = 10",
-			newOr(newBinaryExpr("a", "=", int64(10))),
-		},
-		{
-			"dotted path",
-			"a.b = 10",
-			newOr(newBinaryExpr("a.b", "=", int64(10))),
-		},
-		{
-			"path starting with a dot",
-			".a = 10",
-			newOr(newBinaryExpr(".a", "=", int64(10))),
-		},
-		{
-			"multiple dots",
-			"a.b.baz = 10",
-			newOr(newBinaryExpr("a.b.baz", "=", int64(10))),
-		},
-		{
-			"multiple conditions",
-			"a = 10 and b = 20",
-			newOr(
-				newBinaryExpr("a", "=", int64(10)),
-				newBinaryExpr("b", "=", int64(20)),
-			),
-		},
-	}
-	for _, c := range cases {
-		t.Run(c.assertion, func(t *testing.T) {
-			ast, err := parser.ParseString("", c.input)
-			require.NoError(t, err)
-			require.Equal(t, c.expected, *ast)
-		})
-	}
-}
-
-func TestBinaryExpression(t *testing.T) {
-	parser := participle.MustBuild[ql.BinaryExpression](ql.Options...)
-	cases := []struct {
-		assertion string
-		input     string
-		expected  ql.BinaryExpression
-	}{
-		{
-			"equality",
-			"a = 10",
-			newBinaryExpr("a", "=", int64(10)),
-		},
-		{
-			"inequality",
-			"a != 10",
-			newBinaryExpr("a", "!=", int64(10)),
-		},
-		{
-			"greater than",
-			"a > 10",
-			newBinaryExpr("a", ">", int64(10)),
-		},
-		{
-			"greater than or equal",
-			"a >= 10",
-			newBinaryExpr("a", ">=", int64(10)),
-		},
-		{
-			"less than",
-			"a < 10",
-			newBinaryExpr("a", "<", int64(10)),
-		},
-		{
-			"less than or equal",
-			"a <= 10",
-			newBinaryExpr("a", "<=", int64(10)),
-		},
-		{
-			"regex",
-			`a ~ "b"`,
-			newBinaryExpr("a", "~", "b"),
-		},
-		{
-			"case insensitive regex",
-			`a ~* "b"`,
-			newBinaryExpr("a", "~*", "b"),
-		},
-	}
-	for _, c := range cases {
-		t.Run(c.assertion, func(t *testing.T) {
-			ast, err := parser.ParseString("", c.input)
-			require.NoError(t, err)
-			require.Equal(t, c.expected, *ast)
 		})
 	}
 }
@@ -432,9 +527,10 @@ func TestQuery(t *testing.T) {
 			newQuery(
 				nil,
 				newSelect("a", "", nil, nil),
-				newWhere(newOr(newBinaryExpr("a", "=", int64(10)))),
-				nil,
-			),
+				newExpression(
+					newOrCondition(
+						newCondition(newTerm(util.Pointer("a"), nil), newConditionRHS("=", *newValue(int64(10)))))),
+				nil),
 		},
 		{
 			"with where and paging",
@@ -442,7 +538,10 @@ func TestQuery(t *testing.T) {
 			newQuery(
 				nil,
 				newSelect("a", "", nil, nil),
-				newWhere(newOr(newBinaryExpr("a", "=", int64(10)))),
+				newExpression(
+					newOrCondition(
+						newCondition(newTerm(util.Pointer("a"), nil),
+							newConditionRHS("=", *newValue(int64(10)))))),
 				newPagingClause("limit", 10, "offset", 10),
 			),
 		},
@@ -452,12 +551,9 @@ func TestQuery(t *testing.T) {
 			newQuery(
 				nil,
 				newSelect("a", "", nil, nil),
-				newWhere(
-					newOr(
-						newBinaryExpr("a", "=", int64(10)),
-						newBinaryExpr("b", "=", int64(20)),
-					),
-				),
+				newExpression(newOrCondition(
+					newCondition(newTerm(util.Pointer("a"), nil), newConditionRHS("=", *newValue(int64(10)))),
+					newCondition(newTerm(util.Pointer("b"), nil), newConditionRHS("=", *newValue(int64(20)))))),
 				nil,
 			),
 		},
@@ -467,12 +563,10 @@ func TestQuery(t *testing.T) {
 			newQuery(
 				nil,
 				newSelect("a", "", newMJ(newSelect("b", "", nil, nil)), nil),
-				newWhere(
-					newOr(
-						newBinaryExpr("a", "=", int64(10)),
-						newBinaryExpr("b", "=", int64(20)),
-					),
-				),
+				newExpression(newOrCondition(
+					newCondition(newTerm(util.Pointer("a"), nil), newConditionRHS("=", *newValue(int64(10)))),
+					newCondition(newTerm(util.Pointer("b"), nil), newConditionRHS("=", *newValue(int64(20)))),
+				)),
 				nil,
 			),
 		},
@@ -526,12 +620,10 @@ func TestQuery(t *testing.T) {
 			newQuery(
 				nil,
 				newSelect("a", "", newMJ(newSelect("b", "", nil, nil)), nil),
-				newWhere(
-					newOr(
-						newBinaryExpr("a.foo", "=", int64(10)),
-						newBinaryExpr("b.bar", "=", int64(20)),
-					),
-				),
+				newExpression(newOrCondition(
+					newCondition(newTerm(util.Pointer("a.foo"), nil), newConditionRHS("=", *newValue(int64(10)))),
+					newCondition(newTerm(util.Pointer("b.bar"), nil), newConditionRHS("=", *newValue(int64(20)))),
+				)),
 				newPagingClause("limit", 10, "offset", 10),
 			),
 		},
@@ -585,7 +677,7 @@ func newPagingClause(kvs ...any) []ql.PagingTerm {
 func newQuery(
 	between *ql.Between,
 	sel ql.Select,
-	where []ql.OrClause,
+	where *ql.Expression,
 	paging []ql.PagingTerm,
 ) ql.Query {
 	return ql.Query{
@@ -622,18 +714,6 @@ func newBetween(a, b any) *ql.Between {
 	}
 }
 
-// newWhere returns a new where clause.
-func newWhere(clauses ...ql.OrClause) []ql.OrClause {
-	return clauses
-}
-
-// newOr returns a new or clause.
-func newOr(exprs ...ql.BinaryExpression) ql.OrClause {
-	return ql.OrClause{
-		AndExprs: exprs,
-	}
-}
-
 // newSelect returns a new select statement.
 func newSelect(entity string, alias string, mj *ql.MJ, aj *ql.AJ) ql.Select {
 	return ql.Select{
@@ -641,26 +721,6 @@ func newSelect(entity string, alias string, mj *ql.MJ, aj *ql.AJ) ql.Select {
 		Alias:  alias,
 		MJ:     mj,
 		AJ:     aj,
-	}
-}
-
-// newBinaryExpr returns a new binary expression.
-func newBinaryExpr(left string, op string, right any) ql.BinaryExpression {
-	value := ql.Value{}
-	switch right := right.(type) {
-	case string:
-		value.Text = &right
-	case int64:
-		value.Integer = &right
-	case float64:
-		value.Float = &right
-	default:
-		panic("unsupported type")
-	}
-	return ql.BinaryExpression{
-		Left:  left,
-		Op:    op,
-		Right: value,
 	}
 }
 

@@ -52,7 +52,7 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 	log.Debugf(ctx, "Debug logging enabled")
 	store := opts.StorageProvider
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](opts.CacheSizeBytes)
-	dbpath := "dp3.db?_journal=WAL&mode=rwc"
+	dbpath := opts.DatabasePath + "?_journal=WAL&mode=rwc"
 	db, err := sql.Open("sqlite3", dbpath)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
@@ -70,8 +70,7 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 		wal.WithInactiveBatchMergeInterval(2 * time.Second),
 		wal.WithGCInterval(10 * time.Second),
 	}
-	waldir := "waldir"
-	if err := util.EnsureDirectoryExists(waldir); err != nil {
+	if err := util.EnsureDirectoryExists(opts.WALDir); err != nil {
 		return fmt.Errorf("failed to ensure WAL directory exists: %w", err)
 	}
 	tmgr, err := treemgr.NewTreeManager(
@@ -81,7 +80,7 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 		rm,
 		treemgr.WithSyncWorkers(opts.SyncWorkers),
 		treemgr.WithWALOpts(walopts...),
-		treemgr.WithWALDir(waldir),
+		treemgr.WithWALDir(opts.WALDir),
 		treemgr.WithWALBufferSize(10000),
 	)
 	if err != nil {
@@ -155,6 +154,8 @@ func readOpts(opts ...DP3Option) (*DP3Options, error) {
 		Port:           8089,
 		LogLevel:       slog.LevelInfo,
 		SyncWorkers:    32,
+		DatabasePath:   "dp3.db",
+		WALDir:         "waldir",
 	}
 	for _, opt := range opts {
 		opt(&options)
