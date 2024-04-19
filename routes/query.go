@@ -62,6 +62,10 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		}
 		qp, err := plan.CompileQuery(req.Database, *ast)
 		if err != nil {
+			if errors.Is(err, plan.BadPlanError{}) {
+				httputil.BadRequest(ctx, w, err.Error())
+				return
+			}
 			httputil.InternalServerError(ctx, w, "error compiling query: %s", err)
 			return
 		}

@@ -22,6 +22,8 @@ type DP3Options struct {
 	LogLevel        slog.Level
 	SyncWorkers     int
 	StorageProvider storage.Provider
+	DatabasePath    string
+	WALDir          string
 }
 
 // WithCacheSizeMegabytes sets the cache size in megabytes.
@@ -35,6 +37,20 @@ func WithCacheSizeMegabytes(size uint64) DP3Option {
 func WithSyncWorkers(workers int) DP3Option {
 	return func(opts *DP3Options) {
 		opts.SyncWorkers = workers
+	}
+}
+
+// WithWALDir sets the directory for the write-ahead log.
+func WithWALDir(dir string) DP3Option {
+	return func(opts *DP3Options) {
+		opts.WALDir = dir
+	}
+}
+
+// WithDatabasePath sets the path to the rootmap database.
+func WithDatabasePath(path string) DP3Option {
+	return func(opts *DP3Options) {
+		opts.DatabasePath = path
 	}
 }
 

@@ -29,10 +29,8 @@ Instead, we use the "expression" structure to hold state about the filters we
 have compiled for schemas we have seen in the course of a query execution.
 
 A filter has signature func(*Tuple) (bool, error), where the bool indicates
-whether the evaluted tuple should be passed up the chain. A where clause comes
-into this infrastructure as an "OrExpression", which is an array of
-"AndExpression". The entrypoint for where clause compilation is
-compileOrExpression.
+whether the evaluted tuple should be passed up the chain. A where condition
+enters this infrastructure as either an "or", "and", or "binary expression".
 */
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -82,9 +80,24 @@ func (e *expression) compileFilter(schema *fmcap.Schema) (func(t *tuple) (bool, 
 		return nil, fmt.Errorf("failed to parse message definition %s: %w", schema.Name, err)
 	}
 	fields := ros1msg.AnalyzeSchema(*parsed)
-	filterfn, err := e.compileOrExpression(fields, e.node)
-	if err != nil {
-		return nil, fmt.Errorf("failed to compile filter function for %s: %w", schema.Name, err)
+
+	var filterfn func([]any) (bool, error)
+	switch e.node.Type {
+	case plan.Or:
+		filterfn, err = e.compileOrExpression(fields, e.node)
+		if err != nil {
+			return nil, fmt.Errorf("failed to compile filter function for %s: %w", schema.Name, err)
+		}
+	case plan.BinaryExpression:
+		filterfn, err = e.compileBinaryExpression(fields, e.node)
+		if err != nil {
+			return nil, fmt.Errorf("failed to compile filter function for %s: %w", schema.Name, err)
+		}
+	case plan.And:
+		filterfn, err = e.compileAndExpression(fields, e.node)
+		if err != nil {
+			return nil, fmt.Errorf("failed to compile filter function for %s: %w", schema.Name, err)
+		}
 	}
 	parser := ros1msg.GenSkipper(*parsed)
 	return func(t *tuple) (bool, error) {
@@ -136,8 +149,8 @@ func (e *expression) compileBinaryExpression(
 		return nil, fmt.Errorf("invalid field %s", *expr.BinaryOpField)
 	}
 
-	// ignore clauses not targeted at this table. Note we need a better way to
-	// handle this, possibly in the plan step.
+	// ignore clauses not targeted at this table. This should have been
+	// intercepted in the plan step, so should not occur in practice.
 	if alias != e.target {
 		return nil, ErrUnknownTable
 	}
@@ -173,7 +186,7 @@ func (e *expression) compileAndExpression(
 	terms := make([]func([]any) (bool, error), 0, len(node.Children))
 	for _, expr := range node.Children {
 		term, err := e.compileBinaryExpression(fields, expr)
-		if err != nil && !errors.Is(err, ErrUnknownTable) {
+		if err != nil {
 			return nil, err
 		}
 		if err == nil {
