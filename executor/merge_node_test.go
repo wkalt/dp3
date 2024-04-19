@@ -12,19 +12,30 @@ import (
 func TestMergeNode(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
-		assertion string
-		children  []executor.Node
-		expected  []uint64
+		assertion  string
+		descending bool
+		children   []executor.Node
+		expected   []uint64
 	}{
 		{
 			"single node",
+			false,
 			[]executor.Node{
 				executor.NewMockNode(1, 2, 3),
 			},
 			[]uint64{1, 2, 3},
 		},
 		{
+			"single node descending",
+			true,
+			[]executor.Node{
+				executor.NewMockNode(3, 2, 1),
+			},
+			[]uint64{3, 2, 1},
+		},
+		{
 			"two nodes",
+			false,
 			[]executor.Node{
 				executor.NewMockNode(1, 3, 5),
 				executor.NewMockNode(2, 4, 6),
@@ -32,7 +43,17 @@ func TestMergeNode(t *testing.T) {
 			[]uint64{1, 2, 3, 4, 5, 6},
 		},
 		{
+			"two nodes descending",
+			true,
+			[]executor.Node{
+				executor.NewMockNode(5, 3, 1),
+				executor.NewMockNode(6, 4, 2),
+			},
+			[]uint64{6, 5, 4, 3, 2, 1},
+		},
+		{
 			"three nodes",
+			false,
 			[]executor.Node{
 				executor.NewMockNode(1, 4, 7),
 				executor.NewMockNode(2, 5, 8),
@@ -42,6 +63,7 @@ func TestMergeNode(t *testing.T) {
 		},
 		{
 			"empty nodes",
+			false,
 			[]executor.Node{
 				executor.NewMockNode(),
 				executor.NewMockNode(),
@@ -51,6 +73,7 @@ func TestMergeNode(t *testing.T) {
 		},
 		{
 			"one nonempty node",
+			false,
 			[]executor.Node{
 				executor.NewMockNode(1, 2, 3),
 				executor.NewMockNode(),
@@ -62,7 +85,7 @@ func TestMergeNode(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
-			node := executor.NewMergeNode(c.children...)
+			node := executor.NewMergeNode(c.descending, c.children...)
 			actual := []uint64{}
 			for {
 				tuple, err := node.Next(ctx)

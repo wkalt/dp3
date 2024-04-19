@@ -94,6 +94,7 @@ type ScanFactory func(
 	database string,
 	producer string,
 	table string,
+	descending bool,
 	start, end uint64,
 ) (*tree.Iterator, error)
 
@@ -129,7 +130,7 @@ func compileMergeJoin(ctx context.Context, node *plan.Node, sf ScanFactory) (Nod
 			return nil, err
 		}
 	}
-	return NewMergeNode(nodes...), nil
+	return NewMergeNode(node.Descending, nodes...), nil
 }
 
 func compileAsofJoin(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, error) {
@@ -230,7 +231,7 @@ func compileScan(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, er
 			return nil, fmt.Errorf("expected uint64 end time, got %T", node.Args[5])
 		}
 	}
-	it, err := sf(ctx, database, producer, table, start, end)
+	it, err := sf(ctx, database, producer, table, node.Descending, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -239,6 +240,5 @@ func compileScan(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, er
 		expr := newExpression(util.When(alias != "", alias, table), node.Children[0])
 		return NewFilterNode(expr.filter, scan), nil
 	}
-
 	return scan, nil
 }

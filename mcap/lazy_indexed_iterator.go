@@ -18,11 +18,11 @@ once. So this iterator wraps the mcap reader with lazy initialization.
 ////////////////////////////////////////////////////////////////////////////////
 
 type lazyIndexedIterator struct {
-	it    mcap.MessageIterator
-	rs    io.ReadSeeker
-	start uint64
-	end   uint64
-
+	it          mcap.MessageIterator
+	rs          io.ReadSeeker
+	start       uint64
+	end         uint64
+	descending  bool
 	initialized bool
 }
 
@@ -31,7 +31,14 @@ func (it *lazyIndexedIterator) initialize() error {
 	if err != nil {
 		return fmt.Errorf("failed to create reader: %w", err)
 	}
-	iterator, err := reader.Messages(mcap.AfterNanos(it.start), mcap.BeforeNanos(it.end))
+	opts := []mcap.ReadOpt{
+		mcap.AfterNanos(it.start),
+		mcap.BeforeNanos(it.end),
+	}
+	if it.descending {
+		opts = append(opts, mcap.InOrder(mcap.ReverseLogTimeOrder))
+	}
+	iterator, err := reader.Messages(opts...)
 	if err != nil {
 		return fmt.Errorf("failed to create message iterator: %w", err)
 	}
@@ -56,6 +63,6 @@ func (it *lazyIndexedIterator) Next(_ []byte) (*mcap.Schema, *mcap.Channel, *mca
 
 // NewLazyIndexedIterator returns an MCAP message iterator that is not
 // initialized (doing IO) until the first call to Next.
-func NewLazyIndexedIterator(rs io.ReadSeeker, start uint64, end uint64) mcap.MessageIterator {
-	return &lazyIndexedIterator{rs: rs, start: start, end: end}
+func NewLazyIndexedIterator(rs io.ReadSeeker, start uint64, end uint64, descending bool) mcap.MessageIterator {
+	return &lazyIndexedIterator{rs: rs, start: start, end: end, descending: descending}
 }

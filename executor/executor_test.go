@@ -42,6 +42,11 @@ func TestQueryExecution(t *testing.T) {
 				[]message{},
 			},
 			{
+				"basic descending scan",
+				"from device t0 desc;",
+				[]message{{"t0", 4}, {"t0", 3}, {"t0", 2}, {"t0", 1}, {"t0", 0}},
+			},
+			{
 				"basic merge join",
 				"from device t0, t1;",
 				[]message{

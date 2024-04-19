@@ -21,8 +21,9 @@ primarily related to opening and closing leaf MCAP data.
 
 // Iterator is an iterator over a tree.
 type Iterator struct {
-	start uint64
-	end   uint64
+	descending bool
+	start      uint64
+	end        uint64
 
 	readclosers []io.ReadSeekCloser
 	msgIterator fmcap.MessageIterator
@@ -36,11 +37,12 @@ type Iterator struct {
 func NewTreeIterator(
 	ctx context.Context,
 	tr TreeReader,
+	descending bool,
 	start uint64,
 	end uint64,
 	minVersion uint64,
 ) *Iterator {
-	it := &Iterator{start: start, end: end, tr: tr, minVersion: minVersion}
+	it := &Iterator{descending: descending, start: start, end: end, tr: tr, minVersion: minVersion}
 	it.queue = []nodestore.NodeID{tr.Root()}
 	return it
 }
@@ -109,7 +111,8 @@ func (ti *Iterator) Next(ctx context.Context) (*fmcap.Schema, *fmcap.Channel, *f
 }
 
 // getNextLeaf returns the next leaf node ID in the iteration and advances the
-// internal node stack.
+// internal node stack. The descending flag determines the direction of the
+// iteration.
 func (ti *Iterator) getNextLeaf(ctx context.Context) (nodeID nodestore.NodeID, err error) {
 	for len(ti.queue) > 0 {
 		nodeID := ti.queue[0]
@@ -128,7 +131,14 @@ func (ti *Iterator) getNextLeaf(ctx context.Context) (nodeID nodestore.NodeID, e
 		step := bwidth(inner)
 		left := inner.Start
 		right := inner.Start + step
-		for _, child := range inner.Children {
+		children := slices.Clone(inner.Children) // to avoid mutating the cached children
+		if ti.descending {
+			left = inner.End - step
+			right = inner.End
+			step = -step
+			slices.Reverse(children)
+		}
+		for _, child := range children {
 			if child != nil && child.Version > ti.minVersion {
 				if ti.start < right*1e9 && ti.end >= left*1e9 {
 					ti.queue = append(ti.queue, child.ID)
@@ -198,13 +208,13 @@ func (ti *Iterator) openNextLeaf(ctx context.Context) error {
 	}
 	iterators := make([]fmcap.MessageIterator, len(rangesets))
 	for i := range rangesets {
-		iterators[i] = mcap.NewConcatIterator(readers[i], rangesets[i])
+		iterators[i] = mcap.NewConcatIterator(readers[i], rangesets[i], ti.descending)
 	}
 	ti.readclosers = readers
 	if len(iterators) == 1 {
 		ti.msgIterator = iterators[0]
 	} else {
-		ti.msgIterator, err = mcap.NmergeIterator(iterators...)
+		ti.msgIterator, err = mcap.NmergeIterator(ti.descending, iterators...)
 		if err != nil {
 			return fmt.Errorf("failed to merge iterators: %w", err)
 		}

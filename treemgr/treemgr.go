@@ -570,6 +570,7 @@ func (tm *TreeManager) NewTreeIterator(
 	database string,
 	producer string,
 	topic string,
+	descending bool,
 	start, end uint64,
 ) (*tree.Iterator, error) {
 	prefix, rootID, _, err := tm.rootmap.GetLatest(ctx, database, producer, topic)
@@ -577,7 +578,7 @@ func (tm *TreeManager) NewTreeIterator(
 		return nil, fmt.Errorf("failed to get latest root: %w", err)
 	}
 	tr := tree.NewBYOTreeReader(prefix, rootID, tm.ns.Get)
-	return tree.NewTreeIterator(ctx, tr, start, end, 0), nil
+	return tree.NewTreeIterator(ctx, tr, descending, start, end, 0), nil
 }
 
 func (tm *TreeManager) loadIterators(
@@ -593,7 +594,7 @@ func (tm *TreeManager) loadIterators(
 	for i, root := range roots {
 		g.Go(func() error {
 			tr := tree.NewBYOTreeReader(root.Prefix, root.NodeID, tm.ns.Get)
-			it := tree.NewTreeIterator(ctx, tr, start, end, root.RequestedMinVersion)
+			it := tree.NewTreeIterator(ctx, tr, false, start, end, root.RequestedMinVersion)
 			schema, channel, message, err := it.Next(ctx)
 			if err != nil {
 				if errors.Is(err, io.EOF) {
