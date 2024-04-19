@@ -26,7 +26,8 @@ func GetSchema(t *testing.T, r io.ReadSeeker) *fmcap.Schema {
 }
 
 // MergeInserts executes a list of inserts and then merges the resulting partial
-// trees into a single tree. Times are expected in seconds.
+// trees into a single tree. Times are expected in seconds. Each batch of times
+// is expected to land on a single leaf.
 func MergeInserts(
 	ctx context.Context,
 	t *testing.T,

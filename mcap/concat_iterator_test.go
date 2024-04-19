@@ -47,7 +47,7 @@ func TestConcatIterator(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
-			iter := mcap.NewConcatIterator(bytes.NewReader(input.Bytes()), c.ranges)
+			iter := mcap.NewConcatIterator(bytes.NewReader(input.Bytes()), c.ranges, false)
 			var got []uint64
 			for {
 				_, _, m, err := iter.Next(nil)

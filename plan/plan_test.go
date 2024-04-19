@@ -75,6 +75,11 @@ func TestCompileQuery(t *testing.T) {
 			"[scan (a db device all-time)]",
 		},
 		{
+			"descending scan",
+			"from device a desc;",
+			"[scan desc (a db device all-time)]",
+		},
+		{
 			"single scan with a where clause",
 			"from device a where a.foo = 10;",
 			"[scan (a db device all-time) [binexp [= a.foo 10]]]",
@@ -126,6 +131,13 @@ func TestCompileQuery(t *testing.T) {
 			"from device a where a.b = 1 limit 10;",
 			`[limit 10
 			  [scan (a db device all-time) [binexp [= a.b 1]]]]`,
+		},
+		{
+			"merge join with descending",
+			"from device a, b desc;",
+			`[merge desc 
+			  [scan desc (a db device all-time)]
+			  [scan desc (b db device all-time)]]`,
 		},
 		{
 			"merge join with where clause",

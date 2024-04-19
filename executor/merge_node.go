@@ -38,12 +38,17 @@ type mergeNode struct {
 }
 
 // NewMergeNode returns a new merge node.
-func NewMergeNode(children ...Node) *mergeNode {
+// The descending parameter specifies the order in which tuples should be
+// popped from the priority queue.
+func NewMergeNode(descending bool, children ...Node) *mergeNode {
 	return &mergeNode{
 		children: children,
 		pq: util.NewPriorityQueue(func(a, b queueElement) bool {
 			if a.tuple.message.LogTime == b.tuple.message.LogTime {
 				return a.tuple.message.ChannelID < b.tuple.message.ChannelID
+			}
+			if descending {
+				return a.tuple.message.LogTime > b.tuple.message.LogTime
 			}
 			return a.tuple.message.LogTime < b.tuple.message.LogTime
 		}),
