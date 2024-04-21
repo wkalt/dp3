@@ -600,7 +600,7 @@ func (tm *TreeManager) loadIterators(
 					ch <- util.NewPair[int, *tree.Iterator](i, nil)
 					return nil
 				}
-				return fmt.Errorf("failed to get next message: %w", err)
+				return fmt.Errorf("failed to get next message from root %s: %w", root.NodeID, err)
 			}
 			mtx.Lock()
 			heap.Push(pq, record{schema, channel, message, i})
