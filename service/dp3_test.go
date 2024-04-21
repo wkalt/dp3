@@ -6,9 +6,11 @@ package service_test
 // 	store, err := storage.NewDirectoryStore("../data")
 // 	require.NoError(t, err)
 // 	opts := []service.DP3Option{
-// 		WithPort(8089),
-// 		WithCacheSizeMegabytes(4096),
-// 		WithStorageProvider(store),
+// 		service.WithPort(8089),
+// 		service.WithCacheSizeMegabytes(4096),
+// 		service.WithStorageProvider(store),
+// 		service.WithDatabasePath("../dp3.db"),
+// 		service.WithWALDir("../waldir"),
 // 	}
 // 	svc := service.NewDP3Service()
 // 	require.NoError(t, svc.Start(ctx, opts...))

@@ -21,16 +21,16 @@ type filterNode struct {
 // Next returns the next tuple from the node.
 func (n *filterNode) Next(ctx context.Context) (*tuple, error) {
 	for {
-		t, err := n.child.Next(ctx)
+		tup, err := n.child.Next(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read next message: %w", err)
 		}
-		ok, err := n.filter(t)
+		ok, err := n.filter(tup)
 		if err != nil {
 			return nil, fmt.Errorf("failed to filter message: %w", err)
 		}
 		if ok {
-			return t, nil
+			return tup, nil
 		}
 	}
 }

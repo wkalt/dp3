@@ -38,6 +38,8 @@ const (
 	Or
 	// BinaryExpression is a binary expression node.
 	BinaryExpression
+
+	Subexpression
 )
 
 // String returns a string representation of the node type.
@@ -79,16 +81,23 @@ type Node struct {
 }
 
 // traverse a plan tree, executing pre and post-order transformations.
-func traverse(n *Node, pre func(n *Node), post func(n *Node)) {
+func traverse(n *Node, pre func(n *Node) error, post func(n *Node) error) error {
 	if pre != nil {
-		pre(n)
+		if err := pre(n); err != nil {
+			return err
+		}
 	}
 	for _, c := range n.Children {
-		traverse(c, pre, post)
+		if err := traverse(c, pre, post); err != nil {
+			return err
+		}
 	}
 	if post != nil {
-		post(n)
+		if err := post(n); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 // String returns a string representation of the node.
@@ -136,19 +145,6 @@ func (n Node) String() string {
 		childrenTerm = " " + strings.Join(children, " ")
 	}
 	return fmt.Sprintf("[%s%s%s]", n.Type, args, childrenTerm)
-}
-
-// compileBinaryExpr compiles an AST binary expression to a plan node. The LHS
-// is expected to start with "prefix dot", which we strip under the assumption
-// that aliases have already been resolved at this point.
-func compileBinaryExpr(expr ql.BinaryExpression) *Node {
-	return &Node{
-		Type: BinaryExpression,
-
-		BinaryOp:      &expr.Op,
-		BinaryOpField: &expr.Left,
-		BinaryOpValue: &expr.Right,
-	}
 }
 
 // wrapWithPaging wraps a plan node in limit and offset nodes according to the
@@ -225,26 +221,110 @@ func compileSelect(ast ql.Select) *Node {
 	return base
 }
 
-func compileAnd(ast []ql.BinaryExpression) *Node {
-	children := make([]*Node, len(ast))
-	for i, expr := range ast {
-		children[i] = compileBinaryExpr(expr)
+// compileCondition compiles an AST condition to a plan node.
+func compileCondition(ast ql.Condition) *Node {
+	// if RHS is nil, this is a subexpression.
+	if ast.RHS == nil && ast.Operand.Subexpression != nil {
+		return compileExpression(*ast.Operand.Subexpression)
 	}
+
+	// otherwise it's a binary expression.
+	op := ast.RHS.Op
+	value := ast.RHS.Value
+	lhs := ast.Operand.Value
 	return &Node{
-		Type:     And,
-		Children: children,
+		Type:          BinaryExpression,
+		BinaryOp:      &op,
+		BinaryOpField: lhs,
+		BinaryOpValue: &value,
 	}
 }
 
-func compileOr(ast []ql.OrClause) *Node {
-	children := make([]*Node, len(ast))
-	for i, clause := range ast {
-		children[i] = compileAnd(clause.AndExprs)
+// compileOrCondition compiles an AST or condition to a plan node.
+func compileOrCondition(ast ql.OrCondition) *Node {
+	children := make([]*Node, len(ast.And))
+	for i, clause := range ast.And {
+		children[i] = compileCondition(*clause)
+	}
+	node := &Node{
+		Type:     And,
+		Children: children,
+	}
+	return node
+}
+
+// compileExpression compiles an AST expression to a plan node.
+func compileExpression(ast ql.Expression) *Node {
+	children := make([]*Node, len(ast.Or))
+	for i, or := range ast.Or {
+		node := compileOrCondition(*or)
+		children[i] = node
 	}
 	return &Node{
 		Type:     Or,
 		Children: children,
 	}
+}
+
+// computeAlias detemines the alias involved in an expression, in the binary
+// expressions and scans. If more than one alias is involved, or no aliases are
+// found, an error is returned.
+func computeAlias(expr *Node) (string, error) {
+	var alias string
+	err := traverse(expr, nil, func(n *Node) error {
+		var nodeAlias string
+		switch n.Type {
+		case Scan:
+			table := n.Args[0].(string)
+			alias := n.Args[1].(string)
+			nodeAlias = util.When(alias == "", table, alias)
+		case BinaryExpression:
+			parts := strings.Split(*n.BinaryOpField, ".")
+			if len(parts) < 2 {
+				return BadPlanError{fmt.Errorf("field %s must be qualified with a dot", *n.BinaryOpField)}
+			}
+			nodeAlias = parts[0]
+		default:
+			return nil
+		}
+		if alias == "" {
+			alias = nodeAlias
+			return nil
+		}
+		if alias != nodeAlias {
+			return BadPlanError{fmt.Errorf("expression subtree references more than one alias: %s, %s", alias, nodeAlias)}
+		}
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	if alias == "" {
+		return "", BadPlanError{fmt.Errorf("no alias found in expression %v", expr)}
+	}
+	return alias, nil
+}
+
+// SplitExpression splits an expression node into one expression per alias. If
+// multiple children of the expression node have the same alias, they are joined
+// under an Or node.
+func splitExpression(expr *Node) (map[string]*Node, error) {
+	subexprs := map[string]*Node{}
+	for _, child := range expr.Children {
+		alias, err := computeAlias(child)
+		if err != nil {
+			return nil, err
+		}
+		if existing, ok := subexprs[alias]; ok {
+			subexprs[alias] = &Node{
+				Type:     Or,
+				Children: []*Node{existing, child},
+			}
+			continue
+		}
+		subexprs[alias] = child
+	}
+	return subexprs, nil
 }
 
 // CompileQuery compiles an AST query to a plan node.
@@ -264,11 +344,29 @@ func CompileQuery(database string, ast ql.Query) (*Node, error) {
 	}
 	producer := ast.From
 	base := compileSelect(ast.Select)
-	where := compileOr(ast.Where)
-	traverse(
+
+	subexprs := map[string]*Node{}
+	if ast.Where != nil {
+		expr := compileExpression(*ast.Where)
+		subexprs, err = splitExpression(expr)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if err := traverse(
 		base,
-		pullUpMergeJoins,
-		func(n *Node) { pushDownFilters(n, where, database, producer, uint64(start), uint64(end)) })
+		composePushdowns(
+			pullUpMergeJoins,
+			pushDownFilters(subexprs, database, producer, uint64(start), uint64(end)),
+			ensureAliasesResolve(),
+		),
+		composePushdowns(
+			pullUpUnaryExprs,
+		),
+	); err != nil {
+		return nil, err
+	}
 	if len(ast.PagingClause) > 0 {
 		base = wrapWithPaging(base, ast.PagingClause)
 	}
@@ -279,25 +377,85 @@ func CompileQuery(database string, ast ql.Query) (*Node, error) {
 // since we don't know about schemas here. The executor will resolve
 // it according to the schema of the data and error if nonsense is
 // submitted.
-func pushDownFilters(n *Node, where *Node, database string, producer string, start, end uint64) {
-	if n.Type != Scan {
-		return
+func pushDownFilters(exprs map[string]*Node, database string, producer string, start, end uint64) func(n *Node) error {
+	return func(n *Node) error {
+		if n.Type != Scan {
+			return nil
+		}
+		table := n.Args[0].(string)
+		alias := n.Args[1].(string)
+		nodeAlias := util.When(alias == "", table, alias)
+		if expr, ok := exprs[nodeAlias]; ok {
+			n.Children = append(n.Children, expr)
+		}
+		n.Args = append(n.Args, database, producer)
+		if start == 0 && end == math.MaxInt64 {
+			n.Args = append(n.Args, "all-time")
+			return nil
+		}
+		n.Args = append(n.Args, start, end)
+		return nil
 	}
-	if len(where.Children) > 0 {
-		n.Children = append(n.Children, where)
+}
+
+// composePushdowns composes a list of pushdown functions into a single function.
+func composePushdowns(pushdowns ...func(n *Node) error) func(n *Node) error {
+	return func(n *Node) error {
+		for _, pushdown := range pushdowns {
+			if err := pushdown(n); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
-	n.Args = append(n.Args, database, producer)
-	if start == 0 && end == math.MaxInt64 {
-		n.Args = append(n.Args, "all-time")
-		return
+}
+
+// Ensure that every binary expression is referencing a known alias.
+func ensureAliasesResolve() func(n *Node) error {
+	aliases := map[string]string{}
+	return func(n *Node) error {
+		switch n.Type {
+		case Scan:
+			table, alias := n.Args[0].(string), n.Args[1].(string)
+			if alias == "" {
+				alias = table
+			}
+			if existing, ok := aliases[alias]; ok && existing != table {
+				return BadPlanError{fmt.Errorf("conflicting alias %s for tables %s, %s", alias, existing, table)}
+			}
+			aliases[alias] = table
+			return nil
+		case BinaryExpression:
+			left := *n.BinaryOpField
+			alias := strings.Split(left, ".")[0]
+			if _, ok := aliases[alias]; !ok {
+				return BadPlanError{fmt.Errorf("unknown table alias %s", alias)}
+			}
+			return nil
+		default:
+			return nil
+		}
 	}
-	n.Args = append(n.Args, start, end)
+}
+
+// Pull up children of unary subexpressions, or, and and.
+func pullUpUnaryExprs(n *Node) error {
+	switch n.Type {
+	case Subexpression, Or, And:
+		if len(n.Children) > 1 {
+			return nil
+		}
+		*n = *n.Children[0]
+	default:
+		return nil
+	}
+	return nil
 }
 
 // Pull children of nested merge joins up to the top level.
-func pullUpMergeJoins(n *Node) {
+func pullUpMergeJoins(n *Node) error {
 	if n.Type != MergeJoin {
-		return
+		return nil
 	}
 	newChildren := []*Node{}
 	queue := []*Node{n}
@@ -311,4 +469,5 @@ func pullUpMergeJoins(n *Node) {
 		newChildren = append(newChildren, node)
 	}
 	n.Children = newChildren
+	return nil
 }

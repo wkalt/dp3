@@ -24,7 +24,7 @@ var (
 				{Name: "Word", Pattern: `[a-zA-Z_/\.][a-zA-Z0-9_/\.-]*`},
 				{Name: "QuotedString", Pattern: `"(?:\\.|[^"])*"`},
 				{Name: "whitespace", Pattern: `\s+`},
-				{Name: "Operators", Pattern: `,`},
+				{Name: "Operators", Pattern: `,|[()]`},
 				{Name: "BinaryOperator", Pattern: `=|!=|<=|>=|<|>|~\*|~`},
 				{Name: "Float", Pattern: `[-+]?\d*\.\d+([eE][-+]?\d+)?`},
 				{Name: "Integer", Pattern: `[0-9]+([eE][-+]?\d+)?`},
@@ -39,8 +39,31 @@ type Query struct {
 	From         string       `"from" @Word`
 	Between      *Between     `@@?`
 	Select       Select       `@@`
-	Where        []OrClause   `("where" @@ ("or" @@)*)*`
+	Where        *Expression  `("where" @@)*`
 	PagingClause []PagingTerm `@@*`
+}
+
+type Term struct {
+	Subexpression *Expression ` "(" @@ ")"`
+	Value         *string     `| @Word`
+}
+
+type Expression struct {
+	Or []*OrCondition `@@ ( "or" @@ )*`
+}
+
+type OrCondition struct {
+	And []*Condition `@@ ( "and" @@ )*`
+}
+
+type Condition struct {
+	Operand Term          `@@`
+	RHS     *ConditionRHS `@@?`
+}
+
+type ConditionRHS struct {
+	Op    string `@BinaryOperator`
+	Value Value  `@@`
 }
 
 // Between represents a time range.
@@ -49,24 +72,12 @@ type Between struct {
 	To   Timestamp `@@`
 }
 
-// OrClause represents a disjunction of conjunctions.
-type OrClause struct {
-	AndExprs []BinaryExpression `@@ ( "and" @@ )*`
-}
-
 // Select represents a select statement.
 type Select struct {
 	Entity string `@Word`
 	Alias  string `("as" @Word)?`
 	MJ     *MJ    `( @@`
 	AJ     *AJ    `| @@ )?`
-}
-
-// BinaryExpression represents a binary expression.
-type BinaryExpression struct {
-	Left  string `@Word`
-	Op    string `@BinaryOperator`
-	Right Value  `@@`
 }
 
 // MJ represents a merge join.
