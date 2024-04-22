@@ -203,7 +203,7 @@ func compileScan(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, er
 	}
 	producer, ok := node.Args[3].(string)
 	if !ok {
-		return nil, fmt.Errorf("expected string producer, got %T", node.Args[1])
+		return nil, fmt.Errorf("expected string producer, got %T", node.Args[3])
 	}
 	var err error
 	var start, end uint64
