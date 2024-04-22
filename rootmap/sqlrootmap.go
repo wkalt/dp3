@@ -9,9 +9,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/mattn/go-sqlite3"
 	"github.com/wkalt/dp3/nodestore"
 	"golang.org/x/exp/maps"
+	"modernc.org/sqlite"
 )
 
 /*
@@ -77,9 +77,11 @@ func (rm *sqlRootmap) Put(
 		database, producerID, topic, version, prefix, hex.EncodeToString(nodeID[:]),
 	)
 	if err != nil {
-		var err sqlite3.Error
-		if errors.As(err, &sqlite3.Error{Code: sqlite3.ErrConstraint}) {
-			return ErrRootAlreadyExists
+		e := &sqlite.Error{}
+		if errors.As(err, &e) {
+			if e.Code() == 19 {
+				return ErrRootAlreadyExists
+			}
 		}
 		return fmt.Errorf("failed to store to rootmap: %w", err)
 	}

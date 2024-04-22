@@ -52,7 +52,7 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 	store := opts.StorageProvider
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](opts.CacheSizeBytes)
 	dbpath := opts.DatabasePath + "?_journal=WAL&mode=rwc"
-	db, err := sql.Open("sqlite3", dbpath)
+	db, err := sql.Open("sqlite", dbpath)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}

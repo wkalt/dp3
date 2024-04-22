@@ -25,7 +25,7 @@ func TestVersionStore(t *testing.T) {
 			"sql",
 			func(t *testing.T) versionstore.Versionstore {
 				t.Helper()
-				db, err := sql.Open("sqlite3", ":memory:")
+				db, err := sql.Open("sqlite", ":memory:")
 				require.NoError(t, err)
 				return versionstore.NewSQLVersionstore(db, 1000)
 			},
