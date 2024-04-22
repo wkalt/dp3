@@ -45,6 +45,11 @@ func TestInvalidPlans(t *testing.T) {
 			"from device a where a.foo = 10 and bar = 20",
 			"field bar must be qualified with a dot",
 		},
+		{
+			"where clause qualified with alias that doesn't exist",
+			"from device a where b.foo = 10",
+			"unresolved table alias: b",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
