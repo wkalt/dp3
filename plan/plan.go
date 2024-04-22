@@ -7,6 +7,7 @@ import (
 
 	"github.com/wkalt/dp3/ql"
 	"github.com/wkalt/dp3/util"
+	"golang.org/x/exp/maps"
 )
 
 /*
@@ -353,7 +354,6 @@ func CompileQuery(database string, ast ql.Query) (*Node, error) {
 			return nil, err
 		}
 	}
-
 	if err := traverse(
 		base,
 		composePushdowns(
@@ -366,6 +366,10 @@ func CompileQuery(database string, ast ql.Query) (*Node, error) {
 		),
 	); err != nil {
 		return nil, err
+	}
+	if len(subexprs) > 0 {
+		subalias := maps.Keys(subexprs)[0]
+		return nil, BadPlanError{fmt.Errorf("unresolved table alias: %s", subalias)}
 	}
 	if len(ast.PagingClause) > 0 {
 		base = wrapWithPaging(base, ast.PagingClause)
@@ -387,6 +391,7 @@ func pushDownFilters(exprs map[string]*Node, database string, producer string, s
 		nodeAlias := util.When(alias == "", table, alias)
 		if expr, ok := exprs[nodeAlias]; ok {
 			n.Children = append(n.Children, expr)
+			delete(exprs, nodeAlias)
 		}
 		n.Args = append(n.Args, database, producer)
 		if start == 0 && end == math.MaxInt64 {
