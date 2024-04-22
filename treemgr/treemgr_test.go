@@ -10,11 +10,11 @@ import (
 	"strings"
 	"testing"
 
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/stretchr/testify/require"
 	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/treemgr"
-	_ "modernc.org/sqlite"
 )
 
 // nolint:dupl

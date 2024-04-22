@@ -5,9 +5,9 @@ import (
 	"crypto/rand"
 	"testing"
 
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/wkalt/dp3/storage"
 	"github.com/wkalt/dp3/util"
-	_ "modernc.org/sqlite"
 )
 
 func MockNodestore(ctx context.Context, t *testing.T) *Nodestore {
