@@ -14,6 +14,7 @@ import (
 	"github.com/wkalt/dp3/plan"
 	"github.com/wkalt/dp3/ql"
 	"github.com/wkalt/dp3/treemgr"
+	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/testutils"
 )
 
@@ -24,80 +25,89 @@ func TestQueryExecution(t *testing.T) {
 	prepTmgr2(t, ctx, tmgr)
 
 	t.Run("join scenarios", func(t *testing.T) {
+		type message util.Pair[string, uint64] // topic, timestamp
 		cases := []struct {
 			assertion string
 			query     string
-			expected  [][]int64
+			expected  []message
 		}{
 			{
 				"basic scan",
-				"from device topic-0",
-				[][]int64{{0, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}},
+				"from device t0",
+				[]message{{"t0", 0}, {"t0", 1}, {"t0", 2}, {"t0", 3}, {"t0", 4}},
+			},
+			{
+				"scan matching no data",
+				"from device t0 where t0.u8 = 100",
+				[]message{},
 			},
 			{
 				"basic merge join",
-				"from device topic-0, topic-1",
-				[][]int64{{0, 0}, {1, 0}, {0, 1}, {0, 2}, {1, 2}, {0, 3}, {0, 4}, {1, 4}, {1, 6}, {1, 8}},
+				"from device t0, t1",
+				[]message{
+					{"t0", 0}, {"t1", 0}, {"t0", 1}, {"t0", 2}, {"t1", 2},
+					{"t0", 3}, {"t0", 4}, {"t1", 4}, {"t1", 6}, {"t1", 8},
+				},
 			},
 			{
 				"merge join with where clause on one element",
-				"from device topic-0, topic-1 where topic-1.u8 = 0",
-				[][]int64{{0, 0}, {1, 0}, {0, 1}, {0, 2}, {0, 3}, {0, 4}},
+				"from device t0, t1 where t1.u8 = 0",
+				[]message{{"t0", 0}, {"t1", 0}, {"t0", 1}, {"t0", 2}, {"t0", 3}, {"t0", 4}},
 			},
 			{
 				"merge join with where clause on both elements",
-				"from device topic-0, topic-1 where topic-0.u8 = 0 or topic-1.u8 = 0",
-				[][]int64{{0, 0}, {1, 0}},
+				"from device t0, t1 where t0.u8 = 0 or t1.u8 = 0",
+				[]message{{"t0", 0}, {"t1", 0}},
 			},
 			{
 				"asof join precedes",
-				"from device topic-0 precedes topic-1 by less than 2 nanoseconds",
-				[][]int64{{0, 0}, {1, 0}, {0, 2}, {1, 2}, {0, 4}, {1, 4}},
+				"from device t0 precedes t1 by less than 2 nanoseconds",
+				[]message{{"t0", 0}, {"t1", 0}, {"t0", 2}, {"t1", 2}, {"t0", 4}, {"t1", 4}},
 			},
 			{
 				"asof join succeeds",
-				"from device topic-0 succeeds topic-1 by less than 2 nanoseconds",
-				[][]int64{{1, 0}, {0, 1}, {1, 2}, {0, 3}},
+				"from device t0 succeeds t1 by less than 2 nanoseconds",
+				[]message{{"t1", 0}, {"t0", 1}, {"t1", 2}, {"t0", 3}},
 			},
 			{
 				"asof join with precedes without immediate",
-				"from device topic-1 precedes topic-8 by less than 100 nanoseconds",
-				[][]int64{{1, 0}, {8, 0}, {1, 8}, {8, 9}, {8, 18}, {8, 27}, {8, 36}},
+				"from device t1 precedes t8 by less than 100 nanoseconds",
+				[]message{{"t1", 0}, {"t8", 0}, {"t1", 8}, {"t8", 9}, {"t8", 18}, {"t8", 27}, {"t8", 36}},
 			},
 			{
 				"asof join with precedes with immediate",
-				"from device topic-1 precedes immediate topic-8 by less than 100 nanoseconds",
-				[][]int64{{1, 0}, {8, 0}, {1, 8}, {8, 9}},
+				"from device t1 precedes immediate t8 by less than 100 nanoseconds",
+				[]message{{"t1", 0}, {"t8", 0}, {"t1", 8}, {"t8", 9}},
 			},
 			{
 				"asof join with where clause",
-				"from device topic-0 precedes immediate topic-1 by less than 10 nanoseconds where topic-0.u8 = 0",
-				[][]int64{{0, 0}, {1, 0}},
+				"from device t0 precedes immediate t1 by less than 10 nanoseconds where t0.u8 = 0",
+				[]message{{"t0", 0}, {"t1", 0}},
 			},
 			{
 				"merge join with alias",
-				"from device topic-0 as a, topic-1 as b where a.u8 = 0 or b.u8 = 0",
-				[][]int64{{0, 0}, {1, 0}},
+				"from device t0 as a, t1 as b where a.u8 = 0 or b.u8 = 0",
+				[]message{{"t0", 0}, {"t1", 0}},
 			},
 			{
 				"merge join one alias one not",
-				"from device topic-0 as a, topic-1 where a.u8 = 0 or topic-1.u8 = 0",
-				[][]int64{{0, 0}, {1, 0}},
+				"from device t0 as a, t1 where a.u8 = 0 or t1.u8 = 0",
+				[]message{{"t0", 0}, {"t1", 0}},
 			},
 			{
 				"asof join with alias",
-				"from device topic-0 as a precedes topic-1 as b by less than 10 nanoseconds where a.u8 = 0 or b.u8 = 0",
-				[][]int64{{0, 0}, {1, 0}},
+				"from device t0 as a precedes t1 as b by less than 10 nanoseconds where a.u8 = 0 or b.u8 = 0",
+				[]message{{"t0", 0}, {"t1", 0}},
 			},
 			{
 				"limit",
-				"from device topic-0 as a precedes topic-1 as b by less than 10 nanoseconds where a.u8 = 0 or b.u8 = 0 limit 1",
-				[][]int64{{0, 0}},
+				"from device t0 as a precedes t1 as b by less than 10 nanoseconds where a.u8 = 0 or b.u8 = 0 limit 1",
+				[]message{{"t0", 0}},
 			},
 			{
 				"offset",
-				"from device topic-0 as a precedes topic-1 as b by less than 10 nanoseconds where a.u8 = 0 or b.u8 = 0 offset 1",
-				[][]int64{{1, 0}},
+				"from device t0 as a precedes t1 as b by less than 10 nanoseconds where a.u8 = 0 or b.u8 = 0 offset 1",
+				[]message{{"t1", 0}},
 			},
 		}
 		for _, c := range cases {
@@ -107,17 +117,24 @@ func TestQueryExecution(t *testing.T) {
 				require.NoError(t, err)
 				qp, err := plan.CompileQuery("db", *ast)
 				require.NoError(t, err)
-				actual, err := executor.CompilePlan(ctx, qp, tmgr.NewTreeIterator)
+
+				buf := &bytes.Buffer{}
+				require.NoError(t, executor.Run(ctx, buf, qp, tmgr.NewTreeIterator))
+
+				reader, err := mcap.NewReader(bytes.NewReader(buf.Bytes()))
 				require.NoError(t, err)
 
-				results := [][]int64{}
+				it, err := reader.Messages()
+				require.NoError(t, err)
+
+				results := []message{}
 				for {
-					tuple, err := actual.Next(ctx)
+					_, channel, msg, err := it.Next(nil)
 					if err != nil {
 						require.ErrorIs(t, err, io.EOF)
 						break
 					}
-					results = append(results, []int64{int64(tuple.ChannelID()), int64(tuple.LogTime())})
+					results = append(results, message{channel.Topic, msg.LogTime})
 				}
 				require.Equal(t, c.expected, results)
 			})
@@ -140,7 +157,7 @@ func TestQueryExecution(t *testing.T) {
 		parser := ql.NewParser()
 		for query, result := range queries {
 			t.Run(query, func(t *testing.T) {
-				query := "from device topic-0 where topic-0.s " + query
+				query := "from device t0 where t0.s " + query
 				ast, err := parser.ParseString("", query)
 				require.NoError(t, err)
 				qp, err := plan.CompileQuery("db", *ast)
@@ -187,7 +204,7 @@ func TestQueryExecution(t *testing.T) {
 		for _, field := range fields {
 			for _, operator := range operators {
 				t.Run(fmt.Sprintf("%s %s", field, operator), func(t *testing.T) {
-					query := fmt.Sprintf("from device topic-0 where topic-0.%s %s 1", field, operator)
+					query := fmt.Sprintf("from device t0 where t0.%s %s 1", field, operator)
 					expected := map[string][][]int64{
 						"=":  {{0, 1}},
 						"<":  {{0, 0}},
@@ -331,7 +348,7 @@ func prepTmgr2(t *testing.T, ctx context.Context, tmgr *treemgr.TreeManager) {
 		require.NoError(t, w.WriteChannel(&fmcap.Channel{
 			ID:              uint16(i),
 			SchemaID:        uint16(i) + 1,
-			Topic:           fmt.Sprintf("topic-%d", i),
+			Topic:           fmt.Sprintf("t%d", i),
 			MessageEncoding: "ros1msg",
 		}))
 		c := 0
