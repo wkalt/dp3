@@ -202,7 +202,7 @@ func (tm *TreeManager) Receive(
 		if writer, ok = writers[channel.Topic]; !ok {
 			if _, _, _, err := tm.rootmap.GetLatest(ctx, database, producerID, channel.Topic); err != nil {
 				switch {
-				case errors.Is(err, rootmap.StreamNotFoundError{}):
+				case errors.Is(err, rootmap.TableNotFoundError{}):
 					if err := tm.NewRoot(ctx, database, producerID, channel.Topic); err != nil &&
 						!errors.Is(err, rootmap.ErrRootAlreadyExists) {
 						return fmt.Errorf("failed to create new root: %w", err)
@@ -368,8 +368,8 @@ func (tm *TreeManager) ForceFlush(ctx context.Context) error {
 	return nil
 }
 
-// PrintStream returns a string representation of the tree for the given stream.
-func (tm *TreeManager) PrintStream(ctx context.Context, database string, producerID string, topic string) string {
+// PrintTable returns a string representation of the tree for the given table.
+func (tm *TreeManager) PrintTable(ctx context.Context, database string, producerID string, topic string) string {
 	prefix, root, _, err := tm.rootmap.GetLatest(ctx, database, producerID, topic)
 	if err != nil {
 		return fmt.Sprintf("failed to get latest root: %v", err)
@@ -420,7 +420,7 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 	// topic/producer, so we should have an existing one by the time we get to
 	// the point of merging.
 	prefix, existingRootID, _, err := tm.rootmap.GetLatest(ctx, batch.Database, batch.ProducerID, batch.Topic)
-	if err != nil && !errors.Is(err, rootmap.StreamNotFoundError{}) {
+	if err != nil && !errors.Is(err, rootmap.TableNotFoundError{}) {
 		return fmt.Errorf("failed to get root: %w", err)
 	}
 	basereader := tree.NewBYOTreeReader(prefix, existingRootID, tm.ns.Get)

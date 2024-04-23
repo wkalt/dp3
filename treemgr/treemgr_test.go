@@ -351,7 +351,7 @@ func TestReceiveDifferentSchemas(t *testing.T) {
 		[0-15728640:5 (12 count=1 13 count=1) [0-245760:5 (12 count=1 13 count=1) [0-3840:5 (12 count=1 13 count=1)
 		[0-60:3 (13 count=1) [leaf 1 msg]] [60-120:5 (12 count=1) [leaf 1 msg]]]]]]]`
 
-		str := tmgr.PrintStream(ctx, "db", "my-device", "topic-0")
+		str := tmgr.PrintTable(ctx, "db", "my-device", "topic-0")
 		assertEqualTrees(t, expected, str)
 	})
 }
@@ -388,7 +388,7 @@ func runSequence(ctx context.Context, t *testing.T, tmgr *treemgr.TreeManager, s
 		require.NoError(t, tmgr.ForceFlush(ctx))
 		s = s[strings.Index(s, ")")+1:]
 	}
-	return tmgr.PrintStream(ctx, "db", "my-device", "topic-0")
+	return tmgr.PrintTable(ctx, "db", "my-device", "topic-0")
 }
 
 // NB: this is really a tree iterator test, but the treemgr machinery is useful
@@ -573,7 +573,7 @@ func TestReceive(t *testing.T) {
 			for i := range c.output {
 				topic := fmt.Sprintf("topic-%d", i)
 				t.Run("comparing"+topic, func(t *testing.T) {
-					str := tmgr.PrintStream(ctx, "db", "my-device", topic)
+					str := tmgr.PrintTable(ctx, "db", "my-device", topic)
 					assertEqualTrees(t, c.output[i], str)
 				})
 			}

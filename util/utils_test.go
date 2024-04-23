@@ -38,10 +38,6 @@ func TestDateSeconds(t *testing.T) {
 	assert.Equal(t, uint64(0), util.DateSeconds("1970-01-01"))
 }
 
-func TestComputeStreamID(t *testing.T) {
-	assert.Equal(t, "d41d8cd98f00b204e9800998ecf8427e", util.ComputeStreamID("", ""))
-}
-
 func TestOkeys(t *testing.T) {
 	m := map[int]string{3: "c", 1: "a", 2: "b"}
 	for i := 0; i < 1000; i++ {

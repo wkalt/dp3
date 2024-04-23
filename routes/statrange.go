@@ -65,7 +65,7 @@ func newStatRangeHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		)
 		w.Header().Set("Content-Type", "application/json")
 		if err != nil {
-			if errors.Is(err, rootmap.StreamNotFoundError{}) {
+			if errors.Is(err, rootmap.TableNotFoundError{}) {
 				httputil.NotFound(ctx, w, "no matching data")
 				return
 			}

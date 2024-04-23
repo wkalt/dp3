@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/wkalt/dp3/executor"
 	"github.com/wkalt/dp3/plan"
@@ -55,6 +56,12 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			httputil.BadRequest(ctx, w, "invalid request: %s", err)
 			return
 		}
+
+		if !strings.HasSuffix(req.Query, ";") {
+			httputil.BadRequest(ctx, w, "queries must be terminated with a semicolon")
+			return
+		}
+
 		ast, err := parser.ParseString("", req.Query)
 		if err != nil {
 			httputil.BadRequest(ctx, w, "error parsing query: %s", err)
@@ -76,9 +83,9 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 				httputil.BadRequest(ctx, w, "%s", fieldNotFound.Error())
 				return
 			}
-			streamNotFound := rootmap.StreamNotFoundError{}
-			if errors.As(err, &streamNotFound) {
-				httputil.BadRequest(ctx, w, "%s", streamNotFound.Error())
+			tableNotFound := rootmap.TableNotFoundError{}
+			if errors.As(err, &tableNotFound) {
+				httputil.BadRequest(ctx, w, "%s", tableNotFound.Error())
 				return
 			}
 			httputil.InternalServerError(ctx, w, "error executing query: %s", err)
