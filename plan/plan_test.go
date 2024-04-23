@@ -22,32 +22,32 @@ func TestInvalidPlans(t *testing.T) {
 	}{
 		{
 			"and expression spanning tables",
-			"from device a, b where a.foo = 10 and b.bar = 20",
+			"from device a, b where a.foo = 10 and b.bar = 20;",
 			"more than one alias",
 		},
 		{
 			"grouped or expression spanning tables",
-			"from device a, b where (a.foo = 10 or b.bar = 20)",
+			"from device a, b where (a.foo = 10 or b.bar = 20);",
 			"more than one alias",
 		},
 		{
 			"multiple aliases to same table in one scan",
-			"from device a as b where a.foo = 10 and b.bar = 20",
+			"from device a as b where a.foo = 10 and b.bar = 20;",
 			"more than one alias",
 		},
 		{
 			"where clauses must be qualified",
-			"from device a where foo = 10",
+			"from device a where foo = 10;",
 			"field foo must be qualified with a dot",
 		},
 		{
 			"partly unqualified where clause",
-			"from device a where a.foo = 10 and bar = 20",
+			"from device a where a.foo = 10 and bar = 20;",
 			"field bar must be qualified with a dot",
 		},
 		{
 			"where clause qualified with alias that doesn't exist",
-			"from device a where b.foo = 10",
+			"from device a where b.foo = 10;",
 			"unresolved table alias: b",
 		},
 	}
@@ -71,51 +71,51 @@ func TestCompileQuery(t *testing.T) {
 	}{
 		{
 			"single scan",
-			"from device a",
+			"from device a;",
 			"[scan (a db device all-time)]",
 		},
 		{
 			"single scan with a where clause",
-			"from device a where a.foo = 10",
+			"from device a where a.foo = 10;",
 			"[scan (a db device all-time) [binexp [= a.foo 10]]]",
 		},
 		{
 			"single scan with multiple where clauses",
-			"from device a where a.foo = 10 and a.bar = 20",
+			"from device a where a.foo = 10 and a.bar = 20;",
 			"[scan (a db device all-time) [and [binexp [= a.foo 10]] [binexp [= a.bar 20]]]]",
 		},
 		{
 			"single scan with or condition",
-			"from device a where a.foo = 10 or a.bar = 20",
+			"from device a where a.foo = 10 or a.bar = 20;",
 			"[scan (a db device all-time) [or [binexp [= a.foo 10]] [binexp [= a.bar 20]]]]",
 		},
 		{
 			"single scan with an alias",
-			"from device a as b",
+			"from device a as b;",
 			"[scan (a b db device all-time)]",
 		},
 		{
 			"aliased where clauses are resolved",
-			"from device a as b where b.foo = 1",
+			"from device a as b where b.foo = 1;",
 			"[scan (a b db device all-time) [binexp [= b.foo 1]]]",
 		},
 		{
 			"multiple aliased where clauses are resolved",
-			"from device a as b, c as d where b.foo = 1 or d.bar = 2",
+			"from device a as b, c as d where b.foo = 1 or d.bar = 2;",
 			`[merge
 			   [scan (a b db device all-time) [binexp [= b.foo 1]]]
 			   [scan (c d db device all-time) [binexp [= d.bar 2]]]]`,
 		},
 		{
 			"basic mj",
-			"from device a, b",
+			"from device a, b;",
 			`[merge
 			  [scan (a db device all-time)]
 			  [scan (b db device all-time)]]`,
 		},
 		{
 			"ternary mj",
-			"from device a, b, c",
+			"from device a, b, c;",
 			`[merge
 			  [scan (a db device all-time)]
 			  [scan (b db device all-time)]
@@ -123,47 +123,47 @@ func TestCompileQuery(t *testing.T) {
 		},
 		{
 			"scan with where clause and limit",
-			"from device a where a.b = 1 limit 10",
+			"from device a where a.b = 1 limit 10;",
 			`[limit 10
 			  [scan (a db device all-time) [binexp [= a.b 1]]]]`,
 		},
 		{
 			"merge join with where clause",
-			"from device a, b where a.b = 10 or b.c = 20",
+			"from device a, b where a.b = 10 or b.c = 20;",
 			`[merge
 			  [scan (a db device all-time) [binexp [= a.b 10]]]
 			  [scan (b db device all-time) [binexp [= b.c 20]]]]`,
 		},
 		{
 			"asof join with where clause",
-			"from device a precedes b where b.c = 10 or a.b = 20",
+			"from device a precedes b where b.c = 10 or a.b = 20;",
 			`[asof (precedes full)
 			   [scan (a db device all-time) [binexp [= a.b 20]]]
 			   [scan (b db device all-time) [binexp [= b.c 10]]]]`,
 		},
 		{
 			"asof join with restriction",
-			"from device a precedes b by less than 5 seconds",
+			"from device a precedes b by less than 5 seconds;",
 			`[asof (precedes full seconds 5)
 			  [scan (a db device all-time)]
 			  [scan (b db device all-time)]]`,
 		},
 		{
 			"asof join with aliasing",
-			"from device a as foo precedes b as bar by less than 5 seconds",
+			"from device a as foo precedes b as bar by less than 5 seconds;",
 			`[asof (precedes full seconds 5)
 			  [scan (a foo db device all-time)]
 			  [scan (b bar db device all-time)]]`,
 		},
 		{
 			"trivial subexpressions are pulled up",
-			"from devices a where (a.foo = 10)",
+			"from devices a where (a.foo = 10);",
 			`[scan (a db devices all-time)
 			  [binexp [= a.foo 10]]]`,
 		},
 		{
 			"grouped subexpressions on a single scan",
-			"from devices a where (a.foo = 10 or a.bar = 20) and a.baz = 30",
+			"from devices a where (a.foo = 10 or a.bar = 20) and a.baz = 30;",
 			`[scan (a db devices all-time)
 			  [and
 			    [or [binexp [= a.foo 10]] [binexp [= a.bar 20]]]
@@ -171,7 +171,7 @@ func TestCompileQuery(t *testing.T) {
 		},
 		{
 			"grouped subexpressions on multiple scans",
-			"from devices a, b where (a.foo = 10 or a.bar = 20) or b.baz = 30",
+			"from devices a, b where (a.foo = 10 or a.bar = 20) or b.baz = 30;",
 			`[merge
 			  [scan (a db devices all-time) [or [binexp [= a.foo 10]] [binexp [= a.bar 20]]]]
 			  [scan (b db devices all-time) [binexp [= b.baz 30]]]]`,

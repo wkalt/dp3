@@ -33,17 +33,17 @@ func TestQueryExecution(t *testing.T) {
 		}{
 			{
 				"basic scan",
-				"from device t0",
+				"from device t0;",
 				[]message{{"t0", 0}, {"t0", 1}, {"t0", 2}, {"t0", 3}, {"t0", 4}},
 			},
 			{
 				"scan matching no data",
-				"from device t0 where t0.u8 = 100",
+				"from device t0 where t0.u8 = 100;",
 				[]message{},
 			},
 			{
 				"basic merge join",
-				"from device t0, t1",
+				"from device t0, t1;",
 				[]message{
 					{"t0", 0}, {"t1", 0}, {"t0", 1}, {"t0", 2}, {"t1", 2},
 					{"t0", 3}, {"t0", 4}, {"t1", 4}, {"t1", 6}, {"t1", 8},
@@ -51,62 +51,62 @@ func TestQueryExecution(t *testing.T) {
 			},
 			{
 				"merge join with where clause on one element",
-				"from device t0, t1 where t1.u8 = 0",
+				"from device t0, t1 where t1.u8 = 0;",
 				[]message{{"t0", 0}, {"t1", 0}, {"t0", 1}, {"t0", 2}, {"t0", 3}, {"t0", 4}},
 			},
 			{
 				"merge join with where clause on both elements",
-				"from device t0, t1 where t0.u8 = 0 or t1.u8 = 0",
+				"from device t0, t1 where t0.u8 = 0 or t1.u8 = 0;",
 				[]message{{"t0", 0}, {"t1", 0}},
 			},
 			{
 				"asof join precedes",
-				"from device t0 precedes t1 by less than 2 nanoseconds",
+				"from device t0 precedes t1 by less than 2 nanoseconds;",
 				[]message{{"t0", 0}, {"t1", 0}, {"t0", 2}, {"t1", 2}, {"t0", 4}, {"t1", 4}},
 			},
 			{
 				"asof join succeeds",
-				"from device t0 succeeds t1 by less than 2 nanoseconds",
+				"from device t0 succeeds t1 by less than 2 nanoseconds;",
 				[]message{{"t1", 0}, {"t0", 1}, {"t1", 2}, {"t0", 3}},
 			},
 			{
 				"asof join with precedes without immediate",
-				"from device t1 precedes t8 by less than 100 nanoseconds",
+				"from device t1 precedes t8 by less than 100 nanoseconds;",
 				[]message{{"t1", 0}, {"t8", 0}, {"t1", 8}, {"t8", 9}, {"t8", 18}, {"t8", 27}, {"t8", 36}},
 			},
 			{
 				"asof join with precedes with immediate",
-				"from device t1 precedes immediate t8 by less than 100 nanoseconds",
+				"from device t1 precedes immediate t8 by less than 100 nanoseconds;",
 				[]message{{"t1", 0}, {"t8", 0}, {"t1", 8}, {"t8", 9}},
 			},
 			{
 				"asof join with where clause",
-				"from device t0 precedes immediate t1 by less than 10 nanoseconds where t0.u8 = 0",
+				"from device t0 precedes immediate t1 by less than 10 nanoseconds where t0.u8 = 0;",
 				[]message{{"t0", 0}, {"t1", 0}},
 			},
 			{
 				"merge join with alias",
-				"from device t0 as a, t1 as b where a.u8 = 0 or b.u8 = 0",
+				"from device t0 as a, t1 as b where a.u8 = 0 or b.u8 = 0;",
 				[]message{{"t0", 0}, {"t1", 0}},
 			},
 			{
 				"merge join one alias one not",
-				"from device t0 as a, t1 where a.u8 = 0 or t1.u8 = 0",
+				"from device t0 as a, t1 where a.u8 = 0 or t1.u8 = 0;",
 				[]message{{"t0", 0}, {"t1", 0}},
 			},
 			{
 				"asof join with alias",
-				"from device t0 as a precedes t1 as b by less than 10 nanoseconds where a.u8 = 0 or b.u8 = 0",
+				"from device t0 as a precedes t1 as b by less than 10 nanoseconds where a.u8 = 0 or b.u8 = 0;",
 				[]message{{"t0", 0}, {"t1", 0}},
 			},
 			{
 				"limit",
-				"from device t0 as a precedes t1 as b by less than 10 nanoseconds where a.u8 = 0 or b.u8 = 0 limit 1",
+				"from device t0 as a precedes t1 as b by less than 10 nanoseconds where a.u8 = 0 or b.u8 = 0 limit 1;",
 				[]message{{"t0", 0}},
 			},
 			{
 				"offset",
-				"from device t0 as a precedes t1 as b by less than 10 nanoseconds where a.u8 = 0 or b.u8 = 0 offset 1",
+				"from device t0 as a precedes t1 as b by less than 10 nanoseconds where a.u8 = 0 or b.u8 = 0 offset 1;",
 				[]message{{"t1", 0}},
 			},
 		}
@@ -157,7 +157,7 @@ func TestQueryExecution(t *testing.T) {
 		parser := ql.NewParser()
 		for query, result := range queries {
 			t.Run(query, func(t *testing.T) {
-				query := "from device t0 where t0.s " + query
+				query := "from device t0 where t0.s " + query + ";"
 				ast, err := parser.ParseString("", query)
 				require.NoError(t, err)
 				qp, err := plan.CompileQuery("db", *ast)
@@ -204,7 +204,7 @@ func TestQueryExecution(t *testing.T) {
 		for _, field := range fields {
 			for _, operator := range operators {
 				t.Run(fmt.Sprintf("%s %s", field, operator), func(t *testing.T) {
-					query := fmt.Sprintf("from device t0 where t0.%s %s 1", field, operator)
+					query := fmt.Sprintf("from device t0 where t0.%s %s 1;", field, operator)
 					expected := map[string][][]int64{
 						"=":  {{0, 1}},
 						"<":  {{0, 0}},
@@ -245,47 +245,47 @@ func TestCompilePlan(t *testing.T) {
 	}{
 		{
 			"simple scan",
-			"from device topic-0",
+			"from device topic-0;",
 			"[scan topic-0]",
 		},
 		{
 			"simple scan with where clause",
-			"from device topic-0 where topic-0.foo = 10",
+			"from device topic-0 where topic-0.foo = 10;",
 			"[filter [scan topic-0]]",
 		},
 		{
 			"simple scan with time boundaries",
-			"from device between 10 and 100 topic-0",
+			"from device between 10 and 100 topic-0;",
 			"[scan topic-0]",
 		},
 		{
 			"simple scan with limit",
-			"from device topic-0 limit 10",
+			"from device topic-0 limit 10;",
 			"[limit 10 [scan topic-0]]",
 		},
 		{
 			"simple scan with offset",
-			"from device topic-0 offset 10",
+			"from device topic-0 offset 10;",
 			"[offset 10 [scan topic-0]]",
 		},
 		{
 			"merge join",
-			"from device topic-0, topic-1",
+			"from device topic-0, topic-1;",
 			"[merge [scan topic-0] [scan topic-1]]",
 		},
 		{
 			"merge join with qualification on one side",
-			"from device topic-0, topic-1 where topic-0.foo = 10",
+			"from device topic-0, topic-1 where topic-0.foo = 10;",
 			"[merge [filter [scan topic-0]] [scan topic-1]]",
 		},
 		{
 			"asof join",
-			"from device topic-0 precedes topic-1 by less than 10 seconds",
+			"from device topic-0 precedes topic-1 by less than 10 seconds;",
 			"[asof 10000000000 full [scan topic-0] [scan topic-1]]",
 		},
 		{
 			"asof join with immediate",
-			"from device topic-0 precedes immediate topic-1 by less than 10 seconds",
+			"from device topic-0 precedes immediate topic-1 by less than 10 seconds;",
 			"[asof 10000000000 immediate [scan topic-0] [scan topic-1]]",
 		},
 	}

@@ -13,39 +13,6 @@ const (
 	producer = "my-robot"
 )
 
-func newExpression(or ...*ql.OrCondition) *ql.Expression {
-	return &ql.Expression{
-		Or: or,
-	}
-}
-
-func newOrCondition(and ...*ql.Condition) *ql.OrCondition {
-	return &ql.OrCondition{
-		And: and,
-	}
-}
-
-func newCondition(term ql.Term, rhs *ql.ConditionRHS) *ql.Condition {
-	return &ql.Condition{
-		Operand: term,
-		RHS:     rhs,
-	}
-}
-
-func newConditionRHS(op string, value ql.Value) *ql.ConditionRHS {
-	return &ql.ConditionRHS{
-		Op:    op,
-		Value: value,
-	}
-}
-
-func newTerm(v *string, subexpr *ql.Expression) ql.Term {
-	return ql.Term{
-		Value:         v,
-		Subexpression: subexpr,
-	}
-}
-
 func TestExpression(t *testing.T) {
 	parser, err := participle.Build[ql.Expression](ql.Options...)
 	require.NoError(t, err)
@@ -513,17 +480,17 @@ func TestQuery(t *testing.T) {
 	}{
 		{
 			"simple",
-			"from my-robot a",
+			"from my-robot a;",
 			newQuery(nil, newSelect("a", "", nil, nil), nil, nil),
 		},
 		{
 			"with between",
-			`from my-robot between "a" and "b" a`,
+			`from my-robot between "a" and "b" a;`,
 			newQuery(newBetween("a", "b"), newSelect("a", "", nil, nil), nil, nil),
 		},
 		{
 			"with where",
-			"from my-robot a where a = 10",
+			"from my-robot a where a = 10;",
 			newQuery(
 				nil,
 				newSelect("a", "", nil, nil),
@@ -534,7 +501,7 @@ func TestQuery(t *testing.T) {
 		},
 		{
 			"with where and paging",
-			"from my-robot a where a = 10 limit 10 offset 10",
+			"from my-robot a where a = 10 limit 10 offset 10;",
 			newQuery(
 				nil,
 				newSelect("a", "", nil, nil),
@@ -547,7 +514,7 @@ func TestQuery(t *testing.T) {
 		},
 		{
 			"with multiple where",
-			"from my-robot a where a = 10 and b = 20",
+			"from my-robot a where a = 10 and b = 20;",
 			newQuery(
 				nil,
 				newSelect("a", "", nil, nil),
@@ -559,7 +526,7 @@ func TestQuery(t *testing.T) {
 		},
 		{
 			"merge join with where clauses",
-			"from my-robot a, b where a = 10 and b = 20",
+			"from my-robot a, b where a = 10 and b = 20;",
 			newQuery(
 				nil,
 				newSelect("a", "", newMJ(newSelect("b", "", nil, nil)), nil),
@@ -572,7 +539,7 @@ func TestQuery(t *testing.T) {
 		},
 		{
 			"basic as-of join",
-			"from my-robot a precedes b by less than 10 seconds",
+			"from my-robot a precedes b by less than 10 seconds;",
 			newQuery(
 				nil,
 				newSelect("a", "", nil, newAJ("precedes", false,
@@ -584,7 +551,7 @@ func TestQuery(t *testing.T) {
 		},
 		{
 			"as-of join without constraint",
-			"from my-robot a precedes b",
+			"from my-robot a precedes b;",
 			newQuery(
 				nil,
 				newSelect("a", "", nil, newAJ("precedes", false, newSelect("b", "", nil, nil), nil)),
@@ -594,7 +561,7 @@ func TestQuery(t *testing.T) {
 		},
 		{
 			"as-of join without constraint with limit and offset",
-			"from my-robot a precedes b limit 10 offset 10",
+			"from my-robot a precedes b limit 10 offset 10;",
 			newQuery(
 				nil,
 				newSelect("a", "", nil, newAJ("precedes", false, newSelect("b", "", nil, nil), nil)),
@@ -604,7 +571,7 @@ func TestQuery(t *testing.T) {
 		},
 		{
 			"limit/offset reversed",
-			"from my-robot a precedes b offset 10 limit 10",
+			"from my-robot a precedes b offset 10 limit 10;",
 			newQuery(
 				nil,
 				newSelect("a", "", nil, newAJ("precedes", false, newSelect("b", "", nil, nil), nil)),
@@ -616,7 +583,7 @@ func TestQuery(t *testing.T) {
 			"newlines elided",
 			`from my-robot a, b
 			where a.foo = 10 and b.bar = 20
-			limit 10 offset 10`,
+			limit 10 offset 10;`,
 			newQuery(
 				nil,
 				newSelect("a", "", newMJ(newSelect("b", "", nil, nil)), nil),
@@ -768,5 +735,43 @@ func newPagingTerm(keyword string, value int) ql.PagingTerm {
 	return ql.PagingTerm{
 		Keyword: keyword,
 		Value:   value,
+	}
+}
+
+// newExpression returns a new expression.
+func newExpression(or ...*ql.OrCondition) *ql.Expression {
+	return &ql.Expression{
+		Or: or,
+	}
+}
+
+// newOrCondition returns a new or condition.
+func newOrCondition(and ...*ql.Condition) *ql.OrCondition {
+	return &ql.OrCondition{
+		And: and,
+	}
+}
+
+// newCondition returns a new condition.
+func newCondition(term ql.Term, rhs *ql.ConditionRHS) *ql.Condition {
+	return &ql.Condition{
+		Operand: term,
+		RHS:     rhs,
+	}
+}
+
+// newConditionRHS returns a new condition RHS.
+func newConditionRHS(op string, value ql.Value) *ql.ConditionRHS {
+	return &ql.ConditionRHS{
+		Op:    op,
+		Value: value,
+	}
+}
+
+// newTerm returns a new term.
+func newTerm(v *string, subexpr *ql.Expression) ql.Term {
+	return ql.Term{
+		Value:         v,
+		Subexpression: subexpr,
 	}
 }
