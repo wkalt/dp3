@@ -41,3 +41,18 @@ func NewReader(r io.Reader) (*mcap.Reader, error) {
 	}
 	return reader, nil
 }
+
+// WriteEmptyFile writes an empty mcap file to the provided writer.
+func WriteEmptyFile(w io.Writer) error {
+	writer, err := NewWriter(w)
+	if err != nil {
+		return fmt.Errorf("failed to construct mcap writer: %w", err)
+	}
+	if err := writer.WriteHeader(&mcap.Header{}); err != nil {
+		return fmt.Errorf("failed to write header: %w", err)
+	}
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("failed to close writer: %w", err)
+	}
+	return nil
+}

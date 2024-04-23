@@ -55,10 +55,11 @@ func Run(
 			}
 			return fmt.Errorf("failed to read next message: %w", err)
 		}
-		// defer initialization until we successfully pull a message to avoid
-		// schema conflicts. todo: we need to be able to check the schemas prior
-		// to running the executor - they should be extracted into a /schemas
-		// directory and referencable by hash.
+		// defer initialization until we successfully pull a message, in order
+		// to let the executor error on a schema conflict if necessary. todo: we
+		// need to be able to check the schemas prior to running the executor -
+		// they should be extracted into a /schemas directory and referencable
+		// by hash.
 		if !initialized {
 			writer, err := mcap.NewWriter(w)
 			if err != nil {
@@ -74,6 +75,15 @@ func Run(
 
 		if err := mc.Write(tuple.schema, tuple.channel, tuple.message); err != nil {
 			return fmt.Errorf("failed to write message: %w", err)
+		}
+	}
+
+	// If we never initialized, we got no results but also no errors. Write an
+	// empty file to the output since the output writer has not otherwise been
+	// initialized.
+	if !initialized {
+		if err := mcap.WriteEmptyFile(w); err != nil {
+			return fmt.Errorf("failed to write empty file: %w", err)
 		}
 	}
 	return nil
