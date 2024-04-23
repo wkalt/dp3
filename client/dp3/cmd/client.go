@@ -117,7 +117,7 @@ func executeQuery(database string, query string) error {
 		if err := json.NewDecoder(resp.Body).Decode(response); err != nil {
 			return fmt.Errorf("error decoding response: %w", err)
 		}
-		return errors.New(response.Error)
+		return cutil.NewAPIError(response.Error, response.Detail)
 	}
 	pager := maybePager()
 	return withPaging(pager, func(w io.Writer) error {
@@ -141,8 +141,14 @@ func maybePager() string {
 	return ""
 }
 
-func printError(s string) {
-	fmt.Println("ERROR: " + s)
+func printError(err error) {
+	fmt.Println("ERROR: " + err.Error())
+	apierr := cutil.APIError{}
+	if errors.As(err, &apierr) {
+		if apierr.Detail() != "" {
+			fmt.Println("DETAIL: " + apierr.Detail())
+		}
+	}
 }
 
 func run() error {
@@ -189,7 +195,7 @@ func run() error {
 		case strings.HasPrefix(line, ".connect"):
 			parts := strings.Split(line, " ")[1:]
 			if len(parts) != 1 {
-				printError("usage: .connect <database>")
+				printError(errors.New("usage: .connect <database>"))
 				continue
 			}
 			database = parts[0]
@@ -197,26 +203,26 @@ func run() error {
 			continue
 		case strings.HasPrefix(line, ".statrange"):
 			if err := handleStatRange(database, line); err != nil {
-				printError(err.Error())
+				printError(err)
 			}
 			continue
 		case strings.HasPrefix(line, ".import"):
 			if err := handleImport(database, line); err != nil {
-				printError(err.Error())
+				printError(err)
 			}
 			continue
 		case strings.HasPrefix(line, ".delete"):
 			if err := handleDelete(database, line); err != nil {
-				printError(err.Error())
+				printError(err)
 			}
 			continue
 		case strings.HasPrefix(line, ".tables"):
 			if err := handleTables(database, line); err != nil {
-				printError(err.Error())
+				printError(err)
 			}
 			continue
 		case strings.HasPrefix(line, "."):
-			printError("unrecognized command: " + line)
+			printError(errors.New("unrecognized command: " + line))
 			continue
 		}
 
@@ -230,7 +236,7 @@ func run() error {
 		l.SetPrompt(fmt.Sprintf("dp3:[%s] # ", database))
 		l.SaveHistory(query)
 		if err := executeQuery(database, query); err != nil {
-			printError(err.Error())
+			printError(err)
 		}
 	}
 
@@ -276,7 +282,7 @@ func doDelete(database, producer, topic string, start, end int64) error {
 		if err := json.NewDecoder(resp.Body).Decode(response); err != nil {
 			return fmt.Errorf("error decoding response: %w", err)
 		}
-		return errors.New(response.Error)
+		return cutil.NewAPIError(response.Error, response.Detail)
 	}
 	return nil
 }
@@ -339,7 +345,7 @@ func parseErrorResponse(resp *http.Response) error {
 	if err := json.NewDecoder(resp.Body).Decode(response); err != nil {
 		return fmt.Errorf("error decoding response: %w", err)
 	}
-	return errors.New(response.Error)
+	return cutil.NewAPIError(response.Error, response.Detail)
 }
 
 func printTables(w io.Writer, database string, producerID string, topic string) error {

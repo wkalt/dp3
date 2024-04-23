@@ -17,7 +17,10 @@ func MustOK(resp *http.Response) {
 		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 			fmt.Printf("error decoding response: %s\n", err)
 		} else {
-			fmt.Println(response.Error)
+			fmt.Println("ERROR: " + response.Error)
+			if response.Detail != "" {
+				fmt.Println("DETAIL: " + response.Detail)
+			}
 		}
 		os.Exit(1)
 	}
