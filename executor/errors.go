@@ -27,10 +27,13 @@ func (e FieldNotFoundError) Is(target error) bool {
 }
 
 func (e FieldNotFoundError) Error() string {
+	return fmt.Sprintf("field %s not found", e.field)
+}
+
+func (e FieldNotFoundError) Detail() string {
 	sb := &strings.Builder{}
-	sb.WriteString(fmt.Sprintf("Field %s not found.", e.field))
 	if len(e.fields) > 0 {
-		sb.WriteString(" Available fields: ")
+		sb.WriteString("Available fields: ")
 		for i, f := range e.fields {
 			if i > 0 {
 				sb.WriteString(", ")

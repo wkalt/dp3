@@ -70,7 +70,7 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		qp, err := plan.CompileQuery(req.Database, *ast)
 		if err != nil {
 			if errors.Is(err, plan.BadPlanError{}) {
-				httputil.BadRequest(ctx, w, err.Error())
+				httputil.BadRequest(ctx, w, "%w", err)
 				return
 			}
 			httputil.InternalServerError(ctx, w, "error compiling query: %s", err)
@@ -80,12 +80,12 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		if err := executor.Run(ctx, w, qp, tmgr.NewTreeIterator); err != nil {
 			fieldNotFound := executor.FieldNotFoundError{}
 			if errors.As(err, &fieldNotFound) {
-				httputil.BadRequest(ctx, w, "%s", fieldNotFound.Error())
+				httputil.BadRequest(ctx, w, "%w", fieldNotFound)
 				return
 			}
 			tableNotFound := rootmap.TableNotFoundError{}
 			if errors.As(err, &tableNotFound) {
-				httputil.BadRequest(ctx, w, "%s", tableNotFound.Error())
+				httputil.BadRequest(ctx, w, "%w", tableNotFound)
 				return
 			}
 			httputil.InternalServerError(ctx, w, "error executing query: %s", err)

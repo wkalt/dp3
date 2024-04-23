@@ -42,7 +42,7 @@ func TestQueryHandler(t *testing.T) {
 			"invalid field",
 			"from device /fix where /fix.foo = 10;",
 			http.StatusBadRequest,
-			"Field /fix.foo not found",
+			"field /fix.foo not found",
 			0,
 		},
 		{
