@@ -229,7 +229,7 @@ func run() error {
 		lines = lines[:0]
 		l.SetPrompt(fmt.Sprintf("dp3:[%s] # ", database))
 		l.SaveHistory(query)
-		if err := executeQuery(database, strings.TrimSuffix(query, ";")); err != nil {
+		if err := executeQuery(database, query); err != nil {
 			printError(err.Error())
 		}
 	}

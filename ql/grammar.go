@@ -24,7 +24,7 @@ var (
 				{Name: "Word", Pattern: `[a-zA-Z_/\.][a-zA-Z0-9_/\.-]*`},
 				{Name: "QuotedString", Pattern: `"(?:\\.|[^"])*"`},
 				{Name: "whitespace", Pattern: `\s+`},
-				{Name: "Operators", Pattern: `,|[()]`},
+				{Name: "Operators", Pattern: `,|[()]|;`},
 				{Name: "BinaryOperator", Pattern: `=|!=|<=|>=|<|>|~\*|~`},
 				{Name: "Float", Pattern: `[-+]?\d*\.\d+([eE][-+]?\d+)?`},
 				{Name: "Integer", Pattern: `[0-9]+([eE][-+]?\d+)?`},
@@ -41,6 +41,7 @@ type Query struct {
 	Select       Select       `@@`
 	Where        *Expression  `("where" @@)*`
 	PagingClause []PagingTerm `@@*`
+	Terminator   string       `";"`
 }
 
 type Term struct {
