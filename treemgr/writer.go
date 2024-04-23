@@ -177,7 +177,7 @@ func (w *writer) flush(ctx context.Context) error {
 		statistics[schemaHash] = stats
 	}
 	if err := w.tmgr.insert(ctx, w.database, w.producerID, w.topic, w.lower*1e9, w.buf.Bytes(), statistics); err != nil {
-		return fmt.Errorf("failed to insert %d bytes data for stream %s/%s at time %d: %w",
+		return fmt.Errorf("failed to insert %d bytes data for table %s/%s at time %d: %w",
 			w.buf.Len(), w.producerID, w.topic, w.lower, err)
 	}
 	w.buf.Reset()

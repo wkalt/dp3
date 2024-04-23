@@ -272,7 +272,7 @@ func (rm *sqlRootmap) GetLatest(
 	).Scan(&prefix, &nodeID, &version)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return prefix, nodestore.NodeID{}, 0, NewStreamNotFoundError(database, producerID, topic)
+			return prefix, nodestore.NodeID{}, 0, NewTableNotFoundError(database, producerID, topic)
 		}
 		return prefix, nodestore.NodeID{}, 0, fmt.Errorf("failed to read from rootmap: %w", err)
 	}
@@ -301,7 +301,7 @@ func (rm *sqlRootmap) Get(
 	).Scan(&prefix, &nodeID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return prefix, nodestore.NodeID{}, NewStreamNotFoundError(database, producerID, topic)
+			return prefix, nodestore.NodeID{}, NewTableNotFoundError(database, producerID, topic)
 		}
 		return prefix, nodestore.NodeID{}, fmt.Errorf("failed to read from rootmap: %w", err)
 	}

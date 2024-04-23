@@ -2,7 +2,6 @@ package util
 
 import (
 	"cmp"
-	"crypto/md5"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -52,12 +51,6 @@ func ParseNanos(x uint64) time.Time {
 func DateSeconds(date string) uint64 {
 	t, _ := time.Parse("2006-01-02", date)
 	return uint64(t.Unix())
-}
-
-// ComputeStreamID returns a unique stream ID from a hashid and a topic.
-func ComputeStreamID(hashid string, topic string) string {
-	sum := md5.Sum([]byte(hashid + topic))
-	return hex.EncodeToString(sum[:])
 }
 
 // Okeys returns the keys of a map in sorted order.

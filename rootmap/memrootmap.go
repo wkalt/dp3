@@ -111,7 +111,7 @@ func (rm *memrootmap) GetLatest(
 			return root.prefix, root.nodeID, root.version, nil
 		}
 	}
-	return "", nodestore.NodeID{}, 0, NewStreamNotFoundError(database, producerID, topic)
+	return "", nodestore.NodeID{}, 0, NewTableNotFoundError(database, producerID, topic)
 }
 
 func (rm *memrootmap) Get(
@@ -127,7 +127,7 @@ func (rm *memrootmap) Get(
 			return root.prefix, root.nodeID, nil
 		}
 	}
-	return "", nodestore.NodeID{}, NewStreamNotFoundError(database, producerID, topic)
+	return "", nodestore.NodeID{}, NewTableNotFoundError(database, producerID, topic)
 }
 
 func (rm *memrootmap) Put(
