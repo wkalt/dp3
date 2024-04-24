@@ -19,7 +19,7 @@ once. So this iterator wraps the mcap reader with lazy initialization.
 
 type lazyIndexedIterator struct {
 	it    mcap.MessageIterator
-	rsc   io.ReadSeekCloser
+	rs    io.ReadSeeker
 	start uint64
 	end   uint64
 
@@ -27,7 +27,7 @@ type lazyIndexedIterator struct {
 }
 
 func (it *lazyIndexedIterator) initialize() error {
-	reader, err := NewReader(it.rsc)
+	reader, err := NewReader(it.rs)
 	if err != nil {
 		return fmt.Errorf("failed to create reader: %w", err)
 	}
@@ -56,6 +56,6 @@ func (it *lazyIndexedIterator) Next(_ []byte) (*mcap.Schema, *mcap.Channel, *mca
 
 // NewLazyIndexedIterator returns an MCAP message iterator that is not
 // initialized (doing IO) until the first call to Next.
-func NewLazyIndexedIterator(rsc io.ReadSeekCloser, start uint64, end uint64) mcap.MessageIterator {
-	return &lazyIndexedIterator{rsc: rsc, start: start, end: end}
+func NewLazyIndexedIterator(rs io.ReadSeeker, start uint64, end uint64) mcap.MessageIterator {
+	return &lazyIndexedIterator{rs: rs, start: start, end: end}
 }
