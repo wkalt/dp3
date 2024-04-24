@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/wkalt/dp3/rootmap"
 	"github.com/wkalt/dp3/treemgr"
 	"github.com/wkalt/dp3/util/httputil"
 	"github.com/wkalt/dp3/util/log"
@@ -56,6 +57,10 @@ func newDeleteHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		}
 		ctx = log.AddTags(ctx, "producer", req.ProducerID, "topic", req.Topic)
 		if err := tmgr.DeleteMessages(ctx, req.Database, req.ProducerID, req.Topic, req.Start, req.End); err != nil {
+			if errors.Is(err, rootmap.TableNotFoundError{}) {
+				httputil.NotFound(ctx, w, "topic %s not found", req.Topic)
+				return
+			}
 			httputil.InternalServerError(ctx, w, "error deleting: %s", err)
 			return
 		}
