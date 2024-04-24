@@ -19,7 +19,7 @@ nonoverlapping.
 type concatIterator struct {
 	iterators []mcap.MessageIterator
 	idx       int
-	rsc       io.ReadSeekCloser
+	rs        io.ReadSeeker
 }
 
 // Next returns the next message in the iterator.
@@ -32,7 +32,7 @@ func (ci *concatIterator) Next(buf []byte) (*mcap.Schema, *mcap.Channel, *mcap.M
 		return schema, channel, message, nil
 	}
 	if errors.Is(err, io.EOF) {
-		_, err := ci.rsc.Seek(0, io.SeekStart)
+		_, err := ci.rs.Seek(0, io.SeekStart)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("failed to seek to reader start: %w", err)
 		}
@@ -44,10 +44,10 @@ func (ci *concatIterator) Next(buf []byte) (*mcap.Schema, *mcap.Channel, *mcap.M
 
 // NewConcatIterator returns a new MessageIterator that concatenates the messages
 // from the given ranges.
-func NewConcatIterator(rsc io.ReadSeekCloser, ranges [][]uint64) mcap.MessageIterator {
+func NewConcatIterator(rs io.ReadSeeker, ranges [][]uint64) mcap.MessageIterator {
 	iterators := make([]mcap.MessageIterator, 0, len(ranges))
 	for _, r := range ranges {
-		iterators = append(iterators, NewLazyIndexedIterator(rsc, r[0], r[1]))
+		iterators = append(iterators, NewLazyIndexedIterator(rs, r[0], r[1]))
 	}
-	return &concatIterator{rsc: rsc, iterators: iterators}
+	return &concatIterator{rs: rs, iterators: iterators}
 }
