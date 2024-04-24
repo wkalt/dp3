@@ -36,24 +36,24 @@ func newImportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		ctx := r.Context()
 		req := ImportRequest{}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			httputil.BadRequest(ctx, w, "error decoding request: %s", err)
+			httputil.BadRequest(ctx, w, "error decoding request: %w", err)
 			return
 		}
 		defer r.Body.Close()
 		ctx = log.AddTags(ctx, "database", req.Database, "producer", req.ProducerID, "path", req.Path)
 		if err := req.validate(); err != nil {
-			httputil.BadRequest(ctx, w, "invalid request: %s", err)
+			httputil.BadRequest(ctx, w, "invalid request: %w", err)
 			return
 		}
 		f, err := os.Open(req.Path) // todo - get from storage provider
 		if err != nil {
-			httputil.BadRequest(ctx, w, "error opening file: %s", err)
+			httputil.BadRequest(ctx, w, "error opening file: %w", err)
 			return
 		}
 		defer f.Close()
 		log.Infof(ctx, "Importing file")
 		if err := tmgr.Receive(ctx, req.Database, req.ProducerID, f); err != nil {
-			httputil.InternalServerError(ctx, w, "error receiving file: %s", err)
+			httputil.InternalServerError(ctx, w, "error receiving file: %w", err)
 			return
 		}
 		log.Infof(ctx, "Imported")
