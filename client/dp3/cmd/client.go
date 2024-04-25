@@ -184,6 +184,7 @@ func run() error {
 			return err
 		}
 		line = strings.TrimSpace(line)
+		chomped := strings.TrimSuffix(line, ";")
 
 		switch {
 		case line == "":
@@ -202,22 +203,22 @@ func run() error {
 			l.SetPrompt(fmt.Sprintf("dp3:[%s] # ", database))
 			continue
 		case strings.HasPrefix(line, ".statrange"):
-			if err := handleStatRange(database, line); err != nil {
+			if err := handleStatRange(database, chomped); err != nil {
 				printError(err)
 			}
 			continue
 		case strings.HasPrefix(line, ".import"):
-			if err := handleImport(database, line); err != nil {
+			if err := handleImport(database, chomped); err != nil {
 				printError(err)
 			}
 			continue
 		case strings.HasPrefix(line, ".delete"):
-			if err := handleDelete(database, line); err != nil {
+			if err := handleDelete(database, chomped); err != nil {
 				printError(err)
 			}
 			continue
 		case strings.HasPrefix(line, ".tables"):
-			if err := handleTables(database, line); err != nil {
+			if err := handleTables(database, chomped); err != nil {
 				printError(err)
 			}
 			continue
