@@ -96,10 +96,13 @@ func (mi *mergeIterator) Next([]byte) (*mcap.Schema, *mcap.Channel, *mcap.Messag
 	return s2, c2, m2, nil
 }
 
-func NmergeIterator(iterators ...mcap.MessageIterator) (mcap.MessageIterator, error) {
-	pq := util.NewPriorityQueue[record](func(a, b record) bool {
+func NmergeIterator(descending bool, iterators ...mcap.MessageIterator) (mcap.MessageIterator, error) {
+	pq := util.NewPriorityQueue(func(a, b record) bool {
 		if a.message.LogTime == b.message.LogTime {
 			return a.message.ChannelID < b.message.ChannelID
+		}
+		if descending {
+			return a.message.LogTime > b.message.LogTime
 		}
 		return a.message.LogTime < b.message.LogTime
 	})

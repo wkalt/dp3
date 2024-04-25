@@ -40,6 +40,7 @@ type Query struct {
 	Between      *Between     `@@?`
 	Select       Select       `@@`
 	Where        *Expression  `("where" @@)*`
+	Descending   bool         `@"desc"?`
 	PagingClause []PagingTerm `@@*`
 	Terminator   string       `";"`
 }

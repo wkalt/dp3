@@ -481,12 +481,17 @@ func TestQuery(t *testing.T) {
 		{
 			"simple",
 			"from my-robot a;",
-			newQuery(nil, newSelect("a", "", nil, nil), nil, nil),
+			newQuery(nil, newSelect("a", "", nil, nil), nil, false, nil),
 		},
 		{
 			"with between",
 			`from my-robot between "a" and "b" a;`,
-			newQuery(newBetween("a", "b"), newSelect("a", "", nil, nil), nil, nil),
+			newQuery(newBetween("a", "b"), newSelect("a", "", nil, nil), nil, false, nil),
+		},
+		{
+			"with descending",
+			"from my-robot a desc;",
+			newQuery(nil, newSelect("a", "", nil, nil), nil, true, nil),
 		},
 		{
 			"with where",
@@ -497,7 +502,9 @@ func TestQuery(t *testing.T) {
 				newExpression(
 					newOrCondition(
 						newCondition(newTerm(util.Pointer("a"), nil), newConditionRHS("=", *newValue(int64(10)))))),
-				nil),
+				false,
+				nil,
+			),
 		},
 		{
 			"with where and paging",
@@ -509,6 +516,35 @@ func TestQuery(t *testing.T) {
 					newOrCondition(
 						newCondition(newTerm(util.Pointer("a"), nil),
 							newConditionRHS("=", *newValue(int64(10)))))),
+				false,
+				newPagingClause("limit", 10, "offset", 10),
+			),
+		},
+		{
+			"with where and descending",
+			"from my-robot a where a = 10 desc;",
+			newQuery(
+				nil,
+				newSelect("a", "", nil, nil),
+				newExpression(
+					newOrCondition(
+						newCondition(newTerm(util.Pointer("a"), nil),
+							newConditionRHS("=", *newValue(int64(10)))))),
+				true,
+				nil,
+			),
+		},
+		{
+			"with where, descending, and paging",
+			"from my-robot a where a = 10 desc limit 10 offset 10;",
+			newQuery(
+				nil,
+				newSelect("a", "", nil, nil),
+				newExpression(
+					newOrCondition(
+						newCondition(newTerm(util.Pointer("a"), nil),
+							newConditionRHS("=", *newValue(int64(10)))))),
+				true,
 				newPagingClause("limit", 10, "offset", 10),
 			),
 		},
@@ -521,6 +557,7 @@ func TestQuery(t *testing.T) {
 				newExpression(newOrCondition(
 					newCondition(newTerm(util.Pointer("a"), nil), newConditionRHS("=", *newValue(int64(10)))),
 					newCondition(newTerm(util.Pointer("b"), nil), newConditionRHS("=", *newValue(int64(20)))))),
+				false,
 				nil,
 			),
 		},
@@ -534,6 +571,7 @@ func TestQuery(t *testing.T) {
 					newCondition(newTerm(util.Pointer("a"), nil), newConditionRHS("=", *newValue(int64(10)))),
 					newCondition(newTerm(util.Pointer("b"), nil), newConditionRHS("=", *newValue(int64(20)))),
 				)),
+				false,
 				nil,
 			),
 		},
@@ -546,6 +584,7 @@ func TestQuery(t *testing.T) {
 					newSelect("b", "", nil, nil),
 					newAsofConstraint(10, "seconds"))),
 				nil,
+				false,
 				nil,
 			),
 		},
@@ -556,6 +595,7 @@ func TestQuery(t *testing.T) {
 				nil,
 				newSelect("a", "", nil, newAJ("precedes", false, newSelect("b", "", nil, nil), nil)),
 				nil,
+				false,
 				nil,
 			),
 		},
@@ -566,6 +606,7 @@ func TestQuery(t *testing.T) {
 				nil,
 				newSelect("a", "", nil, newAJ("precedes", false, newSelect("b", "", nil, nil), nil)),
 				nil,
+				false,
 				newPagingClause("limit", 10, "offset", 10),
 			),
 		},
@@ -576,6 +617,7 @@ func TestQuery(t *testing.T) {
 				nil,
 				newSelect("a", "", nil, newAJ("precedes", false, newSelect("b", "", nil, nil), nil)),
 				nil,
+				false,
 				newPagingClause("offset", 10, "limit", 10),
 			),
 		},
@@ -591,6 +633,7 @@ func TestQuery(t *testing.T) {
 					newCondition(newTerm(util.Pointer("a.foo"), nil), newConditionRHS("=", *newValue(int64(10)))),
 					newCondition(newTerm(util.Pointer("b.bar"), nil), newConditionRHS("=", *newValue(int64(20)))),
 				)),
+				false,
 				newPagingClause("limit", 10, "offset", 10),
 			),
 		},
@@ -645,6 +688,7 @@ func newQuery(
 	between *ql.Between,
 	sel ql.Select,
 	where *ql.Expression,
+	descending bool,
 	paging []ql.PagingTerm,
 ) ql.Query {
 	return ql.Query{
@@ -652,6 +696,7 @@ func newQuery(
 		Between:      between,
 		Select:       sel,
 		Where:        where,
+		Descending:   descending,
 		PagingClause: paging,
 	}
 }

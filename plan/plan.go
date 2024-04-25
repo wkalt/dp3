@@ -77,11 +77,12 @@ type Node struct {
 	BinaryOpField *string
 	BinaryOpValue *ql.Value
 
-	Offset *int
-	Limit  *int
+	Descending bool
+	Offset     *int
+	Limit      *int
 }
 
-// traverse a plan tree, executing pre and post-order transformations.
+// Traverse a plan tree, executing pre and post-order transformations.
 func traverse(n *Node, pre func(n *Node) error, post func(n *Node) error) error {
 	if pre != nil {
 		if err := pre(n); err != nil {
@@ -125,25 +126,33 @@ func (n Node) String() string {
 		argsStr := " (" + strings.Join(args, " ") + ") "
 		return fmt.Sprintf("[%s%s%s]", n.Type, argsStr, strings.Join(children, " "))
 	}
+	// if not one of above, do this.
 	args := ""
 	if len(n.Args) > 0 {
 		count := 0
 		for _, arg := range n.Args {
 			term := fmt.Sprintf("%v", arg)
 			if term == "" {
+				// skip empty args
 				continue
 			}
 			if count > 0 {
 				args += " "
 			}
-			args += fmt.Sprintf("%v", arg)
+			args += term
 			count++
 		}
-		args = fmt.Sprintf(" (%s)", args)
+		if args != "" {
+			args = fmt.Sprintf(" (%s)", args)
+		}
 	}
 	childrenTerm := ""
 	if len(children) > 0 {
 		childrenTerm = " " + strings.Join(children, " ")
+	}
+	if n.Descending {
+		descExpr := " desc"
+		return fmt.Sprintf("[%s%s%s%s]", n.Type, descExpr, args, childrenTerm)
 	}
 	return fmt.Sprintf("[%s%s%s]", n.Type, args, childrenTerm)
 }
@@ -354,10 +363,12 @@ func CompileQuery(database string, ast ql.Query) (*Node, error) {
 			return nil, err
 		}
 	}
+
 	if err := traverse(
 		base,
 		composePushdowns(
 			pullUpMergeJoins,
+			pushDownDescending(ast.Descending),
 			pushDownFilters(subexprs, database, producer, uint64(start), uint64(end)),
 			ensureAliasesResolve(),
 		),
@@ -377,10 +388,10 @@ func CompileQuery(database string, ast ql.Query) (*Node, error) {
 	return base, nil
 }
 
-// Post-order: push the entire where clause down to each scan node,
-// since we don't know about schemas here. The executor will resolve
-// it according to the schema of the data and error if nonsense is
-// submitted.
+// Push the entire where clause down to each scan node, since we don't know
+// about schemas here. The executor will resolve it according to the schema of
+// the data and error if nonsense is submitted. Also push down the producer and
+// database name, "all-time" flag, and start and end times.
 func pushDownFilters(exprs map[string]*Node, database string, producer string, start, end uint64) func(n *Node) error {
 	return func(n *Node) error {
 		if n.Type != Scan {
@@ -399,6 +410,16 @@ func pushDownFilters(exprs map[string]*Node, database string, producer string, s
 			return nil
 		}
 		n.Args = append(n.Args, start, end)
+		return nil
+	}
+}
+
+// Push the descending flag down to merge join and scan nodes.
+func pushDownDescending(descending bool) func(*Node) error {
+	return func(n *Node) error {
+		if n.Type == MergeJoin || n.Type == Scan {
+			n.Descending = descending
+		}
 		return nil
 	}
 }
