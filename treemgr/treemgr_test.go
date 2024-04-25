@@ -149,6 +149,59 @@ func TestGetStatisticsLatest(t *testing.T) {
 	}
 }
 
+func TestGetTables(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		assertion string
+		input     [][]int64
+
+		historical bool
+		topic      string
+		producer   string
+		counts     map[string]int64
+	}{
+		{
+			"single topic file",
+			[][]int64{{10, 100, 1000}},
+
+			false,
+			"topic-0",
+			"my-device",
+			map[string]int64{
+				"topic-0": 3,
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			mcap.WriteFile(t, buf, c.input...)
+			tmgr, finish := treemgr.TestTreeManager(ctx, t)
+			defer finish()
+			require.NoError(t, tmgr.Receive(ctx, "db", "my-device", buf))
+			require.NoError(t, tmgr.ForceFlush(ctx))
+
+			tables, err := tmgr.GetTables(ctx, "db", c.producer, c.topic, c.historical)
+			require.NoError(t, err)
+
+			m := make(map[string]int64)
+			for _, table := range tables {
+				for _, child := range table.Children {
+					if child == nil {
+						continue
+					}
+					for _, stats := range child.Statistics {
+						m[table.Root.Topic] += stats.MessageCount
+					}
+				}
+			}
+
+			require.Equal(t, c.counts, m)
+		})
+	}
+}
+
 func TestGetMessages(t *testing.T) {
 	ctx := context.Background()
 	cases := []struct {
