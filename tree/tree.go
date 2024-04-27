@@ -45,7 +45,7 @@ children that do not exist, your code is safe from overflows.
 
 // //////////////////////////////////////////////////////////////////////////////
 
-// Insert writes the provided slice of data into a new (empty) tree writer, into
+// NewInsertBranch writes the provided slice of data into a new (empty) tree writer, into
 // the leaf of the tree that spans the requested timestamp. Assuming no error,
 // after insert has returned, the tree writer will reflect a partial tree from
 // root to leaf. The partial trees that result from insert are serialized to the
@@ -53,7 +53,7 @@ children that do not exist, your code is safe from overflows.
 //
 // Note that the root is merely used as a template for determining the structure
 // of the partial tree.
-func Insert(
+func NewInsertBranch(
 	ctx context.Context,
 	root *nodestore.InnerNode,
 	version uint64,
@@ -111,7 +111,7 @@ func Insert(
 	return tw, nil
 }
 
-// DeleteMessagesInRange constructs a partial tree that represents the deletion
+// NewDeleteBranch constructs a partial tree that represents the deletion
 // of messages in the given range. Start (inclusive) and end (exclusive) times
 // are expected in nanoseconds. The tree writer returned by this function is
 // expected to be serialized to the WAL and later merged into the main tree by
@@ -140,7 +140,7 @@ func Insert(
 //
 // The root argument is merely used as a template for determining the structure
 // of the partial tree -- no storage IO is performed in this function.
-func DeleteMessagesInRange(
+func NewDeleteBranch(
 	ctx context.Context, oldroot *nodestore.InnerNode, version uint64, start uint64, end uint64,
 ) (*MemTree, error) {
 	if start >= end {
@@ -416,11 +416,11 @@ func mergeLevel(
 	return id, nil
 }
 
-// Merge merges the trees provided into the output tree. The output tree is
+// MergeBranchesInto merges the trees provided into the output tree. The output tree is
 // expected to be empty. The trees are merged in the order they are provided.
 // The trees must all have the same height. The output tree will have the same
 // height as the input trees.
-func Merge(
+func MergeBranchesInto(
 	ctx context.Context,
 	dest TreeReader,
 	trees ...*MemTree,
