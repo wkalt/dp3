@@ -147,7 +147,7 @@ func (tm *TreeManager) DeleteMessages(
 	if !ok {
 		return fmt.Errorf("unexpected node type: %w", tree.NewUnexpectedNodeError(nodestore.Inner, root))
 	}
-	mt, err := tree.DeleteMessagesInRange(ctx, inner, version, start, end)
+	mt, err := tree.NewDeleteBranch(ctx, inner, version, start, end)
 	if err != nil {
 		return fmt.Errorf("failed to delete messages: %w", err)
 	}
@@ -441,7 +441,7 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 		return fmt.Errorf("failed to get next version: %w", err)
 	}
 
-	merged, err := tree.Merge(ctx, basereader, trees...)
+	merged, err := tree.MergeBranchesInto(ctx, basereader, trees...)
 	if err != nil {
 		return fmt.Errorf("failed to merge partial trees: %w", err)
 	}
@@ -699,7 +699,7 @@ func (tm *TreeManager) insert(
 	if !ok {
 		return fmt.Errorf("unexpected node type: %w", tree.NewUnexpectedNodeError(nodestore.Inner, currentRoot))
 	}
-	mt, err := tree.Insert(ctx, currentRootNode, version, time, data, statistics)
+	mt, err := tree.NewInsertBranch(ctx, currentRootNode, version, time, data, statistics)
 	if err != nil {
 		return fmt.Errorf("insertion failure: %w", err)
 	}

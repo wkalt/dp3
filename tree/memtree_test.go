@@ -58,7 +58,7 @@ func TestMemtreeSerialization(t *testing.T) {
 			stats := map[string]*nodestore.Statistics{
 				schemaHash: {MessageCount: 1},
 			}
-			mt, err := tree.Insert(ctx, root, version, uint64(ts), data.Bytes(), stats)
+			mt, err := tree.NewInsertBranch(ctx, root, version, uint64(ts), data.Bytes(), stats)
 			require.NoError(t, err)
 			version++
 			trees[i] = mt
@@ -66,7 +66,7 @@ func TestMemtreeSerialization(t *testing.T) {
 
 		rootnode := nodestore.NewInnerNode(c.height, 0, util.Pow(uint64(64), int(c.height+1)), 64)
 		dest := tree.NewMemTree(nodestore.RandomNodeID(), rootnode)
-		merged, err := tree.Merge(ctx, dest, trees...)
+		merged, err := tree.MergeBranchesInto(ctx, dest, trees...)
 		require.NoError(t, err)
 
 		s1, err := tree.Print(ctx, merged)

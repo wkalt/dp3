@@ -53,7 +53,7 @@ func MergeInserts(
 				MinObservedTime: util.Reduce(util.Min, math.MaxInt64, batch),
 			},
 		}
-		tmp, err := Insert(ctx, root, version, uint64(batch[0]*1e9), buf.Bytes(), stats)
+		tmp, err := NewInsertBranch(ctx, root, version, uint64(batch[0]*1e9), buf.Bytes(), stats)
 		require.NoError(t, err)
 		version++
 		trees[i] = tmp
@@ -66,7 +66,7 @@ func MergeInserts(
 	if len(times) == 1 {
 		return trees[0]
 	}
-	output, err := Merge(ctx, dest, trees...)
+	output, err := MergeBranchesInto(ctx, dest, trees...)
 	require.NoError(t, err)
 	return output
 }
