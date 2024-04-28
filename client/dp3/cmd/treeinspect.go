@@ -132,6 +132,7 @@ func printTree(prefix string, rootID nodestore.NodeID, only bool) error {
 			c.Fprintf(sb, "%s%s %s", space, nodeID.Object(), leafstr)
 			anc := node
 			for anc.HasAncestor() {
+				ancestorDeleted := anc.AncestorDeleted()
 				ancestorID := anc.Ancestor()
 				n, err := getNode(prefix, ancestorID)
 				if err != nil {
@@ -144,7 +145,12 @@ func printTree(prefix string, rootID nodestore.NodeID, only bool) error {
 				if err != nil {
 					return fmt.Errorf("failed to get ancestor summary: %w", err)
 				}
-				c.Fprintf(sb, " -> %s %s", ancestorID.Object(), s)
+
+				if ancestorDeleted {
+					c.Fprintf(sb, " *-> %s %s", ancestorID.Object(), s)
+				} else {
+					c.Fprintf(sb, " -> %s %s", ancestorID.Object(), s)
+				}
 			}
 			fmt.Println(sb.String())
 		}

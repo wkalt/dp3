@@ -244,20 +244,30 @@ func run() error {
 	return nil
 }
 
-func handleDelete(database string, line string) error {
+func handleDelete(database string, line string) (err error) {
 	parts := strings.Split(line, " ")[1:]
 	if len(parts) < 4 {
 		return errors.New("not enough arguments")
 	}
 	producer := parts[0]
 	topic := parts[1]
-	starttime, err := iso8601.Parse([]byte(parts[2]))
-	if err != nil {
-		return fmt.Errorf("failed to parse start time: %w", err)
+
+	var starttime, endtime time.Time
+	if n, err := strconv.ParseInt(parts[2], 10, 64); err == nil {
+		starttime = time.Unix(0, n)
+	} else {
+		starttime, err = iso8601.Parse([]byte(parts[2]))
+		if err != nil {
+			return fmt.Errorf("failed to parse start time: %w", err)
+		}
 	}
-	endtime, err := iso8601.Parse([]byte(parts[3]))
-	if err != nil {
-		return fmt.Errorf("failed to parse end time: %w", err)
+	if n, err := strconv.ParseInt(parts[3], 10, 64); err == nil {
+		endtime = time.Unix(0, n)
+	} else {
+		endtime, err = iso8601.Parse([]byte(parts[3]))
+		if err != nil {
+			return fmt.Errorf("failed to parse end time: %w", err)
+		}
 	}
 	return doDelete(database, producer, topic, starttime.UnixNano(), endtime.UnixNano())
 }
