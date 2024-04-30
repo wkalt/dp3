@@ -1,0 +1,204 @@
+@inproceedings {Andersen,
+author = {Michael P Andersen and David E. Culler},
+title = {{BTrDB}: Optimizing Storage System Design for Timeseries Processing},
+booktitle = {14th USENIX Conference on File and Storage Technologies (FAST 16)},
+year = {2016},
+isbn = {978-1-931971-28-7},
+address = {Santa Clara, CA},
+pages = {39--52},
+url = {https://www.usenix.org/conference/fast16/technical-sessions/presentation/andersen},
+publisher = {USENIX Association},
+month = feb}
+
+@inproceedings{Quigley09,
+author={Morgan Quigley and Brian Gerkey and Ken Conley and Josh Faust and Tully Foote and Jeremy Leibs and Eric Berger and Rob Wheeler and Andrew Ng},
+title={ROS: an open-source Robot Operating System},
+booktitle={Proc. of the IEEE Intl. Conf. on Robotics and Automation (ICRA) Workshop on Open Source Robotics},
+month = may,
+year=2009,
+address={Kobe, Japan}}
+
+@software{irwini,
+title = {ROS2 Iron Irwini},
+author = {{ROS2 authors}},
+url = {https://docs.ros.org/en/iron/Releases/Release-Iron-Irwini.html}}
+
+@software{foxglove,
+title = {Foxglove},
+author = {{Foxglove Technologies}},
+url = {https://foxglove.dev},
+year={2024},
+publisher = {Foxglove Technologies}}
+
+@software{MCAP,
+title = {MCAP: serialization-agnostic log container file format},
+author = {{Foxglove Developers}},
+url = {https://mcap.dev},
+year = {2024},
+publisher = {{Foxglove Technologies}},
+note = {Available from https://github.com/foxglove/mcap}}
+
+@article{ROS2,
+author = {Steven Macenski  and Tully Foote  and Brian Gerkey  and Chris Lalancette  and William Woodall },
+title = {Robot Operating System 2: Design, architecture, and uses in the wild},
+journal = {Science Robotics},
+volume = {7},
+number = {66},
+pages = {eabm6074},
+year = {2022},
+doi = {10.1126/scirobotics.abm6074},
+url = {https://www.science.org/doi/abs/10.1126/scirobotics.abm6074}}
+
+@software{sumologic,
+author = {{Sumo logic}},
+title = {Sumo logic home page},
+url = {https://www.sumologic.com}}
+
+@software{datadoglog,
+author = {Datadog},
+title = {Datadog log management homepage},
+url = {https://docs.datadoghq.com/logs}}
+
+@software{gcplog,
+author = {Google},
+title = {Google Cloud Logging homepage},
+url = {https://cloud.google.com/logging}}
+
+@software{lance,
+author={{LanceDB Developers}},
+title = {LanceDB project page},
+url = {https://github.com/lancedb/lancedb}}
+
+@software{dp3,
+author={{Wyatt Alt and Jainil Ajmera}},
+title = {dp3 project page},
+url = {https://github.com/wkalt/dp3}}
+
+@software{gcplog,
+author = {Google},
+title = {Google Cloud Logging homepage},
+url = {https://cloud.google.com/logging}}
+
+@software{cloudwatch,
+author = {{Amazon Web Services}},
+title = {Amazon CloudWatch homepage},
+url = {https://aws.amazon.com/cloudwatch}}
+
+@software{azlog,
+author = {Microsoft},
+title = {Azure Monitor Logs homepage},
+url = {https://learn.microsoft.com/en-us/azure/azure-monitor/logs/data-platform-logs}}
+
+@software{spark,
+author = {{Apache Spark Developers}},
+title = {Apache Spark homepage},
+url = {https://spark.apache.org}}
+
+@software{cdr,
+author = {Object Management Group},
+title = {Common Data Representation specification},
+date = {2024-05-01},
+url = {https://www.omg.org/cgi-bin/doc?formal/02-06-51}}
+
+@software{protobuf,
+title = {Protocol Buffers},
+author = {Google},
+url = {https://protobuf.dev}}
+
+@software{flatbuffers,
+title = {Flatbuffers},
+author = {Google},
+url = {https://flatbuffers.dev}}
+
+@software{bigquery,
+title = {BigQuery},
+author = {Google},
+url = {https://cloud.google.com/bigquery}}
+
+@software{redshift,
+title = {Redshift},
+author = {Amazon Web Services},
+url = {https://aws.amazon.com/redshift}}
+
+@software{synapse,
+title = {Azure Synapse Analytics},
+author = {Microsoft},
+url = {https://azure.microsoft.com/en-us/products/synapse-analytics}}
+
+@software{duckdb,
+title = {DuckDB},
+author = {Mark Raasveldt and Hannes Muehleisen},
+url = {https://github.com/duckdb/duckdb}}
+
+@software{clickhouse,
+title = {Clickhouse home page},
+author = {Clickhouse},
+url = {https://clickhouse.com}}
+
+@software{snowflake,
+title = {Snowflake home page},
+author = {Snowflake},
+url = {https://snowflake.com}}
+
+@software{iceberg,
+title = {Apache Iceberg specification},
+author = {Apache Iceberg Developers},
+url = {https://iceberg.apache.org/spec}}
+
+@inproceedings{ddsketch,
+title = {DDSketch: A Fast and Fully-Mergeable Quantile Sketch with Relative-Error Guarantees},
+author = {Charles Masson and Jee E. Rim and Homin K. Lee},
+year = 2019,
+booktitle = {Proceedings of the VLDB Endowment, Vol. 12, No. 12},
+url = {https://www.vldb.org/pvldb/vol12/p2195-masson.pdf}}
+
+@article{cql,
+author = {Arasu, Arvind and Babu, Shivnath and Widom, Jennifer},
+title = {The CQL Continuous Query Language: Semantic Foundations and Query Execution},
+year = {2006},
+month = {June},
+abstract = {CQL, a continuous query language, is supported by the STREAM prototype data stream management system (DSMS) at Stanford. CQL is an expressive SQL-based declarative language for registering continuous queries against streams and stored relations. We begin by presenting an abstract semantics that relies only on “black-box” mappings among streams and relations. From these mappings we define a precise and general interpretation for continuous queries. CQL is an instantiation of our abstract semantics using SQL to map from relations to relations, window specifications derived from SQL-99 to map from streams to relations, and three new operators to map from relations to streams. Most of the CQL language is operational in the STREAM system. We present the structure of CQL's query execution plans as well as details of the most important components: operators, interoperator queues, synopses, and sharing of components among multiple operators and queries. Examples throughout the paper are drawn from the Linear Road benchmark recently proposed for DSMSs. We also curate a public repository of data stream applications that includes a wide variety of queries expressed in CQL. The relative ease of capturing these applications in CQL is one indicator that the language contains an appropriate set of constructs for data stream processing.},
+publisher = {Very Large Data Bases Endowment Inc.},
+url = {https://www.microsoft.com/en-us/research/publication/the-cql-continuous-query-language-semantic-foundations-and-query-execution/},
+journal = {VLDB Journal}}
+
+@inproceedings{gigascope,
+author = {Cranor, Chuck and Johnson, Theodore and Spataschek, Oliver and Shkapenyuk, Vladislav},
+title = {Gigascope: a stream database for network applications},
+year = {2003},
+isbn = {158113634X},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/872757.872838},
+doi = {10.1145/872757.872838},
+abstract = {We have developed Gigascope, a stream database for network applications including traffic analysis, intrusion detection, router configuration analysis, network research, network monitoring, and performance monitoring and debugging. Gigascope is undergoing installation at many sites within the AT\&T network, including at OC48 routers, for detailed monitoring. In this paper we describe our motivation for and constraints in developing Gigascope, the Gigascope architecture and query language, and performance issues. We conclude with a discussion of stream database research problems we have found in our application.},
+booktitle = {Proceedings of the 2003 ACM SIGMOD International Conference on Management of Data},
+pages = {647–651},
+numpages = {5},
+location = {San Diego, California},
+series = {SIGMOD '03}}
+
+@inproceedings{aurora,
+title={Monitoring Streams - A New Class of Data Management Applications},
+author={Donald Carney and Ugur Çetintemel and Mitch Cherniack and Christian Convey and Sangdon Lee and Greg Seidman and Michael Stonebraker and Nesime Tatbul and Stanley B. Zdonik},
+booktitle={Very Large Data Bases Conference},
+year={2002},
+url={https://api.semanticscholar.org/CorpusID:7816630}}
+
+@inproceedings{seq,
+author = {Seshadri, Praveen and Livny, Miron and Ramakrishnan, Raghu},
+title = {The Design and Implementation of a Sequence Database System},
+year = {1996},
+isbn = {1558603824},
+publisher = {Morgan Kaufmann Publishers Inc.},
+address = {San Francisco, CA, USA},
+booktitle = {Proceedings of the 22th International Conference on Very Large Data Bases},
+pages = {99–110},
+numpages = {12},
+series = {VLDB '96}}
+
+@software{sqlite, 
+title={{SQLite}},
+url={https://www.sqlite.org/index.html},
+year={2024},
+author={Hipp, Richard D}} 
