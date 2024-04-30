@@ -6,6 +6,7 @@ require (
 	github.com/alecthomas/participle/v2 v2.1.1
 	github.com/fatih/color v1.16.0
 	github.com/foxglove/go-rosbag v0.0.6
+	github.com/goccy/go-json v0.10.2
 	github.com/minio/minio-go/v7 v7.0.68
 	github.com/spf13/cobra v1.8.0
 	github.com/stretchr/testify v1.9.0
@@ -85,7 +86,6 @@ require (
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.3.2 // indirect
-	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.0 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
@@ -116,7 +116,7 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/juju/ratelimit v1.0.2 // indirect
-	github.com/klauspost/compress v1.17.7 // indirect
+	github.com/klauspost/compress v1.17.8 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.6 // indirect
 	github.com/klauspost/filepathx v1.1.1 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
@@ -258,7 +258,7 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.6.1
 	github.com/chzyer/readline v1.5.1
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/foxglove/mcap/go/mcap v1.3.0
+	github.com/foxglove/mcap/go/mcap v1.3.1
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/mattn/go-sqlite3 v1.14.22
