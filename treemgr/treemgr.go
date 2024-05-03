@@ -19,7 +19,6 @@ import (
 	"github.com/wkalt/dp3/tree"
 	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/log"
-	"github.com/wkalt/dp3/versionstore"
 	"github.com/wkalt/dp3/wal"
 	"golang.org/x/exp/maps"
 	"golang.org/x/sync/errgroup"
@@ -39,7 +38,6 @@ var ErrNotImplemented = errors.New("not implemented")
 // TreeManager is the main interface to the treemgr package.
 type TreeManager struct {
 	ns      *nodestore.Nodestore
-	vs      versionstore.Versionstore
 	rootmap rootmap.Rootmap
 	merges  <-chan *wal.Batch
 
@@ -77,7 +75,6 @@ func (tm *TreeManager) NewRoot(ctx context.Context, database string, producer st
 func NewTreeManager(
 	ctx context.Context,
 	ns *nodestore.Nodestore,
-	vs versionstore.Versionstore,
 	rm rootmap.Rootmap,
 	opts ...Option,
 ) (*TreeManager, error) {
@@ -100,7 +97,6 @@ func NewTreeManager(
 
 	tm := &TreeManager{
 		ns:          ns,
-		vs:          vs,
 		wal:         wmgr,
 		merges:      merges,
 		rootmap:     rm,
@@ -131,7 +127,7 @@ func (tm *TreeManager) DeleteMessages(
 	topic string,
 	start, end uint64,
 ) error {
-	prefix, nodeID, _, err := tm.rootmap.GetLatest(ctx, database, producer, topic)
+	prefix, nodeID, _, _, err := tm.rootmap.GetLatest(ctx, database, producer, topic)
 	if err != nil {
 		return fmt.Errorf("failed to get latest root: %w", err)
 	}
@@ -139,7 +135,7 @@ func (tm *TreeManager) DeleteMessages(
 	if err != nil {
 		return fmt.Errorf("failed to get root: %w", err)
 	}
-	version, err := tm.vs.Next(ctx)
+	version, err := tm.rootmap.NextVersion(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get next version: %w", err)
 	}
@@ -200,7 +196,7 @@ func (tm *TreeManager) Receive(
 		var writer *writer
 		var ok bool
 		if writer, ok = writers[channel.Topic]; !ok {
-			if _, _, _, err := tm.rootmap.GetLatest(ctx, database, producerID, channel.Topic); err != nil {
+			if _, _, _, _, err := tm.rootmap.GetLatest(ctx, database, producerID, channel.Topic); err != nil {
 				switch {
 				case errors.Is(err, rootmap.TableNotFoundError{}):
 					if err := tm.NewRoot(ctx, database, producerID, channel.Topic); err != nil &&
@@ -343,7 +339,7 @@ func (tm *TreeManager) GetStatisticsLatest(
 	start, end uint64,
 	granularity uint64,
 ) ([]nodestore.StatRange, error) {
-	prefix, rootID, _, err := tm.rootmap.GetLatest(ctx, database, producerID, topic)
+	prefix, rootID, _, _, err := tm.rootmap.GetLatest(ctx, database, producerID, topic)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest root: %w", err)
 	}
@@ -370,7 +366,7 @@ func (tm *TreeManager) ForceFlush(ctx context.Context) error {
 
 // PrintTable returns a string representation of the tree for the given table.
 func (tm *TreeManager) PrintTable(ctx context.Context, database string, producerID string, topic string) string {
-	prefix, root, _, err := tm.rootmap.GetLatest(ctx, database, producerID, topic)
+	prefix, root, _, _, err := tm.rootmap.GetLatest(ctx, database, producerID, topic)
 	if err != nil {
 		return fmt.Sprintf("failed to get latest root: %v", err)
 	}
@@ -399,7 +395,7 @@ func (tm *TreeManager) newRoot(
 	}
 	root := nodestore.NewInnerNode(height, start, start+coverage, bfactor)
 	data := root.ToBytes()
-	version, err := tm.vs.Next(ctx)
+	version, err := tm.rootmap.NextVersion(ctx)
 	if err != nil {
 		return nodestore.NodeID{}, 0, fmt.Errorf("failed to get next version: %w", err)
 	}
@@ -419,7 +415,7 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 	// Roots are created synchronously on first reception of data for a
 	// topic/producer, so we should have an existing one by the time we get to
 	// the point of merging.
-	prefix, existingRootID, _, err := tm.rootmap.GetLatest(ctx, batch.Database, batch.ProducerID, batch.Topic)
+	prefix, existingRootID, _, _, err := tm.rootmap.GetLatest(ctx, batch.Database, batch.ProducerID, batch.Topic)
 	if err != nil && !errors.Is(err, rootmap.TableNotFoundError{}) {
 		return fmt.Errorf("failed to get root: %w", err)
 	}
@@ -436,7 +432,7 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 		}
 		trees = append(trees, &mt)
 	}
-	version, err := tm.vs.Next(ctx)
+	version, err := tm.rootmap.NextVersion(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get next version: %w", err)
 	}
@@ -573,12 +569,26 @@ func (tm *TreeManager) NewTreeIterator(
 	descending bool,
 	start, end uint64,
 ) (*tree.Iterator, error) {
-	prefix, rootID, _, err := tm.rootmap.GetLatest(ctx, database, producer, topic)
+	prefix, rootID, _, truncationVersion, err := tm.rootmap.GetLatest(ctx, database, producer, topic)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest root: %w", err)
 	}
 	tr := tree.NewBYOTreeReader(prefix, rootID, tm.ns.Get)
-	return tree.NewTreeIterator(ctx, tr, descending, start, end, 0), nil
+	return tree.NewTreeIterator(ctx, tr, descending, start, end, truncationVersion), nil
+}
+
+func (tm *TreeManager) Truncate(
+	ctx context.Context,
+	database string,
+	producer string,
+	topic string,
+	timestamp int64,
+) error {
+	err := tm.rootmap.Truncate(ctx, database, producer, topic, timestamp)
+	if err != nil {
+		return fmt.Errorf("truncation failure: %w", err)
+	}
+	return nil
 }
 
 func (tm *TreeManager) loadIterators(
@@ -594,7 +604,7 @@ func (tm *TreeManager) loadIterators(
 	for i, root := range roots {
 		g.Go(func() error {
 			tr := tree.NewBYOTreeReader(root.Prefix, root.NodeID, tm.ns.Get)
-			it := tree.NewTreeIterator(ctx, tr, false, start, end, root.RequestedMinVersion)
+			it := tree.NewTreeIterator(ctx, tr, false, start, end, root.MinVersion)
 			schema, channel, message, err := it.Next(ctx)
 			if err != nil {
 				if errors.Is(err, io.EOF) {
@@ -683,11 +693,11 @@ func (tm *TreeManager) insert(
 	data []byte,
 	statistics map[string]*nodestore.Statistics,
 ) error {
-	prefix, rootID, _, err := tm.rootmap.GetLatest(ctx, database, producerID, topic)
+	prefix, rootID, _, _, err := tm.rootmap.GetLatest(ctx, database, producerID, topic)
 	if err != nil {
 		return fmt.Errorf("failed to get root ID: %w", err)
 	}
-	version, err := tm.vs.Next(ctx)
+	version, err := tm.rootmap.NextVersion(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get next version: %w", err)
 	}
@@ -744,7 +754,7 @@ func (tm *TreeManager) dimensions(
 	producerID string,
 	topic string,
 ) (*treeDimensions, error) {
-	prefix, root, _, err := tm.rootmap.GetLatest(ctx, database, producerID, topic)
+	prefix, root, _, _, err := tm.rootmap.GetLatest(ctx, database, producerID, topic)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest root: %w", err)
 	}
