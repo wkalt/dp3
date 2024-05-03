@@ -1,0 +1,15 @@
+name: papercheck
+
+on:
+  pull_request:
+    paths:
+      - 'doc/paper/**'
+    branches: [main]
+
+jobs:
+  papercheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: papercheck
+        run: make papercheck
