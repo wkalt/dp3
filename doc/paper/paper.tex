@@ -78,14 +78,15 @@
     and complexity of infrastructure management by eliminating the need to scale a
     database deployment in step with the job workloads.
 
-    dp3 minimizes operational burden for the data infrastructure by offloading
-    primary storage and index structure to S3 and allowing the admin to use S3
-    tooling (lifecycle policies, retention policies, etc.) to govern the garbage
-    collection of the tree. To keep users from being exposed to deleted
-    objects, the admin must ensure the tree storage is always truncated ahead
-    of the physical deletion schedule. Since dp3 supports any S3-compatible
-    storage, it can be deployed in on-premise environments in situations where
-    cloud offload bandwidth is limited at the point of ingestion.
+    dp3 minimizes operational burden for the data infrastructure admin by
+    offloading primary storage and index structure to S3 and allowing the admin
+    to use S3 tooling (lifecycle policies, retention policies, etc.) to govern
+    the garbage collection of the tree. To keep users from being exposed to
+    deleted objects, the admin must ensure the tree storage is always truncated
+    ahead of the physical deletion schedule. Since dp3 supports any
+    S3-compatible storage, it can be deployed in on-premise environments in
+    situations where cloud offload bandwidth is limited at the point of
+    ingestion.
 
     dp3 is initially targeting a smooth integration experience with the ROS
     \cite{Quigley09} ecosystem and the MCAP \cite{MCAP} format, to become a viable
