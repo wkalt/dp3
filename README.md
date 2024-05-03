@@ -49,6 +49,7 @@ supported dot commands are:
   .statrange to run a statrange query
   .import to import data to the database
   .delete to delete data from the database
+  .truncate to truncate data from the database
   .tables to inspect tables available in the database
 
 Available help topics are:
@@ -56,6 +57,7 @@ Available help topics are:
   statrange: Explain the .statrange command.
   import: Explain the .import command.
   delete: Explain the .delete command.
+  truncate: Explain the .truncate command.
   tables: Explain the .tables command.
 
 Any input aside from "help" that does not start with a dot is interpreted as

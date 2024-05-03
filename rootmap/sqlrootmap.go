@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/mattn/go-sqlite3"
 	"github.com/wkalt/dp3/nodestore"
@@ -16,42 +17,197 @@ import (
 
 /*
 SQLRootmap is a rootmap implementation backed by a sql.DB. The only database
-that has been used or tested is sqlite.
+that has been used or tested is SQLite.
 */
+
+////////////////////////////////////////////////////////////////////////////////
 
 type sqlRootmap struct {
 	db  *sql.DB
 	mtx *sync.Mutex
+	*sqlVersionStore
+
+	tables    map[table]int64
+	tablesMtx *sync.RWMutex
 }
 
-func (rm *sqlRootmap) initialize() error {
+func (rm *sqlRootmap) initialize(ctx context.Context) error {
+	rm.mtx.Lock()
+	defer rm.mtx.Unlock()
 	var maxApplied int64
 	err := rm.db.QueryRow("select max(version) from schema_migrations").Scan(&maxApplied)
 	if err == nil && maxApplied == 1 {
 		return nil
 	}
 	if _, err := rm.db.Exec(`
-	create table if not exists rootmap (
+	PRAGMA foreign_keys = ON;
+	create table if not exists tables (
+		id integer primary key,
 		database text not null,
-		producer_id text not null,
-		topic text not null,
+		producer text not null,
+		topic text not null
+	);
+
+	create unique index tables_producer_topic_unique on tables(database, producer, topic);
+
+	create table if not exists rootmap (
+		id integer primary key,
+		table_id integer not null references tables(id),
 		version bigint not null,
 		storage_prefix text not null,
 		node_id text not null,
-		timestamp text not null default current_timestamp,
-		primary key (producer_id, topic, version)
+		timestamp text not null
 	);
 
-	create table schema_migrations(
+	create index rootmap_table_id_idx on rootmap(table_id);
+
+	create table if not exists schema_migrations (
 		version bigint not null,
 		timestamp text not null default current_timestamp
 	);
 
 	insert into schema_migrations(version) values (1);
+
+	create table if not exists truncations (
+		table_id int not null references tables(id),
+		timestamp text not null default current_timestamp,
+		version bigint not null
+	);
+
+	create index truncations_table_id_timestamp_idx on truncations(table_id, timestamp);
+
+	create view latest_truncations as
+	select t1.*
+	from truncations t1
+	left join truncations t2
+	on t1.table_id = t2.table_id and t1.timestamp < t2.timestamp
+	where t2.table_id is null;
 	`); err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
+	if err := rm.initializeVersionStore(ctx, rm.db); err != nil {
+		return fmt.Errorf("failed to initialize version store: %w", err)
+	}
+	if err := rm.initializeTableCache(); err != nil {
+		return fmt.Errorf("failed to initialize table cache: %w", err)
+	}
 	return nil
+}
+
+func (rm *sqlRootmap) getTableID(database, producer, topic string) int64 {
+	rm.tablesMtx.RLock()
+	defer rm.tablesMtx.RUnlock()
+	if tableID, ok := rm.tables[table{database, producer, topic}]; ok {
+		return tableID
+	}
+	return -1
+}
+
+func (rm *sqlRootmap) putTableID(database, producer, topic string, tableID int64) {
+	rm.tablesMtx.Lock()
+	defer rm.tablesMtx.Unlock()
+	rm.tables[table{database, producer, topic}] = tableID
+}
+
+func (rm *sqlRootmap) initializeTableCache() error {
+	tempTables := make(map[table]int64)
+	tx, err := rm.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	rows, err := tx.Query("SELECT database, producer, topic, id FROM tables")
+	if err != nil {
+		if err := tx.Rollback(); err != nil {
+			return fmt.Errorf("failed to rollback transaction: %w", err)
+		}
+		return fmt.Errorf("failed to read from tables: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var database, producer, topic string
+		var tableID int64
+		if err := rows.Scan(&database, &producer, &topic, &tableID); err != nil {
+			if err := tx.Rollback(); err != nil {
+				return fmt.Errorf("failed to rollback transaction: %w", err)
+			}
+			return fmt.Errorf("failed to scan table data: %w", err)
+		}
+		tempTables[table{database, producer, topic}] = tableID
+	}
+	if err := rows.Err(); err != nil {
+		if err := tx.Rollback(); err != nil {
+			return fmt.Errorf("failed to rollback transaction: %w", err)
+		}
+		return fmt.Errorf("final error in rows handling: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("transaction commit failed: %w", err)
+	}
+
+	rm.tables = tempTables
+	return nil
+}
+
+func (rm *sqlRootmap) withTransaction(
+	f func(tx *sql.Tx) error,
+) error {
+	tx, err := rm.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+	if err := f(tx); err != nil {
+		if err := tx.Rollback(); err != nil {
+			return fmt.Errorf("failed to rollback transaction: %w", err)
+		}
+		return fmt.Errorf("failed to execute transaction: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+	return nil
+}
+
+func (rm *sqlRootmap) getLatestByTopicQuery(
+	database string,
+	producerID string,
+	topics map[string]uint64,
+) (query string, params []interface{}) {
+	sb := strings.Builder{}
+	sb.WriteString(`
+	select tables.topic,
+	tables.producer,
+	r1.storage_prefix,
+	r1.node_id,
+	r1.version,
+	r1.timestamp,
+	latest_truncations.version as truncation_version
+	from tables inner join rootmap r1 
+	on tables.id = r1.table_id
+	left join rootmap r2
+	on (r1.table_id = r2.table_id and r1.version < r2.version)
+	left join latest_truncations
+	on latest_truncations.table_id = tables.id
+	where r2.rowid is null
+	and tables.database = ?
+	`)
+	params = []any{database}
+	if producerID != "" {
+		sb.WriteString(" and tables.producer = ? ")
+		params = append(params, producerID)
+	}
+	if len(topics) > 0 {
+		sb.WriteString(" and tables.topic in (")
+		for i, topic := range maps.Keys(topics) {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString("?")
+			params = append(params, topic)
+		}
+		sb.WriteString(")")
+	}
+	return sb.String(), params
 }
 
 func (rm *sqlRootmap) Put(
@@ -65,23 +221,48 @@ func (rm *sqlRootmap) Put(
 ) error {
 	rm.mtx.Lock()
 	defer rm.mtx.Unlock()
-	_, err := rm.db.ExecContext(ctx, `
-	insert into rootmap (
-		database,
-		producer_id,
-		topic,
-		version,
-		storage_prefix,
-		node_id
-	) values ($1, $2, $3, $4, $5, $6)`,
-		database, producerID, topic, version, prefix, hex.EncodeToString(nodeID[:]),
-	)
-	if err != nil {
-		var err sqlite3.Error
-		if errors.As(err, &sqlite3.Error{Code: sqlite3.ErrConstraint}) {
-			return ErrRootAlreadyExists
+	err := rm.withTransaction(func(tx *sql.Tx) error {
+		var tableID int64
+		err := tx.QueryRowContext(ctx, `
+		select id from tables where producer = ? and topic = ? and database = ? 
+		`, producerID, topic, database).Scan(&tableID)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("failed to read from tables: %w", err)
 		}
-		return fmt.Errorf("failed to store to rootmap: %w", err)
+		if errors.Is(err, sql.ErrNoRows) {
+			err := tx.QueryRowContext(ctx, `
+			insert into tables (database, producer, topic) values (?, ?, ?)
+			returning id
+			`, database, producerID, topic).Scan(&tableID)
+			if err != nil {
+				return fmt.Errorf("failed to insert into tables: %w", err)
+			}
+			rm.putTableID(database, producerID, topic, tableID)
+		}
+
+		timestamp := time.Now().UTC().Format(time.RFC3339Nano)
+
+		_, err = tx.ExecContext(ctx, `
+		insert into rootmap (
+			table_id,
+			version,
+			storage_prefix,
+			timestamp,
+			node_id
+		) values (?, ?, ?, ?, ?)`,
+			tableID, version, prefix, timestamp, hex.EncodeToString(nodeID[:]),
+		)
+		if err != nil {
+			var err sqlite3.Error
+			if errors.As(err, &sqlite3.Error{Code: sqlite3.ErrConstraint}) {
+				return ErrRootAlreadyExists
+			}
+			return fmt.Errorf("failed to store to rootmap: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	return nil
 }
@@ -91,35 +272,49 @@ func (rm *sqlRootmap) GetHistorical(
 	database string,
 	producer string,
 	topic string,
-) ([]RootListing, error) {
-	sql := `
-	select storage_prefix, node_id, version, timestamp
-	from rootmap
-	where database = ? and producer_id = ? and topic = ? 
-	order by version desc
-	`
-	rows, err := rm.db.QueryContext(ctx, sql, database, producer, topic)
+) (listings []RootListing, err error) {
+	rows, err := rm.db.QueryContext(ctx, `
+	select storage_prefix,
+	node_id,
+	rootmap.version,
+	rootmap.timestamp,
+	latest_truncations.version as truncation_version
+	from rootmap inner join tables on tables.id = rootmap.table_id
+	left join latest_truncations
+	on latest_truncations.table_id = tables.id
+	where tables.database = ? 
+	and tables.producer = ?
+	and tables.topic = ?
+	order by rootmap.version desc
+	`, database, producer, topic)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read from rootmap: %w", err)
+		return listings, fmt.Errorf("failed to read from rootmap: %w", err)
 	}
 	defer rows.Close()
-	listings := []RootListing{}
 	for rows.Next() {
 		var prefix, timestamp, nodeID string
+		var truncationVersion *uint64
 		var version uint64
-		if err := rows.Scan(&prefix, &nodeID, &version, &timestamp); err != nil {
-			return nil, fmt.Errorf("failed to read from rootmap: %w", err)
+		if err := rows.Scan(&prefix, &nodeID, &version, &timestamp, &truncationVersion); err != nil {
+			return listings, fmt.Errorf("failed to read from rootmap: %w", err)
+		}
+		minVersion := uint64(0)
+		if truncationVersion != nil {
+			if version <= *truncationVersion {
+				continue
+			}
+			minVersion = *truncationVersion + 1
 		}
 		decoded, err := hex.DecodeString(nodeID)
 		if err != nil {
-			return nil, fmt.Errorf("failed to decode node ID: %w", err)
+			return listings, fmt.Errorf("failed to decode node ID: %w", err)
 		}
 		listings = append(listings, RootListing{
-			prefix, producer, topic, nodestore.NodeID(decoded), version, timestamp, 0,
+			prefix, producer, topic, nodestore.NodeID(decoded), version, timestamp, minVersion,
 		})
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("failed to read from rootmap: %w", err)
+		return listings, fmt.Errorf("failed to read from rootmap: %w", err)
 	}
 	return listings, nil
 }
@@ -130,32 +325,8 @@ func (rm *sqlRootmap) GetLatestByTopic(
 	producerID string,
 	topics map[string]uint64,
 ) ([]RootListing, error) {
-	sb := strings.Builder{}
-	sb.WriteString(`
-	select r1.topic, r1.producer_id, r1.storage_prefix, r1.node_id, r1.version, r1.timestamp
-	from rootmap r1 left join rootmap r2
-	on (r1.database = r2.database and r1.topic = r2.topic and r1.producer_id = r2.producer_id and r1.version < r2.version)
-	where r2.rowid is null
-	and r1.database = ?
-	`)
-	params := []any{database}
-	if producerID != "" {
-		sb.WriteString(" and r1.producer_id = ? ")
-		params = append(params, producerID)
-	}
-	if len(topics) > 0 {
-		sb.WriteString(" and r1.topic in (")
-		for i, topic := range maps.Keys(topics) {
-			if i > 0 {
-				sb.WriteString(", ")
-			}
-			sb.WriteString("?")
-			params = append(params, topic)
-		}
-		sb.WriteString(")")
-	}
-	var maxVersion uint64
-	rows, err := rm.db.QueryContext(ctx, sb.String(), params...)
+	query, params := rm.getLatestByTopicQuery(database, producerID, topics)
+	rows, err := rm.db.QueryContext(ctx, query, params...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read from rootmap: %w", err)
 	}
@@ -164,20 +335,26 @@ func (rm *sqlRootmap) GetLatestByTopic(
 	listings := make([]RootListing, 0, len(topics))
 	for rows.Next() {
 		var version uint64
+		var truncationVersion *uint64
 		var nodeID, topic, prefix, producerID, timestamp string
-		if err := rows.Scan(&topic, &producerID, &prefix, &nodeID, &version, &timestamp); err != nil {
+		if err := rows.Scan(&topic, &producerID, &prefix, &nodeID,
+			&version, &timestamp, &truncationVersion); err != nil {
 			return nil, fmt.Errorf("failed to read from rootmap: %w", err)
-		}
-		if version > maxVersion {
-			maxVersion = version
 		}
 		decoded, err := hex.DecodeString(nodeID)
 		if err != nil {
 			return nil, fmt.Errorf("failed to decode node ID: %w", err)
 		}
+		minVersion := topics[topic]
+		if truncationVersion != nil {
+			if minVersion > 0 && *truncationVersion >= minVersion {
+				continue
+			}
+			minVersion = max(minVersion, *truncationVersion+1)
+		}
 		if version > topics[topic] {
 			listings = append(listings, RootListing{
-				prefix, producerID, topic, nodestore.NodeID(decoded), version, timestamp, topics[topic],
+				prefix, producerID, topic, nodestore.NodeID(decoded), version, timestamp, minVersion,
 			})
 		}
 	}
@@ -192,28 +369,67 @@ func (rm *sqlRootmap) GetLatest(
 	database string,
 	producerID string,
 	topic string,
-) (string, nodestore.NodeID, uint64, error) {
-	var prefix string
-	var nodeID string
-	var version uint64
-	err := rm.db.QueryRowContext(ctx, `
-	select storage_prefix, node_id, version
-	from rootmap
-	where database = ? and producer_id = ? and topic = ?
-	order by version desc limit 1`,
-		database, producerID, topic,
-	).Scan(&prefix, &nodeID, &version)
+) (prefix string, nodeID nodestore.NodeID, version uint64, truncationVersion uint64, err error) {
+	var truncationVersionPtr *int64
+	var nodeIDStr string
+
+	err = rm.db.QueryRowContext(ctx, `
+	select storage_prefix, node_id, rootmap.version, latest_truncations.version
+	from tables inner join rootmap on tables.id = rootmap.table_id
+	left join latest_truncations on latest_truncations.table_id = tables.id
+	where tables.database = ?
+	and tables.producer = ?
+	and tables.topic = ?
+	order by rootmap.version desc limit 1
+	`, database, producerID, topic,
+	).Scan(&prefix, &nodeIDStr, &version, &truncationVersionPtr)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return prefix, nodestore.NodeID{}, 0, NewTableNotFoundError(database, producerID, topic)
+			return prefix, nodeID, version, truncationVersion, NewTableNotFoundError(database, producerID, topic)
 		}
-		return prefix, nodestore.NodeID{}, 0, fmt.Errorf("failed to read from rootmap: %w", err)
+		return prefix, nodeID, version, truncationVersion, fmt.Errorf("failed to read from rootmap: %w", err)
 	}
-	decoded, err := hex.DecodeString(nodeID)
+	decoded, err := hex.DecodeString(nodeIDStr)
 	if err != nil {
-		return prefix, nodestore.NodeID{}, 0, fmt.Errorf("failed to decode node ID: %w", err)
+		return prefix, nodeID, version, truncationVersion, fmt.Errorf("failed to decode node ID: %w", err)
 	}
-	return prefix, nodestore.NodeID(decoded), version, nil
+	if truncationVersionPtr != nil {
+		truncationVersion = uint64(*truncationVersionPtr)
+	}
+	return prefix, nodestore.NodeID(decoded), version, truncationVersion, nil
+}
+
+func (rm *sqlRootmap) Truncate(
+	ctx context.Context,
+	database string,
+	producer string,
+	topic string,
+	timestamp int64,
+) error {
+	rm.mtx.Lock()
+	defer rm.mtx.Unlock()
+	tableID := rm.getTableID(database, producer, topic)
+	if tableID == -1 {
+		return NewTableNotFoundError(database, producer, topic)
+	}
+	truncationTime := time.Unix(0, timestamp).UTC()
+	truncateTimeStr := truncationTime.Format(time.RFC3339Nano)
+
+	_, err := rm.db.ExecContext(ctx, `
+	insert into truncations (table_id, version)
+	select tables.id, rootmap.version
+	from tables inner join rootmap
+	on tables.id = rootmap.table_id
+	where rootmap.timestamp <= ?
+	and tables.database = ?
+	and tables.id = ?
+	order by rootmap.timestamp desc
+	limit 1
+	`, truncateTimeStr, database, tableID)
+	if err != nil {
+		return fmt.Errorf("failed to insert into truncations: %w", err)
+	}
+	return nil
 }
 
 func (rm *sqlRootmap) Get(
@@ -222,35 +438,53 @@ func (rm *sqlRootmap) Get(
 	producerID string,
 	topic string,
 	version uint64,
-) (string, nodestore.NodeID, error) {
-	var nodeID string
-	var prefix string
-	err := rm.db.QueryRowContext(ctx, `
-	select storage_prefix,
-	node_id
-	from rootmap
-	where database = ? and producer_id = ? and topic = ? and version = ?`,
-		database, producerID, topic, version,
-	).Scan(&prefix, &nodeID)
+) (prefix string, nodeID nodestore.NodeID, err error) {
+	var nodeIDStr string
+	var truncationVersion *int64
+	err = rm.db.QueryRowContext(ctx, `
+	select storage_prefix, node_id, latest_truncations.version
+	from tables inner join rootmap
+	on tables.id = rootmap.table_id
+	left join latest_truncations
+	on latest_truncations.table_id = tables.id
+	where tables.database = ?
+	and tables.producer = ?
+	and tables.topic = ?
+	and rootmap.version = ?
+	`, database, producerID, topic, version,
+	).Scan(&prefix, &nodeIDStr, &truncationVersion)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return prefix, nodestore.NodeID{}, NewTableNotFoundError(database, producerID, topic)
+			return prefix, nodeID, NewTableNotFoundError(database, producerID, topic)
 		}
-		return prefix, nodestore.NodeID{}, fmt.Errorf("failed to read from rootmap: %w", err)
+		return prefix, nodeID, fmt.Errorf("failed to read from rootmap: %w", err)
 	}
-	decoded, err := hex.DecodeString(nodeID)
+	decoded, err := hex.DecodeString(nodeIDStr)
 	if err != nil {
-		return prefix, nodestore.NodeID{}, fmt.Errorf("failed to decode node ID: %w", err)
+		return prefix, nodeID, fmt.Errorf("failed to decode node ID: %w", err)
 	}
 	return prefix, nodestore.NodeID(decoded), nil
 }
 
-func NewSQLRootmap(db *sql.DB) (Rootmap, error) {
-	rm := &sqlRootmap{
-		db:  db,
-		mtx: &sync.Mutex{},
+func (rm *sqlRootmap) NextVersion(ctx context.Context) (uint64, error) {
+	return rm.sqlVersionStore.NextVersion(ctx, rm.db)
+}
+
+func NewSQLRootmap(ctx context.Context, db *sql.DB, opts ...Option) (Rootmap, error) {
+	conf := &config{
+		reservationSize: 0,
 	}
-	err := rm.initialize()
+	for _, opt := range opts {
+		opt(conf)
+	}
+	rm := &sqlRootmap{
+		db:              db,
+		mtx:             &sync.Mutex{},
+		sqlVersionStore: NewSQLVersionStore(ctx, conf.reservationSize),
+		tables:          make(map[table]int64),
+		tablesMtx:       &sync.RWMutex{},
+	}
+	err := rm.initialize(ctx)
 	if err != nil {
 		return nil, err
 	}

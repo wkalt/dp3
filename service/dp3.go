@@ -20,7 +20,6 @@ import (
 	"github.com/wkalt/dp3/treemgr"
 	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/log"
-	"github.com/wkalt/dp3/versionstore"
 	"github.com/wkalt/dp3/wal"
 )
 
@@ -60,11 +59,10 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 		return fmt.Errorf("failed to ping database at %s: %w", dbpath, err)
 	}
 	ns := nodestore.NewNodestore(store, cache)
-	rm, err := rootmap.NewSQLRootmap(db)
+	rm, err := rootmap.NewSQLRootmap(ctx, db, rootmap.WithReservationSize(1e9))
 	if err != nil {
 		return fmt.Errorf("failed to open rootmap: %w", err)
 	}
-	vs := versionstore.NewSQLVersionstore(db, 1e9)
 	walopts := []wal.Option{
 		wal.WithInactiveBatchMergeInterval(2 * time.Second),
 		wal.WithGCInterval(10 * time.Second),
@@ -75,7 +73,6 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 	tmgr, err := treemgr.NewTreeManager(
 		ctx,
 		ns,
-		vs,
 		rm,
 		treemgr.WithSyncWorkers(opts.SyncWorkers),
 		treemgr.WithWALOpts(walopts...),

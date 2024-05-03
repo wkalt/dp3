@@ -37,6 +37,7 @@ func MakeRoutes(tmgr *treemgr.TreeManager) *mux.Router {
 	r.HandleFunc("/query", newQueryHandler(tmgr)).Methods("POST")
 	r.HandleFunc("/statrange", newStatRangeHandler(tmgr)).Methods("POST", "GET")
 	r.HandleFunc("/delete", newDeleteHandler(tmgr)).Methods("POST", "GET")
+	r.HandleFunc("/truncate", newTruncateHandler(tmgr)).Methods("POST", "GET")
 	r.HandleFunc("/tables", newTablesHandler(tmgr)).Methods("POST", "GET")
 	return r
 }
