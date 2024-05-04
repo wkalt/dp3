@@ -45,6 +45,8 @@ func (p PrimitiveType) String() string {
 		return "float64"
 	case STRING:
 		return "string"
+	case WSTRING:
+		return "wstring"
 	case BOOL:
 		return "bool"
 	case TIME:
@@ -117,6 +119,7 @@ const (
 	FLOAT32
 	FLOAT64
 	STRING
+	WSTRING
 	BOOL
 	TIME
 	DURATION
@@ -136,6 +139,10 @@ type Type struct {
 	// If it's a record...
 	Record bool
 	Fields []Field
+
+	// Bounded-size arrays and strings are supported.
+	Bounded   bool
+	SizeBound int
 }
 
 // NewPrimitiveType creates a new primitive type.
@@ -169,8 +176,9 @@ func (t Type) IsPrimitive() bool {
 
 // Field is a generic representation of a message field.
 type Field struct {
-	Name string
-	Type Type
+	Name    string
+	Type    Type
+	Default any
 }
 
 // NewField creates a new field.

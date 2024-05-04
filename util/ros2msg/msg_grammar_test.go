@@ -9,8 +9,8 @@ import (
 	"github.com/wkalt/dp3/util/ros2msg"
 )
 
-func newField(name string, t *ros2msg.ROSType) *ros2msg.ROSField {
-	return &ros2msg.ROSField{Name: name, Type: t}
+func newField(name string, t *ros2msg.ROSType, dfault *ros2msg.Value) *ros2msg.ROSField {
+	return &ros2msg.ROSField{Name: name, Type: t, Default: dfault}
 }
 
 func newHeader(t string) ros2msg.Header {
@@ -38,19 +38,31 @@ func newType(t string, sizeBound int, array bool, bounded bool, fixedSize int) *
 	}
 }
 
+func newValue(v any) *ros2msg.Value {
+	value := &ros2msg.Value{
+		String: nil,
+		Int:    nil,
+		Float:  nil,
+	}
+	switch v := v.(type) {
+	case string:
+		s := ros2msg.QuotedString(v)
+		value.String = &s
+	case int64:
+		value.Int = &v
+	case float64:
+		value.Float = &v
+	default:
+		panic("unknown value type")
+	}
+	return value
+}
+
 func newConstant(name string, t *ros2msg.ROSType, value any) *ros2msg.Constant {
 	c := &ros2msg.Constant{
 		Type:  t,
 		Name:  name,
-		Value: ros2msg.ConstantValue{},
-	}
-	switch v := value.(type) {
-	case string:
-		c.Value.String = &v
-	case int64:
-		c.Value.Int = &v
-	case float64:
-		c.Value.Float = &v
+		Value: *newValue(value),
 	}
 	return c
 }
@@ -71,7 +83,7 @@ func TestMessageDefinitions(t *testing.T) {
 		{
 			"simple message definition",
 			`int8 foo`,
-			newMessageDefinition([]ros2msg.SchemaElement{*newField("foo", newType("int8", 0, false, false, 0))}),
+			newMessageDefinition([]ros2msg.SchemaElement{*newField("foo", newType("int8", 0, false, false, 0), nil)}),
 		},
 		{
 			"message definition that begins with a comment",
@@ -80,7 +92,7 @@ func TestMessageDefinitions(t *testing.T) {
 int16 foo
 				`),
 			newMessageDefinition([]ros2msg.SchemaElement{
-				*newField("foo", newType("int16", 0, false, false, 0)),
+				*newField("foo", newType("int16", 0, false, false, 0), nil),
 			}),
 		},
 		{
@@ -95,9 +107,9 @@ MSG: qux
 int32 quux
 					`),
 			newMessageDefinition([]ros2msg.SchemaElement{
-				*newField("foo", newType("int8", 0, false, false, 0)),
-			}, *newDefinition(newHeader("bar"), *newField("baz", newType("int16", 0, false, false, 0))),
-				*newDefinition(newHeader("qux"), *newField("quux", newType("int32", 0, false, false, 0))),
+				*newField("foo", newType("int8", 0, false, false, 0), nil),
+			}, *newDefinition(newHeader("bar"), *newField("baz", newType("int16", 0, false, false, 0), nil)),
+				*newDefinition(newHeader("qux"), *newField("quux", newType("int32", 0, false, false, 0), nil)),
 			),
 		},
 	}
@@ -131,7 +143,7 @@ MSG: std_msgs/Header
 uint32 seq
 					`),
 			newDefinition(newHeader("std_msgs/Header"),
-				*newField("seq", newType("uint32", 0, false, false, 0)),
+				*newField("seq", newType("uint32", 0, false, false, 0), nil),
 			),
 		},
 		{
@@ -163,7 +175,7 @@ int8 bar
 				`),
 			newDefinition(newHeader("foo"),
 				*newConstant("NONE", newType("uint8", 0, false, false, 0), int64(0)),
-				*newField("bar", newType("int8", 0, false, false, 0)),
+				*newField("bar", newType("int8", 0, false, false, 0), nil),
 			),
 		},
 	}
@@ -228,6 +240,53 @@ MSG: foo/bar/baz # hello
 		})
 	}
 }
+
+func TestValue(t *testing.T) {
+	parser := participle.MustBuild[ros2msg.Value](
+		participle.Lexer(ros2msg.Lexer),
+		participle.Elide("Whitespace", "Newline", "Comment"),
+	)
+	cases := []struct {
+		assertion string
+		input     string
+		output    ros2msg.Value
+	}{
+		{
+			"integer value",
+			"1",
+			*newValue(int64(1)),
+		},
+		{
+			"float value",
+			"3.14",
+			*newValue(3.14),
+		},
+		{
+			"single quoted string",
+			`'foo'`,
+			*newValue("foo"),
+		},
+		{
+			"double quoted string",
+			`"foo"`,
+			*newValue("foo"),
+		},
+		{
+			"string with spaces",
+			`"foo bar baz"`,
+			*newValue("foo bar baz"),
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			ast, err := parser.ParseString("", c.input)
+			require.NoError(t, err)
+			require.Equal(t, c.output, *ast)
+		})
+	}
+
+}
+
 func TestField(t *testing.T) {
 	parser := participle.MustBuild[ros2msg.ROSField](
 		participle.Lexer(ros2msg.Lexer),
@@ -245,7 +304,17 @@ func TestField(t *testing.T) {
  # foo
  int8 foo
 			`),
-			newField("foo", newType("int8", 0, false, false, 0)),
+			newField("foo", newType("int8", 0, false, false, 0), nil),
+		},
+		{
+			"field with default value",
+			"int8 foo 10",
+			newField("foo", newType("int8", 0, false, false, 0), newValue(int64(10))),
+		},
+		{
+			"field with quoted string value",
+			`string foo 'bar'`,
+			newField("foo", newType("string", 0, false, false, 0), newValue("bar")),
 		},
 		{
 			"indented field starting with multiline indented comment",
@@ -254,57 +323,57 @@ func TestField(t *testing.T) {
  # foo
  int8 foo
 			`),
-			newField("foo", newType("int8", 0, false, false, 0)),
+			newField("foo", newType("int8", 0, false, false, 0), nil),
 		},
 		{
 			"simple field",
 			"int8 foo",
-			newField("foo", newType("int8", 0, false, false, 0)),
+			newField("foo", newType("int8", 0, false, false, 0), nil),
 		},
 		{
 			"field that starts with a space",
 			" int8 foo",
-			newField("foo", newType("int8", 0, false, false, 0)),
+			newField("foo", newType("int8", 0, false, false, 0), nil),
 		},
 		{
 			"field with a package",
 			"my_package/Type foo",
-			newField("foo", newType("my_package/Type", 0, false, false, 0)),
+			newField("foo", newType("my_package/Type", 0, false, false, 0), nil),
 		},
 		{
 			"field with inline comment",
 			"int8 foo # foo comment",
-			newField("foo", newType("int8", 0, false, false, 0)),
+			newField("foo", newType("int8", 0, false, false, 0), nil),
 		},
 		{
 			"comment multiple spaces",
 			"int8 foo    # foo comment",
-			newField("foo", newType("int8", 0, false, false, 0)),
+			newField("foo", newType("int8", 0, false, false, 0), nil),
 		},
 		{
 			"spaces after comment char",
 			"int8 foo #     foo comment",
-			newField("foo", newType("int8", 0, false, false, 0)),
+			newField("foo", newType("int8", 0, false, false, 0), nil),
 		},
 		{
 			"array field",
 			"int8[] foo",
-			newField("foo", newType("int8", 0, true, false, 0)),
+			newField("foo", newType("int8", 0, true, false, 0), nil),
 		},
 		{
 			"array field two digit",
 			"int64[] foo",
-			newField("foo", newType("int64", 0, true, false, 0)),
+			newField("foo", newType("int64", 0, true, false, 0), nil),
 		},
 		{
 			"fixed size array field",
 			"int8[10] foo",
-			newField("foo", newType("int8", 0, true, false, 10)),
+			newField("foo", newType("int8", 0, true, false, 10), nil),
 		},
 		{
 			"fixed size array with comment",
 			"int8[10] foo # important comment",
-			newField("foo", newType("int8", 0, true, false, 10)),
+			newField("foo", newType("int8", 0, true, false, 10), nil),
 		},
 		{
 			"fixed size array with multiline comment",
@@ -313,7 +382,7 @@ func TestField(t *testing.T) {
 # bar
 int8[10] foo
 					`),
-			newField("foo", newType("int8", 0, true, false, 10)),
+			newField("foo", newType("int8", 0, true, false, 10), nil),
 		},
 		{
 			"field with comment that starts with space",
@@ -321,7 +390,7 @@ int8[10] foo
  # foo
 int8[10] foo
 					`),
-			newField("foo", newType("int8", 0, true, false, 10)),
+			newField("foo", newType("int8", 0, true, false, 10), nil),
 		},
 		{
 			"comment that uses punctuation",
@@ -329,7 +398,7 @@ int8[10] foo
 # Hello! I'm a comment. Can I answer any questions? :)
 int8[10] foo
 					`),
-			newField("foo", newType("int8", 0, true, false, 10)),
+			newField("foo", newType("int8", 0, true, false, 10), nil),
 		},
 		{
 			"multiline leading comment with space",
@@ -339,7 +408,7 @@ int8[10] foo
 
 int8[10] foo
 					`),
-			newField("foo", newType("int8", 0, true, false, 10)),
+			newField("foo", newType("int8", 0, true, false, 10), nil),
 		},
 		{
 			"multiline leading comment internally spaced",
@@ -350,7 +419,7 @@ int8[10] foo
 
 int8[10] foo
 					`),
-			newField("foo", newType("int8", 0, true, false, 10)),
+			newField("foo", newType("int8", 0, true, false, 10), nil),
 		},
 		{
 			"multiline leading comment space on empty line",
@@ -361,7 +430,7 @@ int8[10] foo
 
 int8[10] foo
 					`),
-			newField("foo", newType("int8", 0, true, false, 10)),
+			newField("foo", newType("int8", 0, true, false, 10), nil),
 		},
 		{
 			"field with multiline inline comment",
@@ -369,7 +438,7 @@ int8[10] foo
 int8 foo # foo
 		 # bar
 			`),
-			newField("foo", newType("int8", 0, false, false, 0)),
+			newField("foo", newType("int8", 0, false, false, 0), nil),
 		},
 	}
 	for _, c := range cases {
