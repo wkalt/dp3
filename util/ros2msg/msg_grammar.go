@@ -19,6 +19,8 @@ var (
 		{Name: "Newline", Pattern: `\s*[\n\r]+`},
 		{Name: "Float", Pattern: `[+-]?[0-9]+\.[0-9]+`},
 		{Name: "Integer", Pattern: `[+-]?[0-9]+`},
+		{Name: "QuotedString", Pattern: `"(\\"|[^"])*"`},
+		{Name: "SingleQuotedString", Pattern: `'(\\'|[^'])*'`},
 		{Name: "Word", Pattern: `[a-zA-Z0-9\_]+`},
 		{Name: "Whitespace", Pattern: `[\s\t]+`},
 		{Name: "LBracket", Pattern: `\[`},
@@ -37,6 +39,14 @@ var (
 	)
 )
 
+type QuotedString string
+
+func (q *QuotedString) Capture(values []string) error {
+	v := values[0]
+	*q = QuotedString(v[1 : len(v)-1])
+	return nil
+}
+
 type MessageDefinition struct {
 	Elements    []SchemaElement `@@*`
 	Definitions []Definition    `@@*`
@@ -52,20 +62,31 @@ type Header struct {
 }
 
 type ROSField struct {
-	Type *ROSType `@@`
-	Name string   `@Word`
+	Type    *ROSType `@@`
+	Name    string   `@Word`
+	Default *Value   `@@?`
 }
 
 type Constant struct {
-	Type  *ROSType      `@@`
-	Name  string        `@Word Equals`
-	Value ConstantValue `@@`
+	Type  *ROSType `@@`
+	Name  string   `@Word Equals`
+	Value Value    `@@`
 }
 
-type ConstantValue struct {
-	String *string  `@Word`
-	Int    *int64   `| @Integer`
-	Float  *float64 `| @Float`
+type Value struct {
+	Int    *int64        `@Integer`
+	Float  *float64      `| @Float`
+	String *QuotedString `| (@QuotedString | @SingleQuotedString)`
+}
+
+func (v *Value) Value() any {
+	if v.Int != nil {
+		return *v.Int
+	} else if v.Float != nil {
+		return *v.Float
+	} else {
+		return string(*v.String)
+	}
 }
 
 type ROSType struct {
