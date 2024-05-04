@@ -4,3 +4,7 @@ dp3.db*
 paper.out
 paper.log
 paper.aux
+paper.bbl
+paper.bcf
+paper.blg
+paper.run.xml
