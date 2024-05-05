@@ -80,11 +80,12 @@ type Value struct {
 }
 
 func (v *Value) Value() any {
-	if v.Int != nil {
+	switch {
+	case v.Int != nil:
 		return *v.Int
-	} else if v.Float != nil {
+	case v.Float != nil:
 		return *v.Float
-	} else {
+	default:
 		return string(*v.String)
 	}
 }

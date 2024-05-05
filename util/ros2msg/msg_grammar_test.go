@@ -284,7 +284,6 @@ func TestValue(t *testing.T) {
 			require.Equal(t, c.output, *ast)
 		})
 	}
-
 }
 
 func TestField(t *testing.T) {
