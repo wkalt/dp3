@@ -562,7 +562,7 @@ func TestConstant(t *testing.T) {
 		},
 		{
 			"string constant",
-			"string FOO=bar",
+			`string FOO="bar"`,
 			newConstant("FOO", newType("string", 0, false, false, 0), "bar"),
 		},
 		{

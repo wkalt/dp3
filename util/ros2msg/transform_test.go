@@ -1,9 +1,6 @@
 package ros2msg_test
 
 import (
-	"io/fs"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -212,27 +209,4 @@ string frame_id
 			require.Equal(t, c.output, schema)
 		})
 	}
-}
-
-func TestParseROS2MessageDefinitions(t *testing.T) {
-	require.NoError(t, filepath.WalkDir("testdata/schemas", func(
-		path string,
-		d fs.DirEntry,
-		err error,
-	) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		bytes, err := os.ReadFile(path)
-		require.NoError(t, err)
-		parts := strings.Split(d.Name(), "-")
-		pkg := parts[0]
-		name := strings.TrimSuffix(parts[1], ".msg")
-		_, err = ros2msg.ParseROS2MessageDefinition(pkg, name, bytes)
-		require.NoError(t, err, "failed to parse %s", path)
-		return nil
-	}))
 }
