@@ -1,4 +1,4 @@
 build:
-	pdflatex paper.tex
-	biber paper
-	pdflatex paper.tex
+	pdflatex dp3.tex
+	biber dp3
+	pdflatex dp3.tex

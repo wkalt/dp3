@@ -4,7 +4,7 @@
 \usepackage{hyperref}
 \usepackage[edges]{forest}
 \usepackage[backend=biber]{biblatex}
-\bibliography{paper.bib}
+\bibliography{dp3.bib}
 
 % reproducible outputs
 \pdfinfoomitdate=1
@@ -401,7 +401,7 @@
 
     \textbf{Query(database string, query string)} evaluates the query and
     returns results in MCAP format. The \textit{query} argument is a valid
-    query in the dp3 query language (\ref{querylang}.
+    query in the dp3 query language (\ref{querylang}).
 
     \textbf{StatRange(database string, producer string, topic string, start
     uint64, end uint64, granularity int)} returns a range of field-level
@@ -731,7 +731,7 @@
     versionstore and rootmap will likely remain colocated as long as the rootmap
     is also on SQL.
 
-    \subsection{Query language} \ref{querylang}
+    \subsection{Query language} \label{querylang}
     The kinds of searches executed on dp3 are expected to be heavy on multiway
     as-of joins. In natural language, a typical kind of search might be, \q{show me
     the times in the last month where we were taking an unprotected left hand turn,
