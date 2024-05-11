@@ -3,7 +3,7 @@ dp3 is an experimental database for management of multimodal log data, such as
 logs produced by sensors and internal processing logic on robots.
 
 It is under active development and not suitable for production use. For details
-on the motivation and architecture see the [paper](./doc/paper/paper.pdf).
+on the motivation and architecture see the [paper](./doc/paper/dp3.pdf).
 
 ## Quickstart
 
