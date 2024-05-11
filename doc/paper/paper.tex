@@ -174,13 +174,13 @@
     infrastructure. High latencies in playback and search are a direct
     impediment to product development speed.
 
-    \textbf{Different scales of volume.} Depending on what kind of data the user
-    is logging, multimodal data volumes can be orders of magnitude larger
+    \textbf{Different scales of volume.} Depending on what kind of data the
+    user is logging, multimodal data volumes can be orders of magnitude larger
     than server application log volumes for the same organization. Large
-    producers may produce hundreds of terabytes or petabytes of logs per day.
-    This makes it relatively more important for administrators to have a
-    clear understanding of data access patterns, and granular control over
-    data retention.
+    producers may produce hundreds of terabytes or petabytes of raw logs per
+    day. This makes it relatively more important for administrators to have a
+    clear understanding of data access patterns, and granular control over data
+    retention. Compression is also of critical importance for cost efficiency.
 
     \textbf{Support for distributed compute.} Typical server log databases do
     not expect you to run distributed compute jobs on your log data and are not
@@ -336,38 +336,53 @@
     will explain components in greater detail.
 
     \subsubsection{Write path}
+    In dp3, each recording is associated with a \q{producer} and may contain
+    data on one or more topics. The term \q{producer} is intentionally vague:
+    it is up to the user to decide whether to associate producers with
+    \q{devices} or \q{simulation runs} or some other internal concept. A
+    recording from a producer may contain data from multiple topics, and we
+    refer internally to the combination of producer and topic as a \q{table}.
+    Each table is structured as a copy-on-write tree (discussed in \ref{tree}).
+
     On the write path, the router receives an MCAP data stream and passes it
-    into the tree manager, which splits it into per-topic MCAP-format buffers
+    into the tree manager, which splits it into per-table MCAP-format buffers
     in memory, while parsing the messages and computing statistics. Buffers are
-    flushed into the WAL as a configurable size threshold or on full
-    consumption of the input.
+    flushed into the write-ahead log (WAL) when a configurable size threshold
+    is exceeded or on full consumption of the input.
 
     The WAL manager monitors data outstanding in WAL for both size and time
-    since last update. When the outstanding data of a stream exceeds a size
+    since last update. When the outstanding data on a table exceeds a size
     threshold, or when the stream has not received a new write within a
-    configurable amount of time, leaf pages from the WAL are merged into a
-    copy-on-write tree overlay, and written into storage as a single object.
+    configurable amount of time, leaf pages from the WAL are merged into a tree
+    overlay and written into storage as a single object containing multiple
+    inner and leaf nodes, including the new root of the tree.
+
     This helps to decouple storage write dimensions from the user’s recording
     pattern: if the user is recording a lot of small files, we will batch data
     from multiple input files into larger storage writes.
 
-    Following a successful write to storage, the location of the root, along with a
-    version from the version store, and the server’s timestamp, are written to the
-    rootmap database.
+    Nodes in the tree are identified with a 24 byte value that encodes the
+    object id, the offset, and the length, each as unsigned 64 bit integers. A
+    node ID is thus directly resolvable to a location and offset in storage.
 
-    dp3 does not support updates, and writes to storage must be serialized
-    per-tree.
+    Following a successful write to storage, the new root node ID for the
+    table, along with a version from the version store (\ref{versionstore}),
+    and the server’s timestamp, are written to the rootmap database
+    (\ref{rootmap}).
+
+    dp3 requires a single serial writer per table. A single node may write to
+    multiple trees concurrently, but writes to any given tree are serialized.
 
     \subsubsection{Read path}
     On the read path, the router receives a request as a string in the dp3
     query language. The query is parsed and transformed into an iterator-style
-    execution plan, with a root location retrieved from the tree manager for
-    each topic involved in the query. Scan nodes are instantiated with a
-    timerange and a filter expression and are executed by walking the relevant
-    tree leaves and applying the filter. Leaf nodes are structured as linked
-    lists and sometimes have multiple \q{insert} and \q{delete range}
-    operations, which the scan operator resolves into a set of file read and
-    merge operations.
+    execution plan, with a root location retrieved from the tree manager via
+    the rootmap, for each topic involved in the query. Scan nodes are
+    instantiated with a timerange and a filter expression and are executed by
+    walking the implicated tree leaves and applying the filter to exclude
+    records. Leaf nodes are structured as linked lists and sometimes have
+    multiple \q{insert} and \q{delete range} operations, which the scan
+    operator resolves into a set of file read and merge operations.
 
     Node lookups go through the nodestore, with a read-through byte-capacity
     bounded LRU cache of inner nodes. If the important inner nodes of the tree are
@@ -379,23 +394,23 @@
     \subsection{Public API} \label{api}
     The public API of dp3 consists of the following core operations:
 
-    \textbf{Import(database string, producer string, objectID string)} imports an
-    object from storage on behalf of a producer by telling dp3 a location from
-    which to read. The term \q{producer} is intentionally vague: it is up to the
-    user to decide whether to associate producers with \q{devices} or
-    \q{simulation runs} or another internal concept. dp3 supports multiple
-    logical databases within a single instance, and operations must be scoped
-    with a database.
+    \textbf{Import(database string, producer string, objectID string)} imports
+    an object from storage on behalf of a producer by telling dp3 a location
+    from which to read. dp3 supports multiple logical databases within a single
+    instance, and operations must be scoped with a database.
 
     \textbf{Query(database string, query string)} evaluates the query and
-    returns results in MCAP format.
+    returns results in MCAP format. The \textit{query} argument is a valid
+    query in the dp3 query language (\ref{querylang}.
 
     \textbf{StatRange(database string, producer string, topic string, start
     uint64, end uint64, granularity int)} returns a range of field-level
     statistical aggregations at a granularity at least as granular as the one
     requested. These statistics are stored in the inner nodes of the tree, so
     under optimal circumstances StatRange queries should mostly be served from
-    RAM.
+    RAM. The supported statistics are pre-defined and currently nonextensible.
+    The core requirement for a supported statistic is that it be associative:
+    an updated value can be computed from the current value and the new data.
 
     \textbf{Delete(database string, producer string, topic string, start uint64,
     end uint64)} performs a logical deletion of data between two timestamps.
@@ -418,7 +433,7 @@
     the last tree version seen. We will probably remove this once we decide how
     to incorporate the tailing functionality into the query executor.
 
-    \subsection{Multigranular tree}
+    \subsection{Multigranular tree} \label{tree}
     The core storage structure of dp3 is a versioned, time-partitioned,
     copy-on-write tree. One tree is stored for each producer/topic combination.
     Internally we refer to this combination as a \q{table}, however the user deals
@@ -449,11 +464,13 @@
     \autoref{nodeidstructure}.
 
     The tree module implements three core write-related methods: Insert,
-    DeleteRange, and Merge. Insert and DeleteRange are both physical inserts. They
-    each construct a path from a root to a leaf and serialize that path to the WAL.
-    When the WAL manager chooses to sync the WAL data to storage, the Merge method
-    is called on these partial trees, along with the relevant inner node structure
-    of the destination tree in storage, to form a copy-on-write overlay.
+    DeleteRange, and Merge. Insert and DeleteRange are both physical inserts.
+    They each construct a path from a root to a leaf and serialize that path to
+    the WAL.  When the WAL manager chooses to sync the WAL data to storage, the
+    Merge method is called on these partial trees, along with the relevant
+    inner node structure of the destination tree in storage, to form a
+    copy-on-write overlay. Each write to storage (i.e Merge) creates a new root
+    of the tree.
 
     \subsubsection{Truncation}
     We support efficient, synchronous, logical deletion from the tail of the tree
@@ -625,20 +642,27 @@
     \end{figure}
 
     Storage objects are named with the decimal representation of the tree version
-    they correspond to.  WAL manager The write ahead log is a single, append-only
-    stream of binary records. The format of a WAL record is depicted in
-    \autoref{walstructure}.
+    they correspond to.
+
+    \subsection{WAL manager}
+    The write ahead log is a single, append-only stream of binary records. The
+    format of a WAL record is depicted in \autoref{walstructure}.
 
     As with storage objects, WAL filenames are decimal integers, and WAL records
     have 24-byte addresses similar to node IDs, which can be resolved to a WAL
     filename, offset, and length.
 
     They byte identifier of the WAL record takes one of three types, indicating
-    how the data should be parsed: \textbf{Insert} contains a serialized partial
-    tree covering one leaf node.  \textbf{MergeRequest} contains a list of insert
-    record addresses that should be merged as a batch into storage, as well as a
-    UUID-format batch ID.  \textbf{MergeComplete} records the completion of a
-    merge operation into storage by batch ID.
+    how the data should be parsed:
+
+    \textbf{Insert} contains a serialized partial tree covering one leaf node.
+
+    \textbf{MergeRequest} contains a list of insert record addresses that
+    should be merged as a batch into storage, as well as a UUID-format batch
+    ID.
+
+    \textbf{MergeComplete} records the completion of a merge operation into
+    storage by batch ID.
 
     On startup, the WAL manager scans all outstanding WAL files in the WAL
     directory, replaying their records through its accounting until it arrives at a
@@ -650,11 +674,11 @@
     in-memory state of the WAL manager to determine if any files on disk are no
     longer referenced. Any such files are deleted.
 
-    \subsection{Rootmap}
+    \subsection{Rootmap} \label{rootmap}
     The rootmap fronts a database of root locations used by the tree manager.
-    Every write that is finalized to storage records a write to the rootmap,
+    Every write that is finalized to storage inserts a record into the rootmap,
     and every read from dp3 (when operating in server mode) does a read from
-    the rootmap.  While the rootmap is technically rebuildable from storage
+    the rootmap. While the rootmap is technically rebuildable from storage
     operations by listing objects and reading root IDs from the final 24 bytes,
     it is essential for the functioning of the database and effectively a
     central point of failure.
@@ -682,7 +706,7 @@
 
     Today, dp3 uses SQLite \cite{sqlite} for the rootmap.
 
-    \subsection{Versionstore}
+    \subsection{Versionstore} \label{versionstore}
     For a single tree, writes must be versioned in monotonically increasing order
     to support range deletion as well as querying for new data since a prior read.
 
@@ -707,7 +731,7 @@
     versionstore and rootmap will likely remain colocated as long as the rootmap
     is also on SQL.
 
-    \subsection{Query language}
+    \subsection{Query language} \ref{querylang}
     The kinds of searches executed on dp3 are expected to be heavy on multiway
     as-of joins. In natural language, a typical kind of search might be, \q{show me
     the times in the last month where we were taking an unprotected left hand turn,
@@ -723,12 +747,13 @@
     /unprotected\_left indicated the beginning of a turn. These examples are of
     course simplified.
 
-    In dp3 we have developed a query language for ergonomic expression of as-of
-    joins. The dp3 query language includes the following features: (1) Where
-    clauses with support for nested fields and typical SQL binary operators. (2)
-    Parenthetical groupings. (3) Time-ordered merging of tables. (4) As-of joins,
-    based on either a time window, immediate succession, or both. (5) Reversal of
-    scan order. (6) Time-based restriction on log time. (7) Limit and offset.
+    In dp3 we have developed a query language for expressing of as-of joins.
+    The dp3 query language includes the following features: (1) Where clauses
+    with support for nested fields and typical SQL binary operators. (2)
+    Parenthetical groupings. (3) Time-ordered merging of tables. (4) As-of
+    joins, based on either a time window, immediate succession, or both. (5)
+    Reversal of scan order. (6) Time-based restriction on log time. (7) Limit
+    and offset.
 
     Currently, all queries must be scoped with a single device. All queries are
     terminated with a semicolon. Some examples of valid queries are listed below. \\
@@ -746,7 +771,7 @@
 
     Return a time-ordered merge of two topics.
     \begin{lstlisting}
-    from my-robot /topic1, topic2;
+    from my-robot /topic1, /topic2;
     \end{lstlisting}
 
     Restrict from clause with a time range.
@@ -795,7 +820,8 @@
     in the language grammar, and it executes an N-way streaming merge of
     time-ordered children through a binary heap. This is the same way a
     conventional RDBMS may implement an ordered union, when indexes exist on the
-    ordering column.
+    ordering column. Unlike a conventional RDBMS, the output of a dp3 query
+    consists of mixed record schemas.
 
     The as-of join operations (precedes or succeeds keyword) are executed by first
     inverting \q{succeeds} terms to \q{precedes}, and then feeding the two sides
@@ -934,8 +960,8 @@
     as the data format in leaf storage. There are a few benefits to this
     choice: (1) No transcoding required on ingestion or query. (2)
     Automatically compatible with user’s own internal tooling. (3) Streaming
-    playback is a row-oriented workload. (4) Automatically compatible with
-    common robotics recording workflows
+    playback is row-oriented. (4) Automatically compatible with common robotics
+    recording workflows
 
     There are also drawbacks, primarily in the performance department. (1)
     Columnar storage would realize better compression in general. (2) A
@@ -953,16 +979,16 @@
     performance on the data files, obviating some of the benefits we would be
     hoping to get with the columnar format.
 
-    Furthermore, a significant portion of the heavy read volume the database
-    will serve for ML purposes, will be image and point-cloud data. In these
-    kinds of messages, there is effectively one column: a byte array, possibly
-    up to megabytes in size. This means that row-oriented and columnar files
-    for these kinds of data are physically pretty similar, so the impact of the
-    change to columnar for these cases may not be that great.
+    Furthermore, ML applications are significantly interested in image and
+    point-cloud data. In these kinds of messages, there is effectively one
+    column: a byte array, possibly up to megabytes in size. This means that
+    row-oriented and columnar files for these kinds of data are physically
+    pretty similar, so the impact of the change to columnar for these cases may
+    not be that great.
 
-    The best way to resolve all these questions seems like an implementation
-    spike. Parquet is an obvious candidate for a columnar format to test as it
-    would also be compatible with Iceberg. The LanceDB \cite{lance} project is
+    The best way to resolve all these questions is to test various approaches.
+    Parquet is an obvious candidate for a columnar format to test as it would
+    also be compatible with Iceberg. The LanceDB \cite{lance} project is
     another one that is focused on some of the more exotic kinds of searches
     users might be interested in, such as image similarity search. Once we have
     a good sense of how all the options perform, we can choose the best option
