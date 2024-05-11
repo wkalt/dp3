@@ -14,7 +14,7 @@ paperbuild:
 	docker run -v ./doc/paper:/data paperbuilder
 
 papercheck: paperbuild
-	git status --porcelain doc/paper/paper.pdf
+	git status --porcelain doc/paper/dp3.pdf
 
 clean:
 	rm -rf data/*

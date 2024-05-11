@@ -1,10 +1,10 @@
 data
 waldir
 dp3.db*
-paper.out
-paper.log
-paper.aux
-paper.bbl
-paper.bcf
-paper.blg
-paper.run.xml
+dp3.out
+dp3.log
+dp3.aux
+dp3.bbl
+dp3.bcf
+dp3.blg
+dp3.run.xml
