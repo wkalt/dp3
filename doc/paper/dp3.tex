@@ -959,9 +959,8 @@
     The largest outstanding design question relates to dp3’s choice to use MCAP
     as the data format in leaf storage. There are a few benefits to this
     choice: (1) No transcoding required on ingestion or query. (2)
-    Automatically compatible with user’s own internal tooling. (3) Streaming
-    playback is row-oriented. (4) Automatically compatible with common robotics
-    recording workflows
+    Automatically compatible with user’s own internal tooling. (3) A
+    row-oriented format like MCAP is ideal for row-oriented streaming playback.
 
     There are also drawbacks, primarily in the performance department. (1)
     Columnar storage would realize better compression in general. (2) A
