@@ -312,7 +312,7 @@ func TestGetMessages(t *testing.T) {
 			it, err := reader.Messages()
 			require.NoError(t, err)
 			for {
-				_, channel, message, err := it.Next(nil)
+				_, channel, message, err := it.NextInto(nil)
 				if errors.Is(err, io.EOF) {
 					break
 				}
@@ -322,9 +322,6 @@ func TestGetMessages(t *testing.T) {
 			require.Equal(t, c.outputMessages, messages)
 		})
 	}
-}
-
-func TestSyncWAL(t *testing.T) {
 }
 
 func removeSpace(s string) string {
@@ -566,7 +563,7 @@ func TestTreeIteration(t *testing.T) {
 			it, err := reader.Messages()
 			require.NoError(t, err)
 			for {
-				_, _, message, err := it.Next(nil)
+				_, _, message, err := it.NextInto(nil)
 				if errors.Is(err, io.EOF) {
 					break
 				}

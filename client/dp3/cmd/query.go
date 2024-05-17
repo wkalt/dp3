@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/wkalt/dp3/client/dp3/util"
+	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/routes"
 )
 
@@ -37,7 +38,7 @@ var queryCmd = &cobra.Command{
 		}
 		util.MustOK(resp)
 		if exportJSON {
-			if err := util.MCAPToJSON(os.Stdout, resp.Body); err != nil {
+			if err := mcap.MCAPToJSON(os.Stdout, resp.Body); err != nil {
 				bailf("error converting to JSON: %s", err)
 			}
 			return

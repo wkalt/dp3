@@ -41,7 +41,7 @@ func TestMerge(t *testing.T) {
 	require.NoError(t, err)
 	n := uint64(0)
 	for {
-		_, _, msg, err := msgs.Next(nil)
+		_, _, msg, err := msgs.NextInto(nil)
 		if errors.Is(err, io.EOF) {
 			break
 		}
@@ -56,7 +56,7 @@ func TestIdenticalSchemas(t *testing.T) {
 	t.Run("schemas differ only in comments", func(t *testing.T) {
 		buf1 := &bytes.Buffer{}
 		buf2 := &bytes.Buffer{}
-		iterators := make([]fmcap.MessageIterator, 2)
+		iterators := make([]mcap.MessageIterator, 2)
 		for i, buf := range []*bytes.Buffer{buf1, buf2} {
 			writer, err := mcap.NewWriter(buf)
 			require.NoError(t, err)
@@ -92,7 +92,7 @@ func TestIdenticalSchemas(t *testing.T) {
 	t.Run("identical schemas, different channels", func(t *testing.T) {
 		buf1 := &bytes.Buffer{}
 		buf2 := &bytes.Buffer{}
-		iterators := make([]fmcap.MessageIterator, 2)
+		iterators := make([]mcap.MessageIterator, 2)
 		for i, buf := range []*bytes.Buffer{buf1, buf2} {
 			writer, err := mcap.NewWriter(buf)
 			require.NoError(t, err)
@@ -129,7 +129,7 @@ func TestIdenticalSchemas(t *testing.T) {
 	t.Run("schemas differ in content", func(t *testing.T) {
 		buf1 := &bytes.Buffer{}
 		buf2 := &bytes.Buffer{}
-		iterators := make([]fmcap.MessageIterator, 2)
+		iterators := make([]mcap.MessageIterator, 2)
 		for i, buf := range []*bytes.Buffer{buf1, buf2} {
 			writer, err := mcap.NewWriter(buf)
 			require.NoError(t, err)
@@ -171,7 +171,7 @@ func TestIdenticalSchemas(t *testing.T) {
 	t.Run("identical schemas different channel metadata", func(t *testing.T) {
 		buf1 := &bytes.Buffer{}
 		buf2 := &bytes.Buffer{}
-		iterators := make([]fmcap.MessageIterator, 2)
+		iterators := make([]mcap.MessageIterator, 2)
 		for i, buf := range []*bytes.Buffer{buf1, buf2} {
 			writer, err := mcap.NewWriter(buf)
 			require.NoError(t, err)
@@ -260,7 +260,7 @@ func TestNMerge(t *testing.T) {
 				bufs[i] = &bytes.Buffer{}
 				mcap.WriteFile(t, bufs[i], timestamps)
 			}
-			iterators := make([]fmcap.MessageIterator, len(bufs))
+			iterators := make([]mcap.MessageIterator, len(bufs))
 			for i, buf := range bufs {
 				reader, err := mcap.NewReader(bytes.NewReader(buf.Bytes()))
 				require.NoError(t, err)
@@ -276,7 +276,7 @@ func TestNMerge(t *testing.T) {
 			iterator, err := reader.Messages()
 			require.NoError(t, err)
 			for {
-				_, _, msg, err := iterator.Next(nil)
+				_, _, msg, err := iterator.NextInto(nil)
 				if errors.Is(err, io.EOF) {
 					break
 				}

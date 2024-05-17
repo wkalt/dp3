@@ -83,14 +83,14 @@ type Node struct {
 }
 
 // Traverse a plan tree, executing pre and post-order transformations.
-func traverse(n *Node, pre func(n *Node) error, post func(n *Node) error) error {
+func Traverse(n *Node, pre func(n *Node) error, post func(n *Node) error) error {
 	if pre != nil {
 		if err := pre(n); err != nil {
 			return err
 		}
 	}
 	for _, c := range n.Children {
-		if err := traverse(c, pre, post); err != nil {
+		if err := Traverse(c, pre, post); err != nil {
 			return err
 		}
 	}
@@ -281,7 +281,7 @@ func compileExpression(ast ql.Expression) *Node {
 // found, an error is returned.
 func computeAlias(expr *Node) (string, error) {
 	var alias string
-	err := traverse(expr, nil, func(n *Node) error {
+	err := Traverse(expr, nil, func(n *Node) error {
 		var nodeAlias string
 		switch n.Type {
 		case Scan:
@@ -364,7 +364,7 @@ func CompileQuery(database string, ast ql.Query) (*Node, error) {
 		}
 	}
 
-	if err := traverse(
+	if err := Traverse(
 		base,
 		composePushdowns(
 			pullUpMergeJoins,

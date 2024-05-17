@@ -3,460 +3,321 @@ package ros1msg
 import (
 	"encoding/binary"
 	"fmt"
-	"math"
+	"io"
+	"unsafe"
 
 	"github.com/wkalt/dp3/util/schema"
 )
 
-/*
-This file implements a recursive descent parser for ROS1 message bytes, with the
-capability to parse or skip fields selectively. Our parser avoids parsing bytes
-that it does not want to collect statistics for. Today these are,
-* Fixed-length arrays with length > 10
-* Variable-length arrays
-
-In the future we will want to support at least variable-length complex arrays,
-so the strategy will evolve with time.
-*/
-
-////////////////////////////////////////////////////////////////////////////////
-
-// Parser is the interface for parsing ROS1 message bytes. FixedSize returns the
-// fixed length of the parser if it has one, else zero. The parse method cases
-// FixedSize to skip over sections of bytes where possible. The parse parameter
-// supplied to it, indicates whether bytes should be parsed or skipped. The
-// result is the number of bytes read followed by any error encountered.
-type Parser interface {
-	FixedSize() int
-	Parse(data []byte, values *[]any, parse bool) (int, error)
+type ParseFailureError struct {
+	Type   string
+	Length int
+	Offset int
+	Err    error
 }
 
-type boolSkipper struct{}
-
-func (s *boolSkipper) FixedSize() int {
-	return 1
+func (f ParseFailureError) Error() string {
+	return fmt.Sprintf("failed to parse %d byte %s at %d: %v", f.Length, f.Type, f.Offset, f.Err)
 }
 
-func (s *boolSkipper) Parse(data []byte, values *[]any, parse bool) (int, error) {
-	if len(data) < 1 {
-		return 0, ShortReadError{"bool"}
-	}
-	if parse {
-		*values = append(*values, data[0] != 0)
-	}
-	return 1, nil
+type parser struct {
+	offset int
+	buf    []byte
 }
 
-type uint8Skipper struct{}
-
-func (s *uint8Skipper) FixedSize() int {
-	return 1
+func NewDecoder(buf []byte) schema.Decoder {
+	return &parser{buf: buf}
 }
 
-func (s *uint8Skipper) Parse(data []byte, values *[]any, parse bool) (int, error) {
-	if len(data) < 1 {
-		return 0, ShortReadError{"uint8"}
-	}
-	if parse {
-		*values = append(*values, data[0])
-	}
-	return 1, nil
+func (p *parser) Bool() (bool, error) {
+	b, err := p.Uint8()
+	return b != 0, err
 }
 
-type int8Skipper struct{}
-
-func (s *int8Skipper) FixedSize() int {
-	return 1
+func (p *parser) Int8() (int8, error) {
+	if p.offset+1 > len(p.buf) {
+		return 0, io.ErrShortBuffer
+	}
+	p.offset++
+	return int8(p.buf[p.offset-1]), nil
 }
 
-func (s *int8Skipper) Parse(data []byte, values *[]any, parse bool) (int, error) {
-	if len(data) < 1 {
-		return 0, ShortReadError{"int8"}
+func (p *parser) Int16() (int16, error) {
+	if p.offset+2 > len(p.buf) {
+		return 0, io.ErrShortBuffer
 	}
-	if parse {
-		*values = append(*values, int8(data[0]))
-	}
-	return 1, nil
+	x := binary.LittleEndian.Uint16(p.buf[p.offset : p.offset+2])
+	p.offset += 2
+	return int16(x), nil
 }
 
-type uint16Skipper struct{}
-
-func (s *uint16Skipper) FixedSize() int {
-	return 2
+func unsafeInt32FromBytes(bts []byte) int32 {
+	return *(*int32)(unsafe.Pointer(&bts[0]))
 }
 
-func (s *uint16Skipper) Parse(data []byte, values *[]any, parse bool) (int, error) {
-	if len(data) < 2 {
-		return 0, ShortReadError{"uint16"}
+func (p *parser) Int32() (int32, error) {
+	if p.offset+4 > len(p.buf) {
+		return 0, io.ErrShortBuffer
 	}
-	if parse {
-		*values = append(*values, binary.LittleEndian.Uint16(data))
-	}
-	return 2, nil
+	x := unsafeInt32FromBytes(p.buf[p.offset : p.offset+4])
+	p.offset += 4
+	return x, nil
 }
 
-type int16Skipper struct{}
-
-func (s *int16Skipper) FixedSize() int {
-	return 2
+func (p *parser) Int64() (int64, error) {
+	if p.offset+8 > len(p.buf) {
+		return 0, io.ErrShortBuffer
+	}
+	x := binary.LittleEndian.Uint64(p.buf[p.offset : p.offset+8])
+	p.offset += 8
+	return int64(x), nil
 }
 
-func (s *int16Skipper) Parse(data []byte, values *[]any, parse bool) (int, error) {
-	if len(data) < 2 {
-		return 0, ShortReadError{"int16"}
+func (p *parser) Uint8() (uint8, error) {
+	if p.offset+1 > len(p.buf) {
+		return 0, io.ErrShortBuffer
 	}
-	if parse {
-		*values = append(*values, int16(binary.LittleEndian.Uint16(data)))
-	}
-	return 2, nil
+	p.offset++
+	return p.buf[p.offset-1], nil
 }
 
-type uint32Skipper struct{}
-
-func (s *uint32Skipper) FixedSize() int {
-	return 4
+func unsafeUint16FromBytes(bts []byte) uint16 {
+	return *(*uint16)(unsafe.Pointer(&bts[0]))
 }
 
-func (s *uint32Skipper) Parse(data []byte, values *[]any, parse bool) (int, error) {
-	if len(data) < 4 {
-		return 0, ShortReadError{"uint32"}
+func (p *parser) Uint16() (uint16, error) {
+	if p.offset+2 > len(p.buf) {
+		return 0, io.ErrShortBuffer
 	}
-	if parse {
-		*values = append(*values, binary.LittleEndian.Uint32(data))
-	}
-	return 4, nil
+	x := unsafeUint16FromBytes(p.buf[p.offset : p.offset+2])
+	p.offset += 2
+	return x, nil
 }
 
-type int32Skipper struct{}
-
-func (s *int32Skipper) FixedSize() int {
-	return 4
+func unsafeUint32FromBytes(bts []byte) uint32 {
+	return *(*uint32)(unsafe.Pointer(&bts[0]))
 }
 
-func (s *int32Skipper) Parse(data []byte, values *[]any, parse bool) (int, error) {
-	if len(data) < 4 {
-		return 0, ShortReadError{"int32"}
+func (p *parser) Uint32() (uint32, error) {
+	if p.offset+4 > len(p.buf) {
+		return 0, io.ErrShortBuffer
 	}
-	if parse {
-		*values = append(*values, int32(binary.LittleEndian.Uint32(data)))
-	}
-	return 4, nil
+	x := unsafeUint32FromBytes(p.buf[p.offset : p.offset+4])
+	p.offset += 4
+	return x, nil
 }
 
-type uint64Skipper struct{}
-
-func (s *uint64Skipper) FixedSize() int {
-	return 8
+func unsafeUint64FromBytes(bts []byte) uint64 {
+	return *(*uint64)(unsafe.Pointer(&bts[0]))
 }
 
-func (s *uint64Skipper) Parse(data []byte, values *[]any, parse bool) (int, error) {
-	if len(data) < 8 {
-		return 0, ShortReadError{"uint64"}
+func (p *parser) Uint64() (uint64, error) {
+	if p.offset+8 > len(p.buf) {
+		return 0, io.ErrShortBuffer
 	}
-	if parse {
-		*values = append(*values, binary.LittleEndian.Uint64(data))
-	}
-	return 8, nil
+	x := unsafeUint64FromBytes(p.buf[p.offset : p.offset+8])
+	p.offset += 8
+	return x, nil
 }
 
-type int64Skipper struct{}
-
-func (s *int64Skipper) FixedSize() int {
-	return 8
+func unsafeBytesToF32(bts []byte) float32 {
+	return *(*float32)(unsafe.Pointer(&bts[0]))
 }
 
-func (s *int64Skipper) Parse(data []byte, values *[]any, parse bool) (int, error) {
-	if len(data) < 8 {
-		return 0, ShortReadError{"int64"}
+func (p *parser) Float32() (float32, error) {
+	if p.offset+4 > len(p.buf) {
+		return 0, io.ErrShortBuffer
 	}
-	if parse {
-		*values = append(*values, int64(binary.LittleEndian.Uint64(data)))
-	}
-	return 8, nil
+	f := unsafeBytesToF32(p.buf[p.offset : p.offset+4])
+	p.offset += 4
+	return f, nil
 }
 
-type float32Skipper struct{}
-
-func (s *float32Skipper) FixedSize() int {
-	return 4
+func unsafeBytesToF64(bts []byte) float64 {
+	return *(*float64)(unsafe.Pointer(&bts[0]))
 }
 
-func (s *float32Skipper) Parse(data []byte, values *[]any, parse bool) (int, error) {
-	if len(data) < 4 {
-		return 0, ShortReadError{"float32"}
+func (p *parser) Float64() (float64, error) {
+	n := p.offset + 8
+	if n > len(p.buf) {
+		return 0, io.ErrShortBuffer
 	}
-	if parse {
-		*values = append(*values, math.Float32frombits(binary.LittleEndian.Uint32(data)))
-	}
-	return 4, nil
+	f := unsafeBytesToF64(p.buf[p.offset:n])
+	p.offset = n
+	return f, nil
 }
 
-type float64Skipper struct{}
-
-func (s *float64Skipper) FixedSize() int {
-	return 8
+func (p *parser) Time() (uint64, error) {
+	x, err := p.Uint64()
+	if err != nil {
+		return 0, err
+	}
+	nsecs := uint32(x >> 32)
+	secs := uint32(x)
+	return 1e9*uint64(secs) + uint64(nsecs), nil
 }
 
-func (s *float64Skipper) Parse(data []byte, values *[]any, parse bool) (int, error) {
-	if len(data) < 8 {
-		return 0, ShortReadError{"float64"}
-	}
-	if parse {
-		*values = append(*values, math.Float64frombits(binary.LittleEndian.Uint64(data)))
-	}
-	return 8, nil
+func (p *parser) Duration() (uint64, error) {
+	return p.Time()
 }
 
-type stringSkipper struct{}
-
-func (s *stringSkipper) FixedSize() int {
-	return 0
+func (p *parser) Bytes(n int) ([]byte, error) {
+	if p.offset+n > len(p.buf) {
+		return nil, io.ErrShortBuffer
+	}
+	data := p.buf[p.offset : p.offset+n]
+	p.offset += n
+	return data, nil
 }
 
-func (s *stringSkipper) Parse(data []byte, values *[]any, parse bool) (int, error) {
-	if len(data) < 4 {
-		return 0, ShortReadError{"string"}
+func (p *parser) SkipBytes(n int) error {
+	if p.offset+n > len(p.buf) {
+		return io.ErrShortBuffer
 	}
-	l := int(binary.LittleEndian.Uint32(data))
-	if len(data) < l+4 {
-		return 0, ShortReadError{"string"}
-	}
-	if parse {
-		*values = append(*values, string(data[4:4+l]))
-	}
-	return l + 4, nil
+	p.offset += n
+	return nil
 }
 
-type timeSkipper struct{}
-
-func (s *timeSkipper) FixedSize() int {
-	return 8
+func (p *parser) String() (string, error) {
+	length, err := p.Uint32()
+	if err != nil {
+		return "", err
+	}
+	n := p.offset + int(length)
+	if n > len(p.buf) {
+		return "", ParseFailureError{"string", n, p.offset - 4, io.ErrShortBuffer}
+	}
+	s := string(p.buf[p.offset:n])
+	p.offset = n
+	return s, nil
 }
 
-func (s *timeSkipper) Parse(data []byte, values *[]any, parse bool) (int, error) {
-	if len(data) < 8 {
-		return 0, ShortReadError{"time"}
-	}
-	secs := binary.LittleEndian.Uint32(data)
-	nanos := binary.LittleEndian.Uint32(data[4:])
-	if parse {
-		*values = append(*values, 1e9*uint64(secs)+uint64(nanos))
-	}
-	return 8, nil
+func (p *parser) Char() (byte, error) {
+	return p.Uint8()
 }
 
-type durationSkipper struct{}
-
-func (s *durationSkipper) FixedSize() int {
-	return 8
+func (p *parser) Byte() (byte, error) {
+	return p.Uint8()
 }
 
-func (s *durationSkipper) Parse(data []byte, values *[]any, parse bool) (int, error) {
-	if len(data) < 8 {
-		return 0, ShortReadError{"duration"}
+func (p *parser) SkipInt8() error {
+	if p.offset+1 > len(p.buf) {
+		return io.ErrShortBuffer
 	}
-	secs := binary.LittleEndian.Uint32(data)
-	nanos := binary.LittleEndian.Uint32(data[4:])
-	if parse {
-		*values = append(*values, 1e9*int64(secs)+int64(nanos))
-	}
-	return 8, nil
+	p.offset++
+	return nil
 }
 
-type charSkipper struct{}
-
-func (s *charSkipper) FixedSize() int {
-	return 1
+func (p *parser) SkipInt16() error {
+	if p.offset+2 > len(p.buf) {
+		return io.ErrShortBuffer
+	}
+	p.offset += 2
+	return nil
 }
 
-func (s *charSkipper) Parse(data []byte, values *[]any, parse bool) (int, error) {
-	if len(data) < 1 {
-		return 0, ShortReadError{"char"}
+func (p *parser) SkipInt32() error {
+	if p.offset+4 > len(p.buf) {
+		return io.ErrShortBuffer
 	}
-	if parse {
-		*values = append(*values, rune(data[0]))
-	}
-	return 1, nil
+	p.offset += 4
+	return nil
 }
 
-type byteSkipper struct{}
-
-func (s *byteSkipper) FixedSize() int {
-	return 1
+func (p *parser) SkipInt64() error {
+	if p.offset+8 > len(p.buf) {
+		return io.ErrShortBuffer
+	}
+	p.offset += 8
+	return nil
 }
 
-func (s *byteSkipper) Parse(data []byte, values *[]any, parse bool) (int, error) {
-	if len(data) < 1 {
-		return 0, ShortReadError{"byte"}
+func (p *parser) SkipUint8() error {
+	if p.offset+1 > len(p.buf) {
+		return io.ErrShortBuffer
 	}
-	if parse {
-		*values = append(*values, data[0])
-	}
-	return 1, nil
+	p.offset++
+	return nil
 }
 
-type arraySkipper struct {
-	fixedSize int
-	items     Parser
+func (p *parser) SkipUint16() error {
+	if p.offset+2 > len(p.buf) {
+		return io.ErrShortBuffer
+	}
+	p.offset += 2
+	return nil
 }
 
-func (a *arraySkipper) FixedSize() int {
-	return a.fixedSize * a.items.FixedSize()
+func (p *parser) SkipUint32() error {
+	if p.offset+4 > len(p.buf) {
+		return io.ErrShortBuffer
+	}
+	p.offset += 4
+	return nil
 }
 
-func (a *arraySkipper) Parse(data []byte, values *[]any, parse bool) (int, error) {
-	offset := 0
-
-	if a.fixedSize == 0 { // do not parse fixed-length arrays
-		if len(data) < 4 {
-			return 0, ShortReadError{"varlen array length"}
-		}
-		length := int(binary.LittleEndian.Uint32(data))
-		offset += 4
-		if itemSize := a.items.FixedSize(); itemSize > 0 {
-			offset += itemSize * length
-			return offset, nil
-		}
-		for i := 0; i < length; i++ {
-			n, err := a.items.Parse(data[offset:], values, false)
-			if err != nil {
-				return 0, fmt.Errorf("failed to parse array item: %w", err)
-			}
-			offset += n
-		}
-		return offset, nil
+func (p *parser) SkipUint64() error {
+	if p.offset+8 > len(p.buf) {
+		return io.ErrShortBuffer
 	}
-
-	// Skip fixed-length arrays with more than 10 elements
-	if a.fixedSize > 10 {
-		if itemsize := a.items.FixedSize(); itemsize > 0 {
-			offset += itemsize * a.fixedSize
-			return offset, nil
-		}
-
-		for i := 0; i < a.fixedSize; i++ {
-			n, err := a.items.Parse(data[offset:], values, false)
-			if err != nil {
-				return 0, fmt.Errorf("failed to skip array item: %w", err)
-			}
-			offset += n
-		}
-
-		return offset, nil
-	}
-
-	// Otherwise, if not parsing try and multiply
-	if itemsize := a.items.FixedSize(); itemsize > 0 && !parse {
-		offset += itemsize * a.fixedSize
-		return offset, nil
-	}
-
-	// Otherwise we need to parse
-	for i := 0; i < a.fixedSize; i++ {
-		n, err := a.items.Parse(data[offset:], values, parse)
-		if err != nil {
-			return 0, fmt.Errorf("failed to parse array item: %w", err)
-		}
-		offset += n
-	}
-	return offset, nil
+	p.offset += 8
+	return nil
 }
 
-type recordSkipper struct {
-	fields []Parser
+func (p *parser) SkipFloat32() error {
+	if p.offset+4 > len(p.buf) {
+		return io.ErrShortBuffer
+	}
+	p.offset += 4
+	return nil
 }
 
-func (r *recordSkipper) FixedSize() int {
-	size := 0
-	for _, f := range r.fields {
-		if fs := f.FixedSize(); fs == 0 {
-			return 0
-		} else {
-			size += fs
-		}
+func (p *parser) SkipFloat64() error {
+	if p.offset+8 > len(p.buf) {
+		return io.ErrShortBuffer
 	}
-	return size
+	p.offset += 8
+	return nil
 }
 
-func (r *recordSkipper) Parse(data []byte, values *[]any, parse bool) (int, error) {
-	offset := 0
-	for _, f := range r.fields {
-		n, err := f.Parse(data[offset:], values, parse)
-		if err != nil {
-			return 0, fmt.Errorf("failed to parse field: %w", err)
-		}
-		offset += n
-	}
-	return offset, nil
+func (p *parser) SkipTime() error {
+	return p.SkipUint64()
 }
 
-func primitiveToFieldSkipper(p schema.PrimitiveType) Parser {
-	switch p {
-	case schema.INT8:
-		return &int8Skipper{}
-	case schema.UINT8:
-		return &uint8Skipper{}
-	case schema.INT16:
-		return &int16Skipper{}
-	case schema.UINT16:
-		return &uint16Skipper{}
-	case schema.INT32:
-		return &int32Skipper{}
-	case schema.UINT32:
-		return &uint32Skipper{}
-	case schema.INT64:
-		return &int64Skipper{}
-	case schema.UINT64:
-		return &uint64Skipper{}
-	case schema.FLOAT32:
-		return &float32Skipper{}
-	case schema.FLOAT64:
-		return &float64Skipper{}
-	case schema.STRING:
-		return &stringSkipper{}
-	case schema.TIME:
-		return &timeSkipper{}
-	case schema.DURATION:
-		return &durationSkipper{}
-	case schema.CHAR:
-		return &charSkipper{}
-	case schema.BYTE:
-		return &byteSkipper{}
-	case schema.BOOL:
-		return &boolSkipper{}
-	default:
-		panic(fmt.Sprintf("unknown primitive type: %s", p))
-	}
+func (p *parser) SkipDuration() error {
+	return p.SkipUint64()
 }
 
-func arrayToFieldSkipper(a schema.Type) Parser {
-	if a.Items.IsPrimitive() {
-		return &arraySkipper{
-			fixedSize: a.FixedSize,
-			items:     primitiveToFieldSkipper(a.Items.Primitive),
-		}
+func (p *parser) SkipString() error {
+	n, err := p.Uint32()
+	if err != nil {
+		return err
 	}
-	return &arraySkipper{
-		fixedSize: a.FixedSize,
-		items:     recordToFieldSkipper(a.Items.Fields),
+	if p.offset+int(n) > len(p.buf) {
+		return fmt.Errorf("failed to parse prefixed string at %d: %w", p.offset-4, io.ErrShortBuffer)
 	}
+	p.offset += int(n)
+	return nil
 }
 
-func recordToFieldSkipper(fields []schema.Field) Parser {
-	skippers := []Parser{}
-	for _, field := range fields {
-		if field.Type.IsPrimitive() {
-			skippers = append(skippers, primitiveToFieldSkipper(field.Type.Primitive))
-			continue
-		}
-		if field.Type.Array {
-			skippers = append(skippers, arrayToFieldSkipper(field.Type))
-			continue
-		}
-		if field.Type.Record {
-			skippers = append(skippers, recordToFieldSkipper(field.Type.Fields))
-			continue
-		}
-	}
-	return &recordSkipper{fields: skippers}
+func (p *parser) SkipChar() error {
+	return p.SkipUint8()
+}
+
+func (p *parser) SkipByte() error {
+	return p.SkipUint8()
+}
+
+func (p *parser) SkipBool() error {
+	return p.SkipUint8()
+}
+
+func (p *parser) Set(buf []byte) {
+	p.buf = buf
+	p.offset = 0
+}
+
+func (p *parser) Reset() {
+	p.buf = nil
+	p.offset = 0
 }

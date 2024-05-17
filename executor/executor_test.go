@@ -134,7 +134,7 @@ func TestQueryExecution(t *testing.T) {
 
 				results := []message{}
 				for {
-					_, channel, msg, err := it.Next(nil)
+					_, channel, msg, err := it.NextInto(nil)
 					if err != nil {
 						require.ErrorIs(t, err, io.EOF)
 						break

@@ -13,7 +13,7 @@ import (
 type mergeIterator struct {
 	pq *util.PriorityQueue[record]
 
-	iterators []mcap.MessageIterator
+	iterators []MessageIterator
 
 	schemaHashes  map[uint64]util.Pair[int, uint16]
 	channelHashes map[uint64]util.Pair[int, uint16]
@@ -96,7 +96,7 @@ func (mi *mergeIterator) Next([]byte) (*mcap.Schema, *mcap.Channel, *mcap.Messag
 	return s2, c2, m2, nil
 }
 
-func NmergeIterator(descending bool, iterators ...mcap.MessageIterator) (mcap.MessageIterator, error) {
+func NmergeIterator(descending bool, iterators ...MessageIterator) (MessageIterator, error) {
 	pq := util.NewPriorityQueue(func(a, b record) bool {
 		if a.message.LogTime == b.message.LogTime {
 			return a.message.ChannelID < b.message.ChannelID

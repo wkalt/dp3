@@ -107,7 +107,7 @@ func TestQueryHandler(t *testing.T) {
 
 			messages := 0
 			for {
-				_, _, _, err := it.Next(nil)
+				_, _, _, err := it.NextInto(nil)
 				if err != nil {
 					break
 				}

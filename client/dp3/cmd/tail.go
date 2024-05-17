@@ -13,6 +13,7 @@ import (
 	"github.com/relvacode/iso8601"
 	"github.com/spf13/cobra"
 	"github.com/wkalt/dp3/client/dp3/util"
+	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/routes"
 )
 
@@ -74,7 +75,7 @@ var tailCmd = &cobra.Command{
 			if err := json.Unmarshal([]byte(topicsHeader), &topics); err != nil {
 				bailf("error decoding topics header: %s", err)
 			}
-			if err := util.MCAPToJSON(os.Stdout, resp.Body); err != nil {
+			if err := mcap.MCAPToJSON(os.Stdout, resp.Body); err != nil {
 				bailf("error converting to JSON: %s", err)
 			}
 		}
