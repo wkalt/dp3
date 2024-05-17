@@ -1,6 +1,8 @@
 package schema
 
-import "fmt"
+import (
+	"fmt"
+)
 
 /*
 Schema is a generic representation of message schemas. We translate ROS1 schemas

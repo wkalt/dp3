@@ -130,7 +130,7 @@ type record struct {
 	idx     int
 }
 
-func Nmerge(writer io.Writer, iterators ...mcap.MessageIterator) error {
+func Nmerge(writer io.Writer, iterators ...MessageIterator) error {
 	w, err := NewWriter(writer)
 	if err != nil {
 		return err
@@ -186,7 +186,7 @@ func Nmerge(writer io.Writer, iterators ...mcap.MessageIterator) error {
 // Merge two mcap streams into one. Both streams are assumed to be sorted.
 func Merge(writer io.Writer, a, b io.Reader) error {
 	var r1, r2 *mcap.Reader
-	var it1, it2 mcap.MessageIterator
+	var it1, it2 MessageIterator
 	w, err := NewWriter(writer)
 	if err != nil {
 		return err

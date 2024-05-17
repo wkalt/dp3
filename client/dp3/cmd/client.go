@@ -21,6 +21,7 @@ import (
 	"github.com/relvacode/iso8601"
 	"github.com/spf13/cobra"
 	cutil "github.com/wkalt/dp3/client/dp3/util"
+	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/routes"
 	"github.com/wkalt/dp3/treemgr"
 	"github.com/wkalt/dp3/util"
@@ -121,7 +122,7 @@ func executeQuery(database string, query string) error {
 	}
 	pager := maybePager()
 	return withPaging(pager, func(w io.Writer) error {
-		return cutil.MCAPToJSON(w, resp.Body)
+		return mcap.MCAPToJSON(w, resp.Body)
 	})
 }
 
@@ -440,7 +441,6 @@ func printTables(w io.Writer, database string, producerID string, topic string) 
 	}
 
 	// Display a grouping appropriate to the request.
-
 	switch {
 	case producerID == "" && topic == "":
 		// present an aggregation over producers

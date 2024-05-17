@@ -23,14 +23,6 @@ values.
 
 ////////////////////////////////////////////////////////////////////////////////
 
-func SkipMessage(skipper Parser, data []byte, values *[]any) error {
-	_, err := skipper.Parse(data, values, true)
-	if err != nil {
-		return fmt.Errorf("failed to parse message: %w", err)
-	}
-	return nil
-}
-
 // AnalyzeSchema returns a list of Named[schema.PrimitiveType] that represent
 // interesting values in a message. The length and ordering of this list match
 // the response of SkipMessage.
@@ -72,8 +64,4 @@ func AnalyzeSchema(s schema.Schema) []util.Named[schema.PrimitiveType] {
 		}
 	}
 	return fields
-}
-
-func GenSkipper(s schema.Schema) Parser {
-	return recordToFieldSkipper(s.Fields)
 }
