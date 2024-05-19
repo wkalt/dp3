@@ -10,6 +10,7 @@ import (
 	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
+	"github.com/wkalt/dp3/util/log"
 )
 
 /*
@@ -30,6 +31,8 @@ type Iterator struct {
 	tr          TreeReader
 	minVersion  uint64
 
+	childFilter func(*nodestore.Child) (bool, error)
+
 	queue []nodestore.NodeID
 }
 
@@ -41,8 +44,16 @@ func NewTreeIterator(
 	start uint64,
 	end uint64,
 	minVersion uint64,
+	childFilter func(*nodestore.Child) (bool, error),
 ) *Iterator {
-	it := &Iterator{descending: descending, start: start, end: end, tr: tr, minVersion: minVersion}
+	it := &Iterator{
+		descending:  descending,
+		start:       start,
+		end:         end,
+		tr:          tr,
+		minVersion:  minVersion,
+		childFilter: childFilter,
+	}
 	it.queue = []nodestore.NodeID{tr.Root()}
 	return it
 }
@@ -139,10 +150,20 @@ func (ti *Iterator) getNextLeaf(ctx context.Context) (nodeID nodestore.NodeID, e
 			slices.Reverse(children)
 		}
 		for _, child := range children {
-			if child != nil && child.Version > ti.minVersion {
-				if ti.start < right*1e9 && ti.end >= left*1e9 {
-					ti.queue = append(ti.queue, child.ID)
+			ok := child != nil
+			ok = ok && child.Version > ti.minVersion
+			ok = ok && ti.start < right*1e9 && ti.end >= left*1e9
+			if ok && ti.childFilter != nil {
+				ok, err = ti.childFilter(child)
+				if err != nil {
+					return nodeID, fmt.Errorf("failed to filter child: %w", err)
 				}
+				if !ok {
+					log.Debugf(ctx, "skipping node due to filter")
+				}
+			}
+			if ok {
+				ti.queue = append(ti.queue, child.ID)
 			}
 			left += step
 			right += step
