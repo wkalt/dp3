@@ -26,7 +26,7 @@ type Iterator struct {
 	end        uint64
 
 	readclosers []io.ReadSeekCloser
-	msgIterator fmcap.MessageIterator
+	msgIterator mcap.MessageIterator
 	tr          TreeReader
 	minVersion  uint64
 
@@ -206,7 +206,7 @@ func (ti *Iterator) openNextLeaf(ctx context.Context) error {
 		}
 		rangesets = append(rangesets, [][]uint64{{ti.start, ti.end}})
 	}
-	iterators := make([]fmcap.MessageIterator, len(rangesets))
+	iterators := make([]mcap.MessageIterator, len(rangesets))
 	for i := range rangesets {
 		iterators[i] = mcap.NewConcatIterator(readers[i], rangesets[i], ti.descending)
 	}

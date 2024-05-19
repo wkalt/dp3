@@ -21,7 +21,7 @@ func ReadFile(t *testing.T, r io.Reader) []uint64 {
 
 	var timestamps []uint64
 	for {
-		schema, _, msg, err := msgs.Next(nil)
+		schema, _, msg, err := msgs.NextInto(nil)
 		if errors.Is(err, io.EOF) {
 			break
 		}

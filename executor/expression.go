@@ -40,7 +40,6 @@ enters this infrastructure as either an "or", "and", or "binary expression".
 type expression struct {
 	filters map[*fmcap.Schema]func(*tuple) (bool, error)
 	node    *plan.Node
-	values  []any
 	target  string
 }
 
@@ -68,47 +67,85 @@ func (e *expression) filter(t *tuple) (bool, error) {
 	return fn(t)
 }
 
+func gatherInvolvedColumns(node *plan.Node) ([]string, error) {
+	terms := []string{}
+	err := plan.Traverse(node, func(node *plan.Node) error {
+		if node.Type == plan.BinaryExpression {
+			_, dealiased, found := strings.Cut(*node.BinaryOpField, ".")
+			if !found {
+				return fmt.Errorf("failed to dealias field %s", *node.BinaryOpField)
+			}
+			terms = append(terms, dealiased)
+		}
+		return nil
+	}, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to gather involved terms: %w", err)
+	}
+	return terms, nil
+}
+
 // compileFilter compiles a filter function for a schema.
-func (e *expression) compileFilter(schema *fmcap.Schema) (func(t *tuple) (bool, error), error) {
-	pkg, name, found := strings.Cut(schema.Name, "/")
+func (e *expression) compileFilter(targetSchema *fmcap.Schema) (func(t *tuple) (bool, error), error) {
+	pkg, name, found := strings.Cut(targetSchema.Name, "/")
 	if !found {
 		pkg = ""
-		name = schema.Name
+		name = targetSchema.Name
 	}
-	parsed, err := ros1msg.ParseROS1MessageDefinition(pkg, name, schema.Data)
+	parsed, err := ros1msg.ParseROS1MessageDefinition(pkg, name, targetSchema.Data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse message definition %s: %w", schema.Name, err)
+		return nil, fmt.Errorf("failed to parse message definition %s: %w", targetSchema.Name, err)
 	}
-	fields := ros1msg.AnalyzeSchema(*parsed)
-
+	// available and requested columns for the schema/query.
+	available := ros1msg.AnalyzeSchema(*parsed)
+	requested, err := gatherInvolvedColumns(e.node)
+	if err != nil {
+		return nil, fmt.Errorf("failed to rewrite where clause: %w", err)
+	}
+	// find the annotated available column associated with each requested. If
+	// any are not available, error here.
+	columns := make([]util.Named[schema.PrimitiveType], 0, len(requested))
+	colnames := make([]string, 0, len(requested))
+	for _, colname := range requested {
+		var found bool
+		for _, field := range available {
+			if field.Name == colname {
+				columns = append(columns, field)
+				colnames = append(colnames, colname)
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, newErrFieldNotFound(e.target+"."+colname, available)
+		}
+	}
 	var filterfn func([]any) (bool, error)
 	switch e.node.Type {
 	case plan.Or:
-		filterfn, err = e.compileOrExpression(fields, e.node)
+		filterfn, err = e.compileOrExpression(columns, e.node)
 		if err != nil {
-			return nil, fmt.Errorf("failed to compile filter function for %s: %w", schema.Name, err)
+			return nil, fmt.Errorf("failed to compile filter function for %s: %w", targetSchema.Name, err)
 		}
 	case plan.BinaryExpression:
-		filterfn, err = e.compileBinaryExpression(fields, e.node)
+		filterfn, err = e.compileBinaryExpression(columns, e.node)
 		if err != nil {
-			return nil, fmt.Errorf("failed to compile filter function for %s: %w", schema.Name, err)
+			return nil, fmt.Errorf("failed to compile filter function for %s: %w", targetSchema.Name, err)
 		}
 	case plan.And:
-		filterfn, err = e.compileAndExpression(fields, e.node)
+		filterfn, err = e.compileAndExpression(columns, e.node)
 		if err != nil {
-			return nil, fmt.Errorf("failed to compile filter function for %s: %w", schema.Name, err)
+			return nil, fmt.Errorf("failed to compile filter function for %s: %w", targetSchema.Name, err)
 		}
 	}
-	parser := ros1msg.GenSkipper(*parsed)
+	decoder := ros1msg.NewDecoder(nil)
+	parser := schema.NewParser(parsed, colnames, decoder)
 	return func(t *tuple) (bool, error) {
-		_, err := parser.Parse(t.message.Data, &e.values, true)
+		_, values, err := parser.Parse(t.message.Data)
 		if err != nil {
 			return false, fmt.Errorf("failed to parse message: %w", err)
 		}
-		defer func() {
-			e.values = e.values[:0]
-		}()
-		return filterfn(e.values)
+		return filterfn(values)
 	}, nil
 }
 
@@ -178,7 +215,7 @@ func (e *expression) compileBinaryExpression(
 }
 
 // compileAndExpression compiles an "and" expression. An and expression is a
-// list of binary expressions.
+// list of binary expressions, and evaluates to true if all its children do.
 func (e *expression) compileAndExpression(
 	fields []util.Named[schema.PrimitiveType],
 	node *plan.Node,

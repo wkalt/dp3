@@ -258,7 +258,7 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.6.1
 	github.com/chzyer/readline v1.5.1
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
-	github.com/foxglove/mcap/go/mcap v1.3.1
+	github.com/foxglove/mcap/go/mcap v1.4.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
 	github.com/mattn/go-sqlite3 v1.14.22

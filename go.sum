@@ -164,6 +164,8 @@ github.com/foxglove/go-rosbag v0.0.6 h1:LcWr1LqdS1NxWO4+mbPfo7d1jpL3gybqRmX1abD8
 github.com/foxglove/go-rosbag v0.0.6/go.mod h1:Kz3doYZfPO6OIawx4tFm9MU9COkuzcYaI963psJeLrA=
 github.com/foxglove/mcap/go/mcap v1.3.1 h1:xybMhjOAtwzfNJNUeqPwEeOfzC2Nef0FAGnSGzEB3d4=
 github.com/foxglove/mcap/go/mcap v1.3.1/go.mod h1:3UsmtxZGHWURgxEgQh3t0cGfyPyLoCGsa/gtS/Y6UPM=
+github.com/foxglove/mcap/go/mcap v1.4.0 h1:jce+cl+EFplxNiX/+rJxeqnHWe7papeRmWn85SABrls=
+github.com/foxglove/mcap/go/mcap v1.4.0/go.mod h1:3UsmtxZGHWURgxEgQh3t0cGfyPyLoCGsa/gtS/Y6UPM=
 github.com/frankban/quicktest v1.14.4 h1:g2rn0vABPOOXmZUj+vbmUp0lPoXEMuhTpIluN0XL9UY=
 github.com/frankban/quicktest v1.14.4/go.mod h1:4ptaffx2x8+WTWXmUCuVU6aPUX1/Mz7zb5vbUoiM6w0=
 github.com/fraugster/parquet-go v0.12.0 h1:1slnC5y2VWEOUSlzbeXatM0BvSWcLUDsR/EcZsXXCZc=

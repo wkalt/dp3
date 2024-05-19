@@ -12,6 +12,7 @@ import (
 	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/log"
 	"github.com/wkalt/dp3/util/ros1msg"
+	"github.com/wkalt/dp3/util/schema"
 )
 
 /*
@@ -47,8 +48,8 @@ type writer struct {
 
 	schemaStats  map[uint16]*nodestore.Statistics
 	schemaHashes map[uint16]string
-	parsers      map[uint16]ros1msg.Parser
-	values       map[uint16][]any
+
+	parsers map[uint16]*schema.Parser
 
 	initialized bool
 
@@ -86,8 +87,7 @@ func newWriter(
 		topic:        topic,
 		schemaStats:  map[uint16]*nodestore.Statistics{},
 		schemaHashes: map[uint16]string{},
-		parsers:      map[uint16]ros1msg.Parser{},
-		values:       map[uint16][]any{},
+		parsers:      map[uint16]*schema.Parser{},
 	}, nil
 }
 
@@ -135,25 +135,30 @@ func (w *writer) initialize(ts uint64) (err error) {
 	}
 	w.lower = lower
 	w.upper = upper
-	for _, schema := range w.schemas {
-		if err := w.w.WriteSchema(schema); err != nil {
+	for _, existingSchema := range w.schemas {
+		if err := w.w.WriteSchema(existingSchema); err != nil {
 			return fmt.Errorf("failed to write schema: %w", err)
 		}
-		parts := strings.SplitN(schema.Name, "/", 2)
+		parts := strings.SplitN(existingSchema.Name, "/", 2)
 		var pkg, name string
 		if len(parts) == 2 {
 			pkg = parts[0]
 			name = parts[1]
 		}
-		msgdef, err := ros1msg.ParseROS1MessageDefinition(pkg, name, schema.Data)
+		msgdef, err := ros1msg.ParseROS1MessageDefinition(pkg, name, existingSchema.Data)
 		if err != nil {
 			return fmt.Errorf("failed to parse ROS1 message definition: %w", err)
 		}
-		parser := ros1msg.GenSkipper(*msgdef)
-		w.parsers[schema.ID] = parser
 		fields := ros1msg.AnalyzeSchema(*msgdef)
-		w.schemaStats[schema.ID] = nodestore.NewStatistics(fields)
-		w.schemaHashes[schema.ID] = util.CryptographicHash(schema.Data)
+		colnames := make([]string, len(fields))
+		for i, field := range fields {
+			colnames[i] = field.Name
+		}
+		decoder := ros1msg.NewDecoder(nil)
+		parser := schema.NewParser(msgdef, colnames, decoder)
+		w.parsers[existingSchema.ID] = parser
+		w.schemaStats[existingSchema.ID] = nodestore.NewStatistics(fields)
+		w.schemaHashes[existingSchema.ID] = util.CryptographicHash(existingSchema.Data)
 	}
 	for _, channel := range w.channels {
 		if err := w.w.WriteChannel(channel); err != nil {
@@ -209,16 +214,10 @@ func (w *writer) updateStatistics(message *fmcap.Message) error {
 	}
 	parser, ok := w.parsers[schemaID]
 	if !ok {
-		return fmt.Errorf("unknown field skipper for schema ID: %d", schemaID)
+		return fmt.Errorf("unknown parser for schema ID: %d", schemaID)
 	}
-
-	values, ok := w.values[schemaID]
-	if !ok {
-		values = make([]any, 0, len(statistics.Fields))
-		w.values[schemaID] = values
-	}
-
-	if err := ros1msg.SkipMessage(parser, message.Data, &values); err != nil {
+	_, values, err := parser.Parse(message.Data)
+	if err != nil {
 		return fmt.Errorf("failed to parse message on %s: %w", channel.Topic, err)
 	}
 	if err := statistics.ObserveMessage(message, values); err != nil {

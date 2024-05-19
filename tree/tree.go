@@ -501,7 +501,7 @@ func mergeLeaves(
 		return mergeOneLeaf(ancestorNodeID, ancestorVersion, leaf)
 	}
 
-	iterators := make([]fmcap.MessageIterator, len(leaves))
+	iterators := make([]mcap.MessageIterator, len(leaves))
 	for i, leaf := range leaves {
 		leaf, ok := leaf.(*nodestore.LeafNode)
 		if !ok {

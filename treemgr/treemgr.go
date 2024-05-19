@@ -20,7 +20,6 @@ import (
 	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/log"
 	"github.com/wkalt/dp3/wal"
-	"golang.org/x/exp/maps"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -182,8 +181,9 @@ func (tm *TreeManager) Receive(
 		return fmt.Errorf("failed to create message iterator: %w", err)
 	}
 	buf := make([]byte, 1024)
+	msg := &fmcap.Message{}
 	for {
-		schema, channel, msg, err := it.Next(buf)
+		schema, channel, msg, err := it.NextInto(msg)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				break
@@ -217,9 +217,7 @@ func (tm *TreeManager) Receive(
 			return fmt.Errorf("failed to write message: %w", err)
 		}
 	}
-	keys := maps.Keys(writers)
-	sort.Strings(keys)
-	for _, k := range keys {
+	for _, k := range util.Okeys(writers) {
 		writer := writers[k]
 		if err := writer.Close(ctx); err != nil {
 			return fmt.Errorf("failed to close writer: %w", err)
