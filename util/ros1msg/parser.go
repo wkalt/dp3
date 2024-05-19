@@ -9,6 +9,12 @@ import (
 	"github.com/wkalt/dp3/util/schema"
 )
 
+/*
+This file implements a schema.Decoder for the ROS1 message format.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
 type ParseFailureError struct {
 	Type   string
 	Length int
@@ -27,6 +33,14 @@ type parser struct {
 
 func NewDecoder(buf []byte) schema.Decoder {
 	return &parser{buf: buf}
+}
+
+func (p *parser) ArrayLength() (int64, error) {
+	x, err := p.Uint32()
+	if err != nil {
+		return 0, err
+	}
+	return int64(x), nil
 }
 
 func (p *parser) Bool() (bool, error) {

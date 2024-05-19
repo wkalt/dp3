@@ -26,6 +26,8 @@ must implement a Decoder, as well as a parser for the associated schema format
 to transform it to a schema.Schema.
 */
 
+////////////////////////////////////////////////////////////////////////////////
+
 // Bytecode instructions for the parser.
 const (
 	// Parse instructions.
@@ -162,8 +164,8 @@ func NewParser(schema *Schema, fieldSelections []string, decoder Decoder) *Parse
 	handlers[opSkipTime] = p.decoder.SkipTime
 	handlers[opSkipDuration] = p.decoder.SkipDuration
 
-	handlers[opVarlenArrayStart] = p.handleVarlenArrayStart
-	handlers[opFixedlenArrayStart] = p.handleFixedlenArrayStart
+	handlers[opVarlenArrayStart] = p.handleArrayStart(false)
+	handlers[opFixedlenArrayStart] = p.handleArrayStart(true)
 	p.handlers = handlers
 	return p
 }
@@ -393,58 +395,28 @@ func overlaps(x int, ranges [][]int) bool {
 	return false
 }
 
-func (p *Parser) handleFixedlenArrayStart() error {
-	size := p.stack[len(p.stack)-4 : len(p.stack)]
-	length := binary.LittleEndian.Uint32(size)
-	p.stack = p.stack[:len(p.stack)-4]
-	ranges, err := p.parseArrayProjection()
-	if err != nil {
-		return fmt.Errorf("failed to parse array projection: %w", err)
-	}
-	tmp := []byte{}
-	tmpskip := []byte{}
-	counter := 1
-	for {
-		s := p.stack[len(p.stack)-1]
-		p.stack = p.stack[:len(p.stack)-1]
-		switch s {
-		case opFixedlenArrayStart:
-			size := p.stack[len(p.stack)-4 : len(p.stack)]
-			tmp = append(tmp, s, size[3], size[2], size[1], size[0])
-			tmpskip = append(tmpskip, s, size[3], size[2], size[1], size[0])
-			p.stack = p.stack[:len(p.stack)-4]
-			counter++
-			continue
-		case opVarlenArrayStart:
-			counter++
-		case opArrayEnd:
-			counter--
-			if counter == 0 { // nolint: nestif
-				hasRanges := len(ranges) > 0
-				p.breaks = append(p.breaks, int(length))
+func appendReverseVarint(buf []byte, x int64) []byte {
+	tmp := make([]byte, binary.MaxVarintLen64)
+	n := binary.PutVarint(tmp, x)
+	slices.Reverse(tmp[:n])
+	return append(buf, tmp[:n]...)
+}
 
-				if !hasRanges && len(tmp) == 1 && tmp[0] == opUint8 {
-					p.breaks = append(p.breaks, int(length))
-					return p.handleByteArray(int(length))
-				}
-
-				slices.Reverse(tmp)
-				for i := 0; i < int(length); i++ {
-					if !hasRanges || overlaps(i, ranges) {
-						if err := p.exec(tmp); err != nil {
-							return err
-						}
-					} else {
-						if err := p.exec(tmpskip); err != nil {
-							return err
-						}
-					}
-				}
-				return nil
+func (p *Parser) handleArrayStart(fixedSize bool) func() error {
+	return func() (err error) {
+		var length int64
+		if fixedSize {
+			length, err = p.readVarint()
+			if err != nil {
+				return fmt.Errorf("failed to read array size: %w", err)
+			}
+		} else {
+			length, err = p.decoder.ArrayLength()
+			if err != nil {
+				return fmt.Errorf("failed to parse array length: %w", err)
 			}
 		}
-		tmp = append(tmp, s)
-		tmpskip = append(tmpskip, includeToSkip(s))
+		return p.handleArray(length)
 	}
 }
 
@@ -457,30 +429,27 @@ func (p *Parser) handleByteArray(length int) error {
 	return nil
 }
 
-func (p *Parser) handleVarlenArrayStart() error {
-	length, err := p.decoder.Int32()
-	if err != nil {
-		return fmt.Errorf("failed to parse array length: %w", err)
-	}
-
+func (p *Parser) handleArray(length int64) error {
 	ranges, err := p.parseArrayProjection()
 	if err != nil {
 		return fmt.Errorf("failed to parse array projection: %w", err)
 	}
-
 	tmp := []byte{}
 	tmpskip := []byte{}
-
 	counter := 1
 	for {
 		s := p.stack[len(p.stack)-1]
 		p.stack = p.stack[:len(p.stack)-1]
 		switch s {
 		case opFixedlenArrayStart:
-			size := p.stack[len(p.stack)-4 : len(p.stack)]
-			tmp = append(tmp, s, size[3], size[2], size[1], size[0])
-			tmpskip = append(tmpskip, s, size[3], size[2], size[1], size[0])
-			p.stack = p.stack[:len(p.stack)-4]
+			size, err := p.readVarint()
+			if err != nil {
+				return fmt.Errorf("failed to read array size: %w", err)
+			}
+			tmp = append(tmp, s)
+			tmp = appendReverseVarint(tmp, size)
+			tmpskip = append(tmpskip, s)
+			tmpskip = appendReverseVarint(tmpskip, size)
 			counter++
 			continue
 		case opVarlenArrayStart:
@@ -573,9 +542,7 @@ func compileSchemaByteCode(schema *Schema, fieldSelections []string) []byte { //
 				projection := buildArrayProjection(ranges)
 				if typ.FixedSize > 0 {
 					codes = append(codes, opFixedlenArrayStart)
-					buf := make([]byte, 4)
-					binary.LittleEndian.PutUint32(buf, uint32(typ.FixedSize))
-					codes = append(codes, buf[3], buf[2], buf[1], buf[0])
+					codes = appendReverseVarint(codes, int64(typ.FixedSize))
 				} else {
 					codes = append(codes, opVarlenArrayStart)
 				}
