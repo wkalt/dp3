@@ -101,9 +101,19 @@ func (n *NumericalSummary) ranges(field string, start, end uint64, schemaHash st
 
 // TextSummary is a statistical summary of a text field.
 type TextSummary struct {
-	Min string `json:"min"`
-	Max string `json:"max"`
+	nonempty bool
+	Min      string `json:"min"`
+	Max      string `json:"max"`
 	// todo: bloom filters, trigrams, etc.
+}
+
+func (s *TextSummary) Merge(other *TextSummary) {
+	if !s.nonempty {
+		*s = *other
+		return
+	}
+	s.Min = min(s.Min, other.Min)
+	s.Max = max(s.Max, other.Max)
 }
 
 func (s *TextSummary) ranges(field string, start, end uint64, schemaHash string) []StatRange {
