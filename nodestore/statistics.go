@@ -34,10 +34,19 @@ const (
 
 // NumericalSummary is a statistical summary of a field.
 type NumericalSummary struct {
-	Min  float64 `json:"min"`
-	Max  float64 `json:"max"`
-	Mean float64 `json:"mean"`
-	Sum  float64 `json:"sum"`
+	Min   float64 `json:"min"`
+	Max   float64 `json:"max"`
+	Mean  float64 `json:"mean"`
+	Sum   float64 `json:"sum"`
+	Count float64 `json:"count"`
+}
+
+func (n *NumericalSummary) Merge(other *NumericalSummary) {
+	n.Min = min(n.Min, other.Min)
+	n.Max = max(n.Max, other.Max)
+	n.Sum += other.Sum
+	n.Count += other.Count
+	n.Mean = n.Sum / n.Count
 }
 
 func (n *NumericalSummary) ranges(field string, start, end uint64, schemaHash string) []StatRange {
@@ -77,6 +86,15 @@ func (n *NumericalSummary) ranges(field string, start, end uint64, schemaHash st
 			SchemaHash: schemaHash,
 			Field:      field,
 			Value:      n.Sum,
+		},
+		{
+			Start:      start,
+			End:        end,
+			Type:       Float,
+			Name:       "count",
+			SchemaHash: schemaHash,
+			Field:      field,
+			Value:      n.Count,
 		},
 	}
 }
@@ -216,7 +234,7 @@ func (s *Statistics) observeNumeric(idx int, v float64) {
 
 	summary, ok := s.NumStats[idx]
 	if !ok {
-		summary = &NumericalSummary{Min: v, Max: v, Mean: v, Sum: v}
+		summary = &NumericalSummary{Min: v, Max: v, Mean: v, Sum: v, Count: 1}
 		s.NumStats[idx] = summary
 	} else {
 		if v < summary.Min {
@@ -225,8 +243,9 @@ func (s *Statistics) observeNumeric(idx int, v float64) {
 		if v > summary.Max {
 			summary.Max = v
 		}
+		summary.Count++
 		summary.Sum += v
-		summary.Mean = summary.Sum / float64(s.MessageCount+1)
+		summary.Mean = summary.Sum / summary.Count
 	}
 }
 
@@ -365,7 +384,8 @@ func (s *Statistics) Add(other *Statistics) error {
 			numstat.Min = min(numstat.Min, other.NumStats[i].Min)
 			numstat.Max = max(numstat.Max, other.NumStats[i].Max)
 			numstat.Sum += other.NumStats[i].Sum
-			numstat.Mean = numstat.Sum / float64(s.MessageCount)
+			numstat.Count += other.NumStats[i].Count
+			numstat.Mean = numstat.Sum / numstat.Count
 		}
 		if textstat, ok := s.TextStats[i]; ok {
 			textstat.Max = max(textstat.Max, other.TextStats[i].Max)
