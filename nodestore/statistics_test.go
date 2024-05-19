@@ -194,10 +194,11 @@ func TestAdd(t *testing.T) {
 					Fields: []util.Named[schema.PrimitiveType]{util.NewNamed("test", schema.FLOAT64)},
 					NumStats: map[int]*nodestore.NumericalSummary{
 						0: {
-							Min:  1,
-							Max:  10,
-							Sum:  10,
-							Mean: 5,
+							Min:   1,
+							Max:   10,
+							Sum:   10,
+							Mean:  5,
+							Count: 2,
 						},
 					},
 					MessageCount: 2,
@@ -206,10 +207,11 @@ func TestAdd(t *testing.T) {
 					Fields: []util.Named[schema.PrimitiveType]{util.NewNamed("test", schema.FLOAT64)},
 					NumStats: map[int]*nodestore.NumericalSummary{
 						0: {
-							Min:  10,
-							Max:  20,
-							Sum:  30,
-							Mean: 15,
+							Min:   10,
+							Max:   20,
+							Sum:   30,
+							Mean:  15,
+							Count: 2,
 						},
 					},
 					MessageCount: 2,
@@ -219,10 +221,11 @@ func TestAdd(t *testing.T) {
 				Fields: []util.Named[schema.PrimitiveType]{util.NewNamed("test", schema.FLOAT64)},
 				NumStats: map[int]*nodestore.NumericalSummary{
 					0: {
-						Min:  1,
-						Max:  20,
-						Mean: 10,
-						Sum:  40,
+						Min:   1,
+						Max:   20,
+						Mean:  10,
+						Sum:   40,
+						Count: 4,
 					},
 				},
 				MessageCount: 4,
