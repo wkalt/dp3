@@ -26,6 +26,8 @@ import (
 	"github.com/wkalt/dp3/treemgr"
 	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/httputil"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 var (
@@ -99,7 +101,7 @@ func withPaging(pager string, f func(io.Writer) error) error {
 	}
 }
 
-func executeQuery(database string, query string) error {
+func executeQuery(database string, query string, explain bool) error {
 	req := &routes.QueryRequest{
 		Database: database,
 		Query:    query,
@@ -120,10 +122,46 @@ func executeQuery(database string, query string) error {
 		}
 		return cutil.NewAPIError(response.Error, response.Detail)
 	}
-	pager := maybePager()
-	return withPaging(pager, func(w io.Writer) error {
-		return mcap.MCAPToJSON(w, resp.Body)
-	})
+
+	if !explain {
+		pager := maybePager()
+		return withPaging(pager, func(w io.Writer) error {
+			return mcap.MCAPToJSON(w, resp.Body)
+		})
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("error reading response: %w", err)
+	}
+
+	reader, err := mcap.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("error creating mcap reader: %w", err)
+	}
+	defer reader.Close()
+
+	info, err := reader.Info()
+	if err != nil {
+		return fmt.Errorf("error reading mcap info: %w", err)
+	}
+
+	for _, idx := range info.MetadataIndexes {
+		if idx.Name == "dp3.executor" {
+			metadata, err := reader.GetMetadata(idx.Offset)
+			if err != nil {
+				return fmt.Errorf("error reading metadata: %w", err)
+			}
+
+			context := &util.Context{}
+			if err := json.Unmarshal([]byte(metadata.Metadata["context"]), context); err != nil {
+				return fmt.Errorf("error unmarshalling context: %w", err)
+			}
+			printExecContext(context)
+			return nil
+		}
+	}
+	return nil
 }
 
 func fileExists(name string) bool {
@@ -233,6 +271,7 @@ func run() error {
 			continue
 		}
 
+		explain := strings.HasPrefix(line, "explain")
 		lines = append(lines, line)
 		if !strings.HasSuffix(line, ";") {
 			l.SetPrompt("... # ")
@@ -242,7 +281,7 @@ func run() error {
 		lines = lines[:0]
 		l.SetPrompt(fmt.Sprintf("dp3:[%s] # ", database))
 		l.SaveHistory(query)
-		if err := executeQuery(database, query); err != nil {
+		if err := executeQuery(database, query, explain); err != nil {
 			printError(err)
 		}
 	}
@@ -559,6 +598,72 @@ func handleTables(database string, line string) error {
 	default:
 		return errors.New("too many arguments")
 	}
+}
+
+func printExecContext(ec *util.Context) {
+	buf := &bytes.Buffer{}
+	queue := []util.Pair[int, *util.Context]{util.NewPair(0, ec.Children[0])}
+	for len(queue) > 0 {
+		pair := queue[len(queue)-1]
+		queue = queue[:len(queue)-1]
+
+		indent, ctx := pair.First, pair.Second
+
+		elapsedToFirstTuple := ctx.Values["elapsed_to_first_tuple"]
+		delete(ctx.Values, "elapsed_to_first_tuple")
+		elapsedToLastTuple := ctx.Values["elapsed_to_last_tuple"]
+		delete(ctx.Values, "elapsed_to_last_tuple")
+		tuplesOut := ctx.Values["tuples_out"]
+		delete(ctx.Values, "tuples_out")
+		bytesOut := ctx.Values["bytes_out"]
+		delete(ctx.Values, "bytes_out")
+
+		var labels string
+		if len(ctx.Data) > 0 {
+			labels += "["
+			for i, key := range util.Okeys(ctx.Data) {
+				if i > 0 {
+					labels += " "
+				}
+				val := ctx.Data[key]
+				labels += fmt.Sprintf("%s=%v", key, val)
+			}
+			labels += "] "
+		}
+
+		caser := cases.Title(language.English)
+
+		timingInfo := fmt.Sprintf("(elapsed=%d...%d, rows=%d, total=%s)",
+			int(elapsedToFirstTuple),
+			int(elapsedToLastTuple),
+			int(tuplesOut),
+			util.HumanBytes(uint64(bytesOut)))
+
+		fmt.Fprintf(buf, "%s%s %s%s\n", strings.Repeat("  ", indent),
+			caser.String(ctx.Name), labels, timingInfo)
+
+		for _, key := range util.Okeys(ctx.Values) {
+			value := ctx.Values[key]
+			fmt.Fprintf(buf, "%s%s: %v\n", strings.Repeat("  ", indent+1), key, value)
+		}
+		for _, child := range ctx.Children {
+			queue = append(queue, util.NewPair(indent+2, child))
+		}
+	}
+
+	lines := strings.Split(buf.String(), "\n")
+	maxWidth := 0
+	for _, line := range lines {
+		if len(line) > maxWidth {
+			maxWidth = len(line)
+		}
+	}
+	header := "QUERY PLAN"
+	center := (maxWidth - len(header)) / 2
+	headerline := fmt.Sprintf("%s%s", strings.Repeat(" ", center), header)
+	fmt.Println(headerline)
+	fmt.Println(strings.Repeat("-", maxWidth))
+	fmt.Println(buf.String())
 }
 
 // NB: editing the text in here can be very prone to hard to spot alignment bugs

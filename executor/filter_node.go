@@ -36,8 +36,8 @@ func (n *filterNode) Next(ctx context.Context) (*tuple, error) {
 }
 
 // Close the node.
-func (n *filterNode) Close() error {
-	if err := n.child.Close(); err != nil {
+func (n *filterNode) Close(ctx context.Context) error {
+	if err := n.child.Close(ctx); err != nil {
 		return fmt.Errorf("failed to close filter node: %w", err)
 	}
 	return nil

@@ -40,12 +40,12 @@ func Run(
 	w io.Writer,
 	node *plan.Node,
 	scanFactory ScanFactory,
+	explain bool,
 ) error {
 	root, err := CompilePlan(ctx, node, scanFactory)
 	if err != nil {
 		return err
 	}
-	defer root.Close()
 	initialized := false
 	var mc *mcap.MergeCoordinator
 	for {
@@ -62,32 +62,52 @@ func Run(
 		// they should be extracted into a /schemas directory and referencable
 		// by hash.
 		if !initialized {
-			writer, err := mcap.NewWriter(w)
-			if err != nil {
-				return fmt.Errorf("failed to construct mcap writer: %w", err)
+			if mc, err = initializeMergeCoordinator(w); err != nil {
+				return fmt.Errorf("failed to initialize merge coordinator: %w", err)
 			}
-			defer writer.Close()
-			if err := writer.WriteHeader(&fmcap.Header{}); err != nil {
-				return fmt.Errorf("failed to write header: %w", err)
-			}
-			mc = mcap.NewMergeCoordinator(writer)
 			initialized = true
+			defer mc.Close()
 		}
-
-		if err := mc.Write(tuple.schema, tuple.channel, tuple.message); err != nil {
-			return fmt.Errorf("failed to write message: %w", err)
+		if !explain {
+			if err := mc.Write(tuple.schema, tuple.channel, tuple.message); err != nil {
+				return fmt.Errorf("failed to write message: %w", err)
+			}
 		}
 	}
-
 	// If we never initialized, we got no results but also no errors. Write an
 	// empty file to the output since the output writer has not otherwise been
 	// initialized.
 	if !initialized {
-		if err := mcap.WriteEmptyFile(w); err != nil {
-			return fmt.Errorf("failed to write empty file: %w", err)
+		if mc, err = initializeMergeCoordinator(w); err != nil {
+			return fmt.Errorf("failed to initialize merge coordinator: %w", err)
+		}
+		defer mc.Close()
+	}
+	if err := root.Close(ctx); err != nil {
+		return fmt.Errorf("failed to close root node: %w", err)
+	}
+	if explain {
+		metadata, err := util.MetadataFromContext(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get metadata: %w", err)
+		}
+		if err := mc.WriteMetadata(metadata); err != nil {
+			return fmt.Errorf("failed to write exec context metadata: %w", err)
 		}
 	}
 	return nil
+}
+
+func initializeMergeCoordinator(w io.Writer) (*mcap.MergeCoordinator, error) {
+	writer, err := mcap.NewWriter(w)
+	if err != nil {
+		return nil, fmt.Errorf("failed to construct mcap writer: %w", err)
+	}
+	if err := writer.WriteHeader(&fmcap.Header{}); err != nil {
+		return nil, fmt.Errorf("failed to write header: %w", err)
+	}
+	mc := mcap.NewMergeCoordinator(writer)
+	return mc, nil
 }
 
 type ScanFactory func(
@@ -132,7 +152,7 @@ func compileMergeJoin(ctx context.Context, node *plan.Node, sf ScanFactory) (Nod
 			return nil, err
 		}
 	}
-	return NewMergeNode(node.Descending, nodes...), nil
+	return maybeWrapWithStats(node, NewMergeNode(node.Descending, nodes...), "merge"), nil
 }
 
 func compileAsofJoin(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, error) {
@@ -175,9 +195,17 @@ func compileAsofJoin(ctx context.Context, node *plan.Node, sf ScanFactory) (Node
 	}
 	switch keyword {
 	case "precedes":
-		return NewAsofJoinNode(left, right, immediate, threshold), nil
+		return maybeWrapWithStats(
+			node,
+			NewAsofJoinNode(left, right, immediate, threshold),
+			"asof",
+		), nil
 	case "succeeds":
-		return NewAsofJoinNode(right, left, immediate, threshold), nil
+		return maybeWrapWithStats(
+			node,
+			NewAsofJoinNode(right, left, immediate, threshold),
+			"asof",
+		), nil
 	case "neighbors":
 		return nil, errors.New("not implemented")
 	default:
@@ -190,7 +218,7 @@ func compileLimit(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, e
 	if err != nil {
 		return nil, err
 	}
-	return NewLimitNode(*node.Limit, child), nil
+	return maybeWrapWithStats(node, NewLimitNode(*node.Limit, child), "limit"), nil
 }
 
 func compileOffset(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, error) {
@@ -198,7 +226,14 @@ func compileOffset(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, 
 	if err != nil {
 		return nil, err
 	}
-	return NewOffsetNode(*node.Offset, child), nil
+	return maybeWrapWithStats(node, NewOffsetNode(*node.Offset, child), "offset"), nil
+}
+
+func maybeWrapWithStats(node *plan.Node, n Node, label string) Node {
+	if node.Explain {
+		return NewNodeStats(n, label)
+	}
+	return n
 }
 
 func compileScan(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, error) {
@@ -248,10 +283,10 @@ func compileScan(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, er
 		return nil, err
 	}
 
-	scan := NewScanNode(table, it)
+	scan := maybeWrapWithStats(node, NewScanNode(table, it), "scan")
 	if len(node.Children) > 0 {
 		expr := newExpression(util.When(alias != "", alias, table), node.Children[0])
-		return NewFilterNode(expr.filter, scan), nil
+		return maybeWrapWithStats(node, NewFilterNode(expr.filter, scan), "filter"), nil
 	}
 	return scan, nil
 }

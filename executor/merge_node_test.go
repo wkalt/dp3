@@ -96,7 +96,7 @@ func TestMergeNode(t *testing.T) {
 				actual = append(actual, tuple.LogTime())
 			}
 			require.Equal(t, c.expected, actual)
-			require.NoError(t, node.Close())
+			require.NoError(t, node.Close(ctx))
 		})
 	}
 }
