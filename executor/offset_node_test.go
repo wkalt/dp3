@@ -71,7 +71,7 @@ func TestOffsetNode(t *testing.T) {
 				actual = append(actual, tuple.LogTime())
 			}
 			require.Equal(t, c.expected, actual)
-			require.NoError(t, n.Close())
+			require.NoError(t, n.Close(ctx))
 		})
 	}
 }

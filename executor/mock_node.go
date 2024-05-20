@@ -36,7 +36,7 @@ func (n *mockNode) String() string {
 }
 
 // Close the node.
-func (n *mockNode) Close() error {
+func (n *mockNode) Close(ctx context.Context) error {
 	return nil
 }
 

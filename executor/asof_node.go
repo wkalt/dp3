@@ -39,10 +39,10 @@ type asofJoinNode struct {
 }
 
 // Close the node.
-func (n *asofJoinNode) Close() error {
+func (n *asofJoinNode) Close(ctx context.Context) error {
 	errs := make([]error, 0, len(n.children))
 	for _, child := range n.children {
-		if err := child.Close(); err != nil {
+		if err := child.Close(ctx); err != nil {
 			errs = append(errs, err)
 		}
 	}

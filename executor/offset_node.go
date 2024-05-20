@@ -39,8 +39,8 @@ func (n *offsetNode) Next(ctx context.Context) (*tuple, error) {
 }
 
 // Close the node.
-func (n *offsetNode) Close() error {
-	if err := n.child.Close(); err != nil {
+func (n *offsetNode) Close(ctx context.Context) error {
+	if err := n.child.Close(ctx); err != nil {
 		return fmt.Errorf("failed to close offset node: %w", err)
 	}
 	return nil
