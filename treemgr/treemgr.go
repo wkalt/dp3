@@ -566,13 +566,14 @@ func (tm *TreeManager) NewTreeIterator(
 	topic string,
 	descending bool,
 	start, end uint64,
+	childFilter func(*nodestore.Child) (bool, error),
 ) (*tree.Iterator, error) {
 	prefix, rootID, _, truncationVersion, err := tm.rootmap.GetLatest(ctx, database, producer, topic)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest root: %w", err)
 	}
 	tr := tree.NewBYOTreeReader(prefix, rootID, tm.ns.Get)
-	return tree.NewTreeIterator(ctx, tr, descending, start, end, truncationVersion), nil
+	return tree.NewTreeIterator(ctx, tr, descending, start, end, truncationVersion, childFilter), nil
 }
 
 func (tm *TreeManager) Truncate(
@@ -602,7 +603,7 @@ func (tm *TreeManager) loadIterators(
 	for i, root := range roots {
 		g.Go(func() error {
 			tr := tree.NewBYOTreeReader(root.Prefix, root.NodeID, tm.ns.Get)
-			it := tree.NewTreeIterator(ctx, tr, false, start, end, root.MinVersion)
+			it := tree.NewTreeIterator(ctx, tr, false, start, end, root.MinVersion, nil)
 			schema, channel, message, err := it.Next(ctx)
 			if err != nil {
 				if errors.Is(err, io.EOF) {

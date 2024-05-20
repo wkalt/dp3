@@ -88,6 +88,10 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 				httputil.BadRequest(ctx, w, "%w", tableNotFound)
 				return
 			}
+			if err := clientError(err); err != nil {
+				log.Infof(ctx, "Client closed connection: %s", err)
+				return
+			}
 			httputil.InternalServerError(ctx, w, "error executing query: %s", err)
 			return
 		}

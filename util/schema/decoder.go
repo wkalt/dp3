@@ -1,5 +1,14 @@
 package schema
 
+/*
+The Decoder interface is our mechanism for pluggable message encoding formats.
+Each supported encoding must implement a Decoder and a schema definition parser
+that transforms a schema into a schema.Schema. Given these, we get record
+parsing and JSON transcoding from our existing plumbing.
+*/
+
+////////////////////////////////////////////////////////////////////////////////
+
 type Decoder interface { // nolint: interfacebloat
 	Bool() (bool, error)
 	Int8() (int8, error)
@@ -39,6 +48,7 @@ type Decoder interface { // nolint: interfacebloat
 	SkipChar() error
 	SkipByte() error
 
+	ArrayLength() (int64, error)
 	Set(b []byte)
 	Reset()
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 )
 
 /*
@@ -40,6 +41,48 @@ type Child struct {
 	ID         NodeID                 `json:"id"`
 	Version    uint64                 `json:"version"`
 	Statistics map[string]*Statistics `json:"statistics"`
+}
+
+var ErrNoStatsFound = errors.New("no statistics found")
+
+func (c *Child) GetNumStat(field string) (*NumericalSummary, error) {
+	s := &NumericalSummary{
+		Min: math.MaxFloat64,
+	}
+	var found bool
+	for _, stats := range c.Statistics {
+		for i, f := range stats.Fields {
+			if f.Name == field {
+				if numStats, ok := stats.NumStats[i]; ok {
+					s.Merge(numStats)
+					found = true
+				}
+			}
+		}
+	}
+	if !found {
+		return nil, ErrNoStatsFound
+	}
+	return s, nil
+}
+
+func (c *Child) GetTextStat(field string) (*TextSummary, error) {
+	s := &TextSummary{}
+	var found bool
+	for _, stats := range c.Statistics {
+		for i, f := range stats.Fields {
+			if f.Name == field {
+				if textStats, ok := stats.TextStats[i]; ok {
+					s.Merge(textStats)
+					found = true
+				}
+			}
+		}
+	}
+	if !found {
+		return nil, fmt.Errorf("field %s not found", field)
+	}
+	return s, nil
 }
 
 // IsTombstone returns true if the child is a tombstone.

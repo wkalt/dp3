@@ -8,6 +8,7 @@ import (
 
 	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/mcap"
+	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/plan"
 	"github.com/wkalt/dp3/tree"
 	"github.com/wkalt/dp3/util"
@@ -96,6 +97,7 @@ type ScanFactory func(
 	table string,
 	descending bool,
 	start, end uint64,
+	childFilter func(*nodestore.Child) (bool, error),
 ) (*tree.Iterator, error)
 
 // CompilePlan compiles a "plan tree" -- a tree of plan nodes -- to a tree of
@@ -231,10 +233,21 @@ func compileScan(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, er
 			return nil, fmt.Errorf("expected uint64 end time, got %T", node.Args[5])
 		}
 	}
-	it, err := sf(ctx, database, producer, table, node.Descending, start, end)
+
+	var childFilter func(*nodestore.Child) (bool, error)
+	if len(node.Children) > 0 {
+		childFilter, err = NewStatFilter(node.Children[0])
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	// pass expression right here!
+	it, err := sf(ctx, database, producer, table, node.Descending, start, end, childFilter)
 	if err != nil {
 		return nil, err
 	}
+
 	scan := NewScanNode(table, it)
 	if len(node.Children) > 0 {
 		expr := newExpression(util.When(alias != "", alias, table), node.Children[0])

@@ -15,4 +15,3 @@ package service_test
 // 	svc := service.NewDP3Service()
 // 	require.NoError(t, svc.Start(ctx, opts...))
 // }
-//
