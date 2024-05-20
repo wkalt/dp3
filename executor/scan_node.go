@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/wkalt/dp3/tree"
+	"github.com/wkalt/dp3/util"
 )
 
 /*
@@ -39,7 +40,13 @@ func (n *scanNode) Next(ctx context.Context) (*tuple, error) {
 }
 
 // Close the node.
-func (n *scanNode) Close() error {
+func (n *scanNode) Close(ctx context.Context) error {
+	util.SetContextData(ctx, "topic", n.topic)
+
+	stats := n.it.Stats()
+	util.SetContextValue(ctx, "inner_nodes_excluded", float64(stats.InnerNodesFiltered))
+	util.SetContextValue(ctx, "inner_nodes_scanned", float64(stats.InnerNodesScanned))
+
 	if err := n.it.Close(); err != nil {
 		return fmt.Errorf("failed to close scan node: %w", err)
 	}

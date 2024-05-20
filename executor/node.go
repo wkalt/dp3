@@ -47,5 +47,5 @@ func newTuple(schema *fmcap.Schema, channel *fmcap.Channel, message *fmcap.Messa
 type Node interface {
 	Next(ctx context.Context) (*tuple, error)
 	String() string
-	Close() error
+	Close(ctx context.Context) error
 }

@@ -124,7 +124,7 @@ func TestQueryExecution(t *testing.T) {
 				require.NoError(t, err)
 
 				buf := &bytes.Buffer{}
-				require.NoError(t, executor.Run(ctx, buf, qp, tmgr.NewTreeIterator))
+				require.NoError(t, executor.Run(ctx, buf, qp, tmgr.NewTreeIterator, false))
 
 				reader, err := mcap.NewReader(bytes.NewReader(buf.Bytes()))
 				require.NoError(t, err)

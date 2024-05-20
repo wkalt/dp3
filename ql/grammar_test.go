@@ -480,23 +480,29 @@ func TestQuery(t *testing.T) {
 	}{
 		{
 			"simple",
+			"explain from my-robot a;",
+			newQuery(true, nil, newSelect("a", "", nil, nil), nil, false, nil),
+		},
+		{
+			"simple",
 			"from my-robot a;",
-			newQuery(nil, newSelect("a", "", nil, nil), nil, false, nil),
+			newQuery(false, nil, newSelect("a", "", nil, nil), nil, false, nil),
 		},
 		{
 			"with between",
 			`from my-robot between "a" and "b" a;`,
-			newQuery(newBetween("a", "b"), newSelect("a", "", nil, nil), nil, false, nil),
+			newQuery(false, newBetween("a", "b"), newSelect("a", "", nil, nil), nil, false, nil),
 		},
 		{
 			"with descending",
 			"from my-robot a desc;",
-			newQuery(nil, newSelect("a", "", nil, nil), nil, true, nil),
+			newQuery(false, nil, newSelect("a", "", nil, nil), nil, true, nil),
 		},
 		{
 			"with where",
 			"from my-robot a where a = 10;",
 			newQuery(
+				false,
 				nil,
 				newSelect("a", "", nil, nil),
 				newExpression(
@@ -510,6 +516,7 @@ func TestQuery(t *testing.T) {
 			"with where and paging",
 			"from my-robot a where a = 10 limit 10 offset 10;",
 			newQuery(
+				false,
 				nil,
 				newSelect("a", "", nil, nil),
 				newExpression(
@@ -524,6 +531,7 @@ func TestQuery(t *testing.T) {
 			"with where and descending",
 			"from my-robot a where a = 10 desc;",
 			newQuery(
+				false,
 				nil,
 				newSelect("a", "", nil, nil),
 				newExpression(
@@ -538,6 +546,7 @@ func TestQuery(t *testing.T) {
 			"with where, descending, and paging",
 			"from my-robot a where a = 10 desc limit 10 offset 10;",
 			newQuery(
+				false,
 				nil,
 				newSelect("a", "", nil, nil),
 				newExpression(
@@ -552,6 +561,7 @@ func TestQuery(t *testing.T) {
 			"with multiple where",
 			"from my-robot a where a = 10 and b = 20;",
 			newQuery(
+				false,
 				nil,
 				newSelect("a", "", nil, nil),
 				newExpression(newOrCondition(
@@ -565,6 +575,7 @@ func TestQuery(t *testing.T) {
 			"merge join with where clauses",
 			"from my-robot a, b where a = 10 and b = 20;",
 			newQuery(
+				false,
 				nil,
 				newSelect("a", "", newMJ(newSelect("b", "", nil, nil)), nil),
 				newExpression(newOrCondition(
@@ -579,6 +590,7 @@ func TestQuery(t *testing.T) {
 			"basic as-of join",
 			"from my-robot a precedes b by less than 10 seconds;",
 			newQuery(
+				false,
 				nil,
 				newSelect("a", "", nil, newAJ("precedes", false,
 					newSelect("b", "", nil, nil),
@@ -592,6 +604,7 @@ func TestQuery(t *testing.T) {
 			"as-of join without constraint",
 			"from my-robot a precedes b;",
 			newQuery(
+				false,
 				nil,
 				newSelect("a", "", nil, newAJ("precedes", false, newSelect("b", "", nil, nil), nil)),
 				nil,
@@ -603,6 +616,7 @@ func TestQuery(t *testing.T) {
 			"as-of join without constraint with limit and offset",
 			"from my-robot a precedes b limit 10 offset 10;",
 			newQuery(
+				false,
 				nil,
 				newSelect("a", "", nil, newAJ("precedes", false, newSelect("b", "", nil, nil), nil)),
 				nil,
@@ -614,6 +628,7 @@ func TestQuery(t *testing.T) {
 			"limit/offset reversed",
 			"from my-robot a precedes b offset 10 limit 10;",
 			newQuery(
+				false,
 				nil,
 				newSelect("a", "", nil, newAJ("precedes", false, newSelect("b", "", nil, nil), nil)),
 				nil,
@@ -627,6 +642,7 @@ func TestQuery(t *testing.T) {
 			where a.foo = 10 and b.bar = 20
 			limit 10 offset 10;`,
 			newQuery(
+				false,
 				nil,
 				newSelect("a", "", newMJ(newSelect("b", "", nil, nil)), nil),
 				newExpression(newOrCondition(
@@ -685,6 +701,7 @@ func newPagingClause(kvs ...any) []ql.PagingTerm {
 
 // newQuery returns a new query.
 func newQuery(
+	explain bool,
 	between *ql.Between,
 	sel ql.Select,
 	where *ql.Expression,
@@ -692,6 +709,7 @@ func newQuery(
 	paging []ql.PagingTerm,
 ) ql.Query {
 	return ql.Query{
+		Explain:      explain,
 		From:         producer,
 		Between:      between,
 		Select:       sel,

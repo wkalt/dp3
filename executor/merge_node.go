@@ -107,10 +107,10 @@ func (n *mergeNode) Next(ctx context.Context) (*tuple, error) {
 }
 
 // Close the node.
-func (n *mergeNode) Close() error {
+func (n *mergeNode) Close(ctx context.Context) error {
 	errs := make([]error, 0, len(n.children))
 	for _, child := range n.children {
-		if err := child.Close(); err != nil {
+		if err := child.Close(ctx); err != nil {
 			errs = append(errs, err)
 		}
 	}

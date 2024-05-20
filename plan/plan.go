@@ -80,6 +80,8 @@ type Node struct {
 	Descending bool
 	Offset     *int
 	Limit      *int
+
+	Explain bool
 }
 
 // Traverse a plan tree, executing pre and post-order transformations.
@@ -364,6 +366,10 @@ func CompileQuery(database string, ast ql.Query) (*Node, error) {
 		}
 	}
 
+	if len(ast.PagingClause) > 0 {
+		base = wrapWithPaging(base, ast.PagingClause)
+	}
+
 	if err := Traverse(
 		base,
 		composePushdowns(
@@ -371,6 +377,7 @@ func CompileQuery(database string, ast ql.Query) (*Node, error) {
 			pushDownDescending(ast.Descending),
 			pushDownFilters(subexprs, database, producer, uint64(start), uint64(end)),
 			ensureAliasesResolve(),
+			pushDownExplain(ast.Explain),
 		),
 		composePushdowns(
 			pullUpUnaryExprs,
@@ -382,10 +389,16 @@ func CompileQuery(database string, ast ql.Query) (*Node, error) {
 		subalias := maps.Keys(subexprs)[0]
 		return nil, BadPlanError{fmt.Errorf("unresolved table alias: %s", subalias)}
 	}
-	if len(ast.PagingClause) > 0 {
-		base = wrapWithPaging(base, ast.PagingClause)
-	}
 	return base, nil
+}
+
+// pushDownExplain pushes the explain flag down to each node. Explain is
+// requested, nodes will be transparently wrapped with an instrumentation node.
+func pushDownExplain(explain bool) func(*Node) error {
+	return func(n *Node) error {
+		n.Explain = explain
+		return nil
+	}
 }
 
 // Push the entire where clause down to each scan node, since we don't know

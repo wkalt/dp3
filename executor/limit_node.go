@@ -37,8 +37,8 @@ func (n *limitNode) Next(ctx context.Context) (*tuple, error) {
 }
 
 // Close the node.
-func (n *limitNode) Close() error {
-	if err := n.child.Close(); err != nil {
+func (n *limitNode) Close(ctx context.Context) error {
+	if err := n.child.Close(ctx); err != nil {
 		return fmt.Errorf("failed to close limit node: %w", err)
 	}
 	return nil

@@ -36,6 +36,7 @@ var (
 
 // Query represents a query in the dp3 query language.
 type Query struct {
+	Explain      bool         `@"explain"?`
 	From         string       `"from" @Word`
 	Between      *Between     `@@?`
 	Select       Select       `@@`

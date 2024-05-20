@@ -65,6 +65,13 @@ func NewMergeCoordinator(w *mcap.Writer) *MergeCoordinator {
 	}
 }
 
+func (c *MergeCoordinator) WriteMetadata(metadata *mcap.Metadata) error {
+	if err := c.w.WriteMetadata(metadata); err != nil {
+		return fmt.Errorf("failed to write metadata: %w", err)
+	}
+	return nil
+}
+
 func (c *MergeCoordinator) Write(schema *mcap.Schema, channel *mcap.Channel, msg *mcap.Message) error {
 	schemaID, ok := c.schemas[schema]
 	if !ok {
@@ -119,6 +126,13 @@ func (c *MergeCoordinator) Write(schema *mcap.Schema, channel *mcap.Channel, msg
 	msg.ChannelID = chanID
 	if err := c.w.WriteMessage(msg); err != nil {
 		return fmt.Errorf("failed to write message: %w", err)
+	}
+	return nil
+}
+
+func (c *MergeCoordinator) Close() error {
+	if err := c.w.Close(); err != nil {
+		return fmt.Errorf("failed to close writer: %w", err)
 	}
 	return nil
 }

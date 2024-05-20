@@ -10,6 +10,7 @@ import (
 	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
+	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/log"
 )
 
@@ -34,6 +35,8 @@ type Iterator struct {
 	childFilter func(*nodestore.Child) (bool, error)
 
 	queue []nodestore.NodeID
+
+	stats IterationStats
 }
 
 // NewTreeIterator returns a new iterator over the given tree.
@@ -56,6 +59,15 @@ func NewTreeIterator(
 	}
 	it.queue = []nodestore.NodeID{tr.Root()}
 	return it
+}
+
+type IterationStats struct {
+	InnerNodesScanned  uint64
+	InnerNodesFiltered uint64
+}
+
+func (ti *Iterator) Stats() IterationStats {
+	return ti.stats
 }
 
 // Close closes the iterator if it has not already been exhausted.
@@ -159,10 +171,15 @@ func (ti *Iterator) getNextLeaf(ctx context.Context) (nodeID nodestore.NodeID, e
 					return nodeID, fmt.Errorf("failed to filter child: %w", err)
 				}
 				if !ok {
+					ti.stats.InnerNodesFiltered += uint64(util.Pow(64, int(inner.Height)-1))
 					log.Debugf(ctx, "skipping node due to filter")
 				}
 			}
+
 			if ok {
+				if inner.Height > 1 {
+					ti.stats.InnerNodesScanned++
+				}
 				ti.queue = append(ti.queue, child.ID)
 			}
 			left += step
