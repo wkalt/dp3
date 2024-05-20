@@ -633,11 +633,12 @@ func printExecContext(ec *util.Context) {
 
 		caser := cases.Title(language.English)
 
-		timingInfo := fmt.Sprintf("(elapsed=%d...%d, rows=%d, total=%s)",
+		timingInfo := fmt.Sprintf("(elapsed=%d...%d, rows=%d, total=%s, width=%s)",
 			int(elapsedToFirstTuple),
 			int(elapsedToLastTuple),
 			int(tuplesOut),
-			util.HumanBytes(uint64(bytesOut)))
+			util.HumanBytes(uint64(bytesOut)),
+			util.HumanBytes(uint64(float64(bytesOut)/float64(tuplesOut))))
 
 		fmt.Fprintf(buf, "%s%s %s%s\n", strings.Repeat("  ", indent),
 			caser.String(ctx.Name), labels, timingInfo)
