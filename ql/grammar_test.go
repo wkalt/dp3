@@ -207,12 +207,12 @@ func TestValue(t *testing.T) {
 		},
 		{
 			"string",
-			`"a"`,
+			"'a'",
 			newValue("a"),
 		},
 		{
 			"string starting with a dot",
-			`".a"`,
+			"'.a'",
 			newValue(".a"),
 		},
 	}
@@ -453,7 +453,7 @@ func TestBetween(t *testing.T) {
 	}{
 		{
 			"strings",
-			`between "a" and "b"`,
+			"between 'a' and 'b'",
 			newBetween("a", "b"),
 		},
 		{
@@ -490,7 +490,7 @@ func TestQuery(t *testing.T) {
 		},
 		{
 			"with between",
-			`from my-robot between "a" and "b" a;`,
+			`from my-robot between 'a' and 'b' a;`,
 			newQuery(false, newBetween("a", "b"), newSelect("a", "", nil, nil), nil, false, nil),
 		},
 		{
