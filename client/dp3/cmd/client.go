@@ -643,9 +643,19 @@ func printExecContext(ec *util.Context) {
 		fmt.Fprintf(buf, "%s%s %s%s\n", strings.Repeat("  ", indent),
 			caser.String(ctx.Name), labels, timingInfo)
 
-		for _, key := range util.Okeys(ctx.Values) {
-			value := ctx.Values[key]
-			fmt.Fprintf(buf, "%s%s: %v\n", strings.Repeat("  ", indent+1), key, value)
+		var statline string
+		if _, ok := ctx.Values["inner_nodes_filtered"]; ok {
+			statline = fmt.Sprintf(
+				"Statistics: inner_filtered=%d inner_scanned=%d leaf_filtered=%d leaf_scanned=%d",
+				int(ctx.Values["inner_nodes_filtered"]),
+				int(ctx.Values["inner_nodes_scanned"]),
+				int(ctx.Values["leaf_nodes_filtered"]),
+				int(ctx.Values["leaf_nodes_scanned"]),
+			)
+
+		}
+		if statline != "" {
+			fmt.Fprintf(buf, "%s%s\n", strings.Repeat("  ", indent+1), statline)
 		}
 		for _, child := range ctx.Children {
 			queue = append(queue, util.NewPair(indent+2, child))

@@ -44,8 +44,10 @@ func (n *scanNode) Close(ctx context.Context) error {
 	util.SetContextData(ctx, "topic", n.topic)
 
 	stats := n.it.Stats()
-	util.SetContextValue(ctx, "inner_nodes_excluded", float64(stats.InnerNodesFiltered))
+	util.SetContextValue(ctx, "inner_nodes_filtered", float64(stats.InnerNodesFiltered))
 	util.SetContextValue(ctx, "inner_nodes_scanned", float64(stats.InnerNodesScanned))
+	util.SetContextValue(ctx, "leaf_nodes_filtered", float64(stats.LeafNodesFiltered))
+	util.SetContextValue(ctx, "leaf_nodes_scanned", float64(stats.LeafNodesScanned))
 
 	if err := n.it.Close(); err != nil {
 		return fmt.Errorf("failed to close scan node: %w", err)
