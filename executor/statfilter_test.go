@@ -204,7 +204,7 @@ func TestStringStatFilters(t *testing.T) {
 
 		for _, c := range cases {
 			t.Run(name+" "+c.operator, func(t *testing.T) {
-				query := basicScan(name, c.operator, "\"e\"")
+				query := basicScan(name, c.operator, "'e'")
 				node := extractWhere(t, query)
 				filter, err := executor.NewStatFilter(node)
 				require.NoError(t, err)

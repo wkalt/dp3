@@ -22,7 +22,7 @@ var (
 		participle.Lexer(
 			lexer.MustSimple([]lexer.SimpleRule{
 				{Name: "Word", Pattern: `[a-zA-Z_/\.][a-zA-Z0-9_/\.-]*`},
-				{Name: "QuotedString", Pattern: `"(?:\\.|[^"])*"`},
+				{Name: "QuotedString", Pattern: `'(?:\\.|[^'])*'`},
 				{Name: "whitespace", Pattern: `\s+`},
 				{Name: "Operators", Pattern: `,|[()]|;`},
 				{Name: "BinaryOperator", Pattern: `=|!=|<=|>=|<|>|~\*|~`},
