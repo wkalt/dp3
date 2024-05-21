@@ -665,6 +665,15 @@ func printExecContext(ec *util.Context) {
 	fmt.Println(headerline)
 	fmt.Println(strings.Repeat("-", maxWidth))
 	fmt.Println(buf.String())
+	for _, k := range util.Okeys(ec.Data) {
+		fmt.Println(k + ":" + ec.Data[k])
+	}
+	for _, k := range util.Okeys(ec.Values) {
+		fmt.Printf("%s: %d\n", k, int(ec.Values[k]))
+	}
+	if len(ec.Data) > 0 || len(ec.Values) > 0 {
+		fmt.Println()
+	}
 }
 
 // NB: editing the text in here can be very prone to hard to spot alignment bugs
