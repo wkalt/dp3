@@ -64,6 +64,8 @@ func NewTreeIterator(
 type IterationStats struct {
 	InnerNodesScanned  uint64
 	InnerNodesFiltered uint64
+	LeafNodesScanned   uint64
+	LeafNodesFiltered  uint64
 }
 
 func (ti *Iterator) Stats() IterationStats {
@@ -172,6 +174,7 @@ func (ti *Iterator) getNextLeaf(ctx context.Context) (nodeID nodestore.NodeID, e
 				}
 				if !ok {
 					ti.stats.InnerNodesFiltered += uint64(util.Pow(64, int(inner.Height)-1))
+					ti.stats.LeafNodesFiltered += uint64(util.Pow(64, int(inner.Height)))
 					log.Debugf(ctx, "skipping node due to filter")
 				}
 			}
@@ -179,6 +182,8 @@ func (ti *Iterator) getNextLeaf(ctx context.Context) (nodeID nodestore.NodeID, e
 			if ok {
 				if inner.Height > 1 {
 					ti.stats.InnerNodesScanned++
+				} else {
+					ti.stats.LeafNodesScanned++
 				}
 				ti.queue = append(ti.queue, child.ID)
 			}
