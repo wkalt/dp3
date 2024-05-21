@@ -48,6 +48,7 @@ func Run(
 	}
 	initialized := false
 	var mc *mcap.MergeCoordinator
+	ctx = util.WithContext(ctx, "query")
 	for {
 		tuple, err := root.Next(ctx)
 		if err != nil {
@@ -57,10 +58,7 @@ func Run(
 			return fmt.Errorf("failed to read next message: %w", err)
 		}
 		// defer initialization until we successfully pull a message, in order
-		// to let the executor error on a schema conflict if necessary. todo: we
-		// need to be able to check the schemas prior to running the executor -
-		// they should be extracted into a /schemas directory and referencable
-		// by hash.
+		// to let the executor error on a schema conflict if necessary.
 		if !initialized {
 			if mc, err = initializeMergeCoordinator(w); err != nil {
 				return fmt.Errorf("failed to initialize merge coordinator: %w", err)

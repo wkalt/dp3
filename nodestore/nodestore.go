@@ -65,8 +65,10 @@ func (n *Nodestore) Put(ctx context.Context, prefix string, oid uint64, data []b
 // storage.
 func (n *Nodestore) Get(ctx context.Context, prefix string, id NodeID) (Node, error) {
 	if value, ok := n.cache.Get(id); ok {
+		util.IncContextValue(ctx, "node_cache_hits", 1)
 		return value, nil
 	}
+	util.IncContextValue(ctx, "node_cache_misses", 1)
 	reader, err := n.store.GetRange(ctx, prefix+"/"+id.Object(), int(id.Offset()), int(id.Length()))
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotFound) {
