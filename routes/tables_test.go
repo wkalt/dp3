@@ -34,15 +34,6 @@ func TestTablesHandler(t *testing.T) {
 			http.StatusOK,
 			"",
 		},
-		{
-			"missing database",
-			"",
-			"producer",
-			"topic",
-			true,
-			http.StatusBadRequest,
-			"missing database",
-		},
 	}
 
 	tmgr, done := treemgr.TestTreeManager(ctx, t)
@@ -68,7 +59,10 @@ func TestTablesHandler(t *testing.T) {
 			body, err := json.Marshal(req)
 			require.NoError(t, err)
 
-			request, err := http.NewRequestWithContext(ctx, http.MethodGet, url+"/tables", bytes.NewReader(body))
+			request, err := http.NewRequestWithContext(
+				ctx,
+				http.MethodGet,
+				url+"/databases/"+c.database+"/tables", bytes.NewReader(body))
 			require.NoError(t, err)
 
 			resp, err := http.DefaultClient.Do(request)

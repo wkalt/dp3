@@ -76,6 +76,10 @@ type Rootmap interface {
 		producer string,
 		topic string,
 	) ([]RootListing, error)
+
+	Topics(ctx context.Context, database string) ([]string, error)
+	Producers(ctx context.Context, database string) ([]string, error)
+	Databases(ctx context.Context) ([]string, error)
 }
 
 type table struct {

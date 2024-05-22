@@ -119,6 +119,22 @@ func NewTreeManager(
 	return tm, nil
 }
 
+func (tm *TreeManager) Producers(
+	ctx context.Context, database string,
+) ([]string, error) {
+	return tm.rootmap.Producers(ctx, database)
+}
+
+func (tm *TreeManager) Databases(ctx context.Context) ([]string, error) {
+	return tm.rootmap.Databases(ctx)
+}
+
+func (tm *TreeManager) Topics(
+	ctx context.Context, database string,
+) ([]string, error) {
+	return tm.rootmap.Topics(ctx, database)
+}
+
 func (tm *TreeManager) DeleteMessages(
 	ctx context.Context,
 	database string,
