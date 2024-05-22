@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/gorilla/mux"
 	"github.com/wkalt/dp3/treemgr"
 	"github.com/wkalt/dp3/util/httputil"
 	"github.com/wkalt/dp3/util/log"
@@ -15,6 +16,15 @@ type TablesRequest struct {
 	Producer   string `json:"producer"`
 	Topic      string `json:"topic"`
 	Historical bool   `json:"historical"`
+}
+
+func parseRequest(req *http.Request) TablesRequest {
+	var tr TablesRequest
+	tr.Database = mux.Vars(req)["database"]
+	tr.Producer = req.URL.Query().Get("producer")
+	tr.Topic = req.URL.Query().Get("topic")
+	tr.Historical = req.URL.Query().Get("historical") == "true"
+	return tr
 }
 
 func (req TablesRequest) validate() error {
@@ -29,11 +39,7 @@ func newTablesHandler(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		req := TablesRequest{}
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			httputil.BadRequest(ctx, w, "failed to decode request: %s", err)
-			return
-		}
+		req := parseRequest(r)
 		log.Infow(
 			ctx,
 			"tables request",

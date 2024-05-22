@@ -432,6 +432,75 @@ func (rm *sqlRootmap) Truncate(
 	return nil
 }
 
+func (rm *sqlRootmap) Databases(ctx context.Context) ([]string, error) {
+	rows, err := rm.db.QueryContext(ctx, `
+	select distinct database from tables
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read from tables: %w", err)
+	}
+	defer rows.Close()
+	var databases []string
+	for rows.Next() {
+		var database string
+		if err := rows.Scan(&database); err != nil {
+			return nil, fmt.Errorf("failed to read from tables: %w", err)
+		}
+		databases = append(databases, database)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read from tables: %w", err)
+	}
+	return databases, nil
+}
+
+func (rm *sqlRootmap) Producers(
+	ctx context.Context, database string,
+) ([]string, error) {
+	rows, err := rm.db.QueryContext(
+		ctx, `select distinct producer from tables
+		where database = ?`, database)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read from tables: %w", err)
+	}
+	defer rows.Close()
+	var producers []string
+	for rows.Next() {
+		var producer string
+		if err := rows.Scan(&producer); err != nil {
+			return nil, fmt.Errorf("failed to read from tables: %w", err)
+		}
+		producers = append(producers, producer)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read from tables: %w", err)
+	}
+	return producers, nil
+}
+
+func (rm *sqlRootmap) Topics(ctx context.Context, database string) ([]string, error) {
+	rows, err := rm.db.QueryContext(ctx,
+		`select distinct topic from tables
+		where database = ?
+		`, database)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read from tables: %w", err)
+	}
+	defer rows.Close()
+	var topics []string
+	for rows.Next() {
+		var topic string
+		if err := rows.Scan(&topic); err != nil {
+			return nil, fmt.Errorf("failed to read from tables: %w", err)
+		}
+		topics = append(topics, topic)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("failed to read from tables: %w", err)
+	}
+	return topics, nil
+}
+
 func (rm *sqlRootmap) Get(
 	ctx context.Context,
 	database string,
