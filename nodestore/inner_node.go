@@ -5,6 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"time"
+
+	"github.com/wkalt/dp3/util"
 )
 
 /*
@@ -64,6 +67,29 @@ func (c *Child) GetNumStat(field string) (*NumericalSummary, error) {
 		return nil, ErrNoStatsFound
 	}
 	return s, nil
+}
+
+type MessageSummary struct {
+	Count             int64     `json:"count"`
+	BytesUncompressed int64     `json:"bytesUncompressed"`
+	SchemaHashes      []string  `json:"schemaHashes"`
+	MinObservedTime   time.Time `json:"minObservedTime"`
+	MaxObservedTime   time.Time `json:"maxObservedTime"`
+}
+
+func (c *Child) MessageSummary() MessageSummary {
+	s := MessageSummary{}
+	var minObserved, maxObserved []int64
+	for hash, stats := range c.Statistics {
+		s.Count += stats.MessageCount
+		s.BytesUncompressed += stats.BytesUncompressed
+		s.SchemaHashes = append(s.SchemaHashes, hash)
+		minObserved = append(minObserved, stats.MinObservedTime)
+		maxObserved = append(maxObserved, stats.MaxObservedTime)
+	}
+	s.MinObservedTime = time.Unix(0, util.Reduce(util.Min, minObserved[0], minObserved[1:]))
+	s.MaxObservedTime = time.Unix(0, util.Reduce(util.Max, maxObserved[0], maxObserved[1:]))
+	return s
 }
 
 func (c *Child) GetTextStat(field string) (*TextSummary, error) {

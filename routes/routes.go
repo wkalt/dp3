@@ -34,18 +34,21 @@ func MakeRoutes(tmgr *treemgr.TreeManager) *mux.Router {
 	r := mux.NewRouter()
 	r.Use(
 		mw.WithRequestID,
-		mw.WithCORSAllowedOrigins([]string{"http://localhost:5173"}),
+		mw.WithCORSAllowedOrigins([]string{"http://localhost:5174", "http://localhost:5173"}),
 	)
 	r.HandleFunc("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("DP3"))
 	}))
 	r.HandleFunc("/import", newImportHandler(tmgr)).Methods("POST")
+	r.HandleFunc("/databases/{database}/producers/{producer}/import", newImportStreamHandler(tmgr)).Methods("POST", "OPTIONS")
 	r.HandleFunc("/export", newExportHandler(tmgr)).Methods("POST")
 	r.HandleFunc("/query", newQueryHandler(tmgr)).Methods("POST")
 	r.HandleFunc("/statrange", newStatRangeHandler(tmgr)).Methods("POST", "GET")
 	r.HandleFunc("/delete", newDeleteHandler(tmgr)).Methods("POST", "GET")
 	r.HandleFunc("/truncate", newTruncateHandler(tmgr)).Methods("POST", "GET")
 	r.HandleFunc("/databases", newDatabasesHandler(tmgr)).Methods("GET")
+
+	r.HandleFunc("/databases/{database}/summarize-children", summarizeChildrenHandler(tmgr)).Methods("GET")
 
 	r.HandleFunc("/databases/{database}/topics", newTopicsHandler(tmgr)).Methods("GET")
 	r.HandleFunc("/databases/{database}/tables", newTablesHandler(tmgr)).Methods("GET")
