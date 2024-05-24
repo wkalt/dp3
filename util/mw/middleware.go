@@ -37,6 +37,10 @@ func WithCORSAllowedOrigins(origins []string) func(http.Handler) http.Handler {
 					break
 				}
 			}
+			if r.Method == "OPTIONS" {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
 			h.ServeHTTP(w, r)
 		})
 	}

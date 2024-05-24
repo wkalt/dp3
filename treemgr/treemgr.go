@@ -271,9 +271,70 @@ func (tm *TreeManager) GetStatistics(
 	return ranges, nil
 }
 
+type ChildSummary struct {
+	Producer string `json:"producer"`
+	Topic    string `json:"topic"`
+
+	Start             time.Time `json:"start"`
+	End               time.Time `json:"end"`
+	MessageCount      uint64    `json:"messageCount"`
+	BytesUncompressed uint64    `json:"bytesUncompressed"`
+	MinObservedTime   time.Time `json:"minObservedTime"`
+	MaxObservedTime   time.Time `json:"maxObservedTime"`
+	SchemaHashes      []string  `json:"schemaHashes"`
+}
+
+func (tm *TreeManager) SummarizeChildren(
+	ctx context.Context,
+	database string,
+	producer string,
+	topics []string,
+	start time.Time,
+	end time.Time,
+	bucketWidthSecs int,
+) ([]ChildSummary, error) {
+	topicVersions := make(map[string]uint64)
+	for _, topic := range topics {
+		topicVersions[topic] = 0
+	}
+	roots, err := tm.rootmap.GetLatestByTopic(ctx, database, producer, topicVersions)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get latest roots: %w", err)
+	}
+	summaries := []ChildSummary{}
+	for _, root := range roots {
+		if err := tree.IterateChildren(
+			ctx,
+			tree.NewBYOTreeReader(root.Prefix, root.NodeID, tm.ns.Get),
+			uint64(start.UnixNano()),
+			uint64(end.UnixNano()),
+			bucketWidthSecs,
+			func(summary tree.ChildNodeSummary) error {
+				summaries = append(summaries, ChildSummary{
+					Producer:          root.Producer,
+					Topic:             root.Topic,
+					Start:             summary.Start,
+					End:               summary.End,
+					MessageCount:      summary.MessageCount,
+					BytesUncompressed: summary.BytesUncompressed,
+					MinObservedTime:   summary.MinObservedTime,
+					MaxObservedTime:   summary.MaxObservedTime,
+					SchemaHashes:      summary.SchemaHashes,
+				})
+				return nil
+			},
+		); err != nil {
+			return nil, fmt.Errorf("failed to iterate children: %w", err)
+		}
+	}
+	return summaries, nil
+}
+
 type Table struct {
-	Root     rootmap.RootListing `json:"root"`
-	Children []*nodestore.Child  `json:"children"`
+	Root      rootmap.RootListing `json:"root"`
+	StartTime time.Time           `json:"startTime"`
+	EndTime   time.Time           `json:"endTime"`
+	Children  []*nodestore.Child  `json:"children"`
 }
 
 func (tm *TreeManager) GetTables(
@@ -312,8 +373,10 @@ func (tm *TreeManager) GetTables(
 			return nil, fmt.Errorf("unexpected node type: %w", tree.NewUnexpectedNodeError(nodestore.Inner, node))
 		}
 		tables = append(tables, Table{
-			Root:     root,
-			Children: rootnode.Children,
+			Root:      root,
+			StartTime: time.Unix(int64(rootnode.Start), 0),
+			EndTime:   time.Unix(int64(rootnode.End), 0),
+			Children:  rootnode.Children,
 		})
 	}
 	return tables, nil
