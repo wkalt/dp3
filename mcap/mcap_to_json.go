@@ -82,8 +82,6 @@ func MCAPToJSON(
 	w io.Writer,
 	r io.Reader,
 ) error {
-	bw := bufio.NewWriter(w)
-	defer bw.Flush()
 	reader, err := NewReader(bufio.NewReader(r))
 	if err != nil {
 		return fmt.Errorf("failed to create reader: %w", err)
@@ -126,7 +124,7 @@ func MCAPToJSON(
 				s.Encoding,
 			)
 		}
-		if err := writeMessage(bw,
+		if err := writeMessage(w,
 			c.Topic,
 			m.Sequence,
 			m.LogTime,
