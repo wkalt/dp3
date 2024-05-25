@@ -76,13 +76,16 @@ func TestQueryHandler(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
 			request := routes.QueryRequest{
-				Database: "db",
-				Query:    c.query,
+				Query: c.query,
 			}
 			body, err := json.Marshal(request)
 			require.NoError(t, err)
 
-			req, err := http.NewRequestWithContext(ctx, http.MethodPost, url+"/query", bytes.NewBuffer(body))
+			url := url + "/databases/db/query"
+
+			req, err := http.NewRequestWithContext(
+				ctx, http.MethodPost, url, bytes.NewBuffer(body),
+			)
 			require.NoError(t, err)
 
 			resp, err := http.DefaultClient.Do(req)

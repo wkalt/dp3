@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"testing"
@@ -30,14 +31,6 @@ func TestImportHandler(t *testing.T) {
 			"../example-data/fix.mcap",
 			http.StatusOK,
 			"",
-		},
-		{
-			"missing database",
-			"",
-			"producer",
-			"../example-data/fix.mcap",
-			http.StatusBadRequest,
-			"missing database",
 		},
 		{
 			"missing producer",
@@ -74,14 +67,18 @@ func TestImportHandler(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
 			req := routes.ImportRequest{
-				Database:   c.database,
 				ProducerID: c.producer,
 				Path:       c.filepath,
 			}
 			body, err := json.Marshal(req)
 			require.NoError(t, err)
 
-			request, err := http.NewRequestWithContext(ctx, http.MethodPost, url+"/import", bytes.NewReader(body))
+			request, err := http.NewRequestWithContext(
+				ctx,
+				http.MethodPost,
+				url+fmt.Sprintf("/databases/%s/import", c.database),
+				bytes.NewReader(body),
+			)
 			require.NoError(t, err)
 
 			resp, err := http.DefaultClient.Do(request)

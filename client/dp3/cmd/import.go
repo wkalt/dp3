@@ -32,7 +32,6 @@ func doImport(database string, producer string, paths []string, workers int) err
 				return fmt.Errorf("error getting absolute path: %w", err)
 			}
 			req := &routes.ImportRequest{
-				Database:   database,
 				ProducerID: producer,
 				Path:       abs,
 			}
@@ -40,8 +39,8 @@ func doImport(database string, producer string, paths []string, workers int) err
 			if err = json.NewEncoder(buf).Encode(req); err != nil {
 				return fmt.Errorf("error encoding request: %s", err)
 			}
-
-			resp, err := http.Post("http://localhost:8089/import", "application/json", buf)
+			url := fmt.Sprintf("http://localhost:8089/databases/%s/import", database)
+			resp, err := http.Post(url, "application/json", buf)
 			if err != nil {
 				return fmt.Errorf("error calling import: %s", err)
 			}

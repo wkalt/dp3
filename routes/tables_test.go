@@ -51,7 +51,6 @@ func TestTablesHandler(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
 			req := routes.TablesRequest{
-				Database:   c.database,
 				Producer:   c.producer,
 				Topic:      c.topic,
 				Historical: c.historical,

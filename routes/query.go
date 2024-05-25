@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/gorilla/mux"
 	"github.com/wkalt/dp3/executor"
 	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/plan"
@@ -27,14 +28,10 @@ into an execution tree, and executes the query.
 
 // QueryRequest represents a query request.
 type QueryRequest struct {
-	Database string `json:"database"`
-	Query    string `json:"query"`
+	Query string `json:"query"`
 }
 
 func (req QueryRequest) validate() error {
-	if req.Database == "" {
-		return errors.New("missing database")
-	}
 	if req.Query == "" {
 		return errors.New("missing query")
 	}
@@ -47,19 +44,19 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		req := QueryRequest{}
+		database := mux.Vars(r)["database"]
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			httputil.BadRequest(ctx, w, "error decoding request: %s", err)
 			return
 		}
 		log.Infow(ctx, "query request",
-			"database", req.Database,
+			"database", database,
 			"query", req.Query,
 		)
 		if err := req.validate(); err != nil {
 			httputil.BadRequest(ctx, w, "invalid request: %s", err)
 			return
 		}
-
 		if !strings.HasSuffix(req.Query, ";") {
 			httputil.BadRequest(ctx, w, "queries must be terminated with a semicolon")
 			return
@@ -70,7 +67,7 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			httputil.BadRequest(ctx, w, "error parsing query: %s", err)
 			return
 		}
-		qp, err := plan.CompileQuery(req.Database, *ast)
+		qp, err := plan.CompileQuery(database, *ast)
 		if err != nil {
 			if errors.Is(err, plan.BadPlanError{}) {
 				httputil.BadRequest(ctx, w, "%w", err)
