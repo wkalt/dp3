@@ -9,6 +9,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"runtime"
@@ -103,14 +104,14 @@ func withPaging(pager string, f func(io.Writer) error) error {
 
 func executeQuery(database string, query string, explain bool) error {
 	req := &routes.QueryRequest{
-		Database: database,
-		Query:    query,
+		Query: query,
 	}
 	buf := &bytes.Buffer{}
 	if err := json.NewEncoder(buf).Encode(req); err != nil {
 		return fmt.Errorf("error encoding request: %w", err)
 	}
-	resp, err := http.Post("http://localhost:8089/query", "application/json", buf)
+	url := fmt.Sprintf("http://localhost:8089/databases/%s/query", database)
+	resp, err := http.Post(url, "application/json", buf)
 	if err != nil {
 		return fmt.Errorf("error calling export: %w", err)
 	}
@@ -455,17 +456,12 @@ func printTables(w io.Writer, database string, producerID string, topic string) 
 	if producerID != "" && topic != "" {
 		historical = true
 	}
-	req := &routes.TablesRequest{
-		Database:   database,
-		Producer:   producerID,
-		Topic:      topic,
-		Historical: historical,
-	}
-	buf := &bytes.Buffer{}
-	if err := json.NewEncoder(buf).Encode(req); err != nil {
-		return fmt.Errorf("error encoding request: %s", err)
-	}
-	resp, err := http.Post("http://localhost:8089/tables", "application/json", buf)
+	values := url.Values{}
+	values.Add("producer", url.QueryEscape(producerID))
+	values.Add("topic", url.QueryEscape(topic))
+	values.Add("historical", strconv.FormatBool(historical))
+	url := fmt.Sprintf("http://localhost:8089/databases/%s/tables?%s", database, values.Encode())
+	resp, err := http.Get(url)
 	if err != nil {
 		return fmt.Errorf("error calling tables: %s", err)
 	}

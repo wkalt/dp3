@@ -2,8 +2,9 @@ package routes
 
 import (
 	"encoding/json"
-	"errors"
+	"fmt"
 	"net/http"
+	"net/url"
 
 	"github.com/gorilla/mux"
 	"github.com/wkalt/dp3/treemgr"
@@ -12,26 +13,26 @@ import (
 )
 
 type TablesRequest struct {
-	Database   string `json:"database"`
 	Producer   string `json:"producer"`
 	Topic      string `json:"topic"`
 	Historical bool   `json:"historical"`
 }
 
-func parseRequest(req *http.Request) TablesRequest {
-	var tr TablesRequest
-	tr.Database = mux.Vars(req)["database"]
-	tr.Producer = req.URL.Query().Get("producer")
-	tr.Topic = req.URL.Query().Get("topic")
-	tr.Historical = req.URL.Query().Get("historical") == "true"
-	return tr
-}
-
-func (req TablesRequest) validate() error {
-	if req.Database == "" {
-		return errors.New("missing database")
+func parseRequest(req *http.Request) (TablesRequest, error) {
+	query := req.URL.Query()
+	producer, err := url.QueryUnescape(query.Get("producer"))
+	if err != nil {
+		return TablesRequest{}, fmt.Errorf("failed to parse producer: %w", err)
 	}
-	return nil
+	topic, err := url.QueryUnescape(query.Get("topic"))
+	if err != nil {
+		return TablesRequest{}, fmt.Errorf("failed to parse topic: %w", err)
+	}
+	return TablesRequest{
+		Producer:   producer,
+		Topic:      topic,
+		Historical: query.Get("historical") == "true",
+	}, nil
 }
 
 func newTablesHandler(
@@ -39,20 +40,21 @@ func newTablesHandler(
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
-		req := parseRequest(r)
+		req, err := parseRequest(r)
+		if err != nil {
+			httputil.BadRequest(ctx, w, "failed to parse request: %s", err)
+			return
+		}
+		database := mux.Vars(r)["database"]
 		log.Infow(
 			ctx,
 			"tables request",
-			"database", req.Database,
+			"database", database,
 			"producer", req.Producer,
 			"topic", req.Topic,
 			"historical", req.Historical,
 		)
-		if err := req.validate(); err != nil {
-			httputil.BadRequest(ctx, w, "invalid request: %s", err)
-			return
-		}
-		tables, err := tmgr.GetTables(ctx, req.Database, req.Producer, req.Topic, req.Historical)
+		tables, err := tmgr.GetTables(ctx, database, req.Producer, req.Topic, req.Historical)
 		if err != nil {
 			httputil.InternalServerError(ctx, w, "failed to get tables: %s", err)
 			return
