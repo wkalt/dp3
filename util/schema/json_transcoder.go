@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+
+	"github.com/wkalt/dp3/util"
 )
 
 type JSONTranscoder struct {
@@ -38,9 +40,7 @@ func (t *JSONTranscoder) formatPrimitive(typ PrimitiveType, value any) {
 	case FLOAT32:
 		t.buf = strconv.AppendFloat(t.buf, float64(value.(float32)), 'f', -1, 32)
 	case BOOL:
-		t.buf = append(t.buf, '"')
 		t.buf = strconv.AppendBool(t.buf, value.(bool))
-		t.buf = append(t.buf, '"')
 	case INT8:
 		t.buf = strconv.AppendInt(t.buf, int64(value.(int8)), 10)
 	case INT16:
@@ -70,7 +70,7 @@ func (t *JSONTranscoder) formatPrimitive(typ PrimitiveType, value any) {
 	case BYTE:
 		t.buf = strconv.AppendUint(t.buf, uint64(value.(uint8)), 10)
 	default:
-		panic("unreachable")
+		panic("invalid type")
 	}
 }
 
@@ -116,10 +116,6 @@ func (t *JSONTranscoder) Transcode(w io.Writer, buf []byte) error { // nolint: f
 			if e.typ.Array { // nolint: nestif
 				length := breaks[0]
 				breaks = breaks[1:]
-				if length == 0 {
-					t.buf = append(t.buf, "[]"...)
-					continue
-				}
 				items := e.typ.Items
 				// if it's a byte array, format it with base64 and bypass the stack.
 				// apply optimizations for fixed-width types
@@ -132,24 +128,22 @@ func (t *JSONTranscoder) Transcode(w io.Writer, buf []byte) error { // nolint: f
 						t.buf = append(t.buf, '"')
 						t.buf = base64.StdEncoding.AppendEncode(t.buf, value)
 						t.buf = append(t.buf, '"')
+						if e.closer != "" {
+							t.buf = append(t.buf, e.closer...)
+						}
 						continue
 					}
 				}
 
-				if length == 1 {
-					t.stack = append(t.stack, element{"[", "", *items, "]"})
+				if length == 0 {
+					t.buf = append(t.buf, "[]"+e.closer...)
 					continue
 				}
+
 				for j := length - 1; j >= 0; j-- {
-					if j == length-1 {
-						t.stack = append(t.stack, element{"", "", *items, "]"})
-						continue
-					}
-					if j == 0 {
-						t.stack = append(t.stack, element{"[", "", *items, ""})
-						continue
-					}
-					t.stack = append(t.stack, element{"", "", *items, ""})
+					opener := util.When(j == 0, "[", "")
+					closer := util.When(j == length-1, "]"+e.closer, "")
+					t.stack = append(t.stack, element{opener, "", *items, closer})
 				}
 				continue
 			}
@@ -157,23 +151,13 @@ func (t *JSONTranscoder) Transcode(w io.Writer, buf []byte) error { // nolint: f
 				fields := e.typ.Fields
 				length := len(fields)
 				if length == 0 {
-					t.buf = append(t.buf, "{}"...)
-					continue
-				}
-				if length == 1 {
-					t.stack = append(t.stack, element{"{", fields[0].Name, fields[0].Type, "}"})
+					t.buf = append(t.buf, "{}"+e.closer...)
 					continue
 				}
 				for j := length - 1; j >= 0; j-- {
-					if j == len(fields)-1 {
-						t.stack = append(t.stack, element{"", fields[j].Name, fields[j].Type, "}"})
-						continue
-					}
-					if j == 0 {
-						t.stack = append(t.stack, element{"{", fields[j].Name, fields[j].Type, ""})
-						continue
-					}
-					t.stack = append(t.stack, element{"", fields[j].Name, fields[j].Type, ""})
+					opener := util.When(j == 0, "{", "")
+					closer := util.When(j == length-1, "}"+e.closer, "")
+					t.stack = append(t.stack, element{opener, fields[j].Name, fields[j].Type, closer})
 				}
 			}
 		}

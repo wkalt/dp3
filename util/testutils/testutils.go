@@ -98,6 +98,13 @@ func F64b(v float64) []byte {
 	return U64b(math.Float64bits(v))
 }
 
+func Boolb(v bool) []byte {
+	if v {
+		return U8b(1)
+	}
+	return U8b(0)
+}
+
 // PrefixedString returns a byte slice containing a string prefixed with its length.
 func PrefixedString(s string) []byte {
 	buf := make([]byte, 4+len(s))

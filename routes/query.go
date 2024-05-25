@@ -3,10 +3,12 @@ package routes
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 
 	"github.com/wkalt/dp3/executor"
+	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/plan"
 	"github.com/wkalt/dp3/ql"
 	"github.com/wkalt/dp3/rootmap"
@@ -80,24 +82,66 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 
 		ctx = util.WithContext(ctx, "query")
 
-		log.Debugf(ctx, "compiled query: %s", qp.String())
-		if err := executor.Run(ctx, w, qp, tmgr.NewTreeIterator, ast.Explain); err != nil {
-			fieldNotFound := executor.FieldNotFoundError{}
-			if errors.As(err, &fieldNotFound) {
-				httputil.BadRequest(ctx, w, "%w", fieldNotFound)
+		// if the client asks for JSON, pipe the output of the executor into a
+		// JSON transcoder that wraps the output.
+
+		if r.Header.Get("Accept") == "application/json" {
+			w.Header().Set("Content-Type", "application/json")
+			piperead, pipewrite := io.Pipe()
+			done := make(chan error, 1)
+
+			go func() {
+				if err := mcap.MCAPToJSON(w, piperead); err != nil {
+					done <- err
+					return
+				}
+				done <- nil
+			}()
+			if err := executor.Run(ctx, pipewrite, qp, tmgr.NewTreeIterator, ast.Explain); err != nil {
+				fieldNotFound := executor.FieldNotFoundError{}
+				if errors.As(err, &fieldNotFound) {
+					httputil.BadRequest(ctx, w, "%w", fieldNotFound)
+					return
+				}
+				tableNotFound := rootmap.TableNotFoundError{}
+				if errors.As(err, &tableNotFound) {
+					httputil.BadRequest(ctx, w, "%w", tableNotFound)
+					return
+				}
+				if err := clientError(err); err != nil {
+					log.Infof(ctx, "Client closed connection: %s", err)
+					return
+				}
+				httputil.InternalServerError(ctx, w, "error executing query: %s", err)
 				return
 			}
-			tableNotFound := rootmap.TableNotFoundError{}
-			if errors.As(err, &tableNotFound) {
-				httputil.BadRequest(ctx, w, "%w", tableNotFound)
+			pipewrite.Close()
+			err := <-done
+			if err != nil {
+				httputil.InternalServerError(ctx, w, "error writing JSON: %s", err)
 				return
 			}
-			if err := clientError(err); err != nil {
-				log.Infof(ctx, "Client closed connection: %s", err)
+
+		} else {
+			if err := executor.Run(ctx, w, qp, tmgr.NewTreeIterator, ast.Explain); err != nil {
+				fieldNotFound := executor.FieldNotFoundError{}
+				if errors.As(err, &fieldNotFound) {
+					httputil.BadRequest(ctx, w, "%w", fieldNotFound)
+					return
+				}
+				tableNotFound := rootmap.TableNotFoundError{}
+				if errors.As(err, &tableNotFound) {
+					httputil.BadRequest(ctx, w, "%w", tableNotFound)
+					return
+				}
+				if err := clientError(err); err != nil {
+					log.Infof(ctx, "Client closed connection: %s", err)
+					return
+				}
+				httputil.InternalServerError(ctx, w, "error executing query: %s", err)
 				return
 			}
-			httputil.InternalServerError(ctx, w, "error executing query: %s", err)
-			return
 		}
+		log.Debugf(ctx, "compiled query: %s", qp.String())
 	}
 }

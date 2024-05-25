@@ -2,7 +2,6 @@ package routes
 
 import (
 	"encoding/json"
-	"fmt"
 	"math"
 	"net/http"
 	"strconv"
@@ -51,8 +50,6 @@ func summarizeChildrenHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		if req.Topic != "" {
 			topics = []string{req.Topic}
 		}
-
-		fmt.Println("topic", topics)
 
 		database := mux.Vars(r)["database"]
 		summary, err := tmgr.SummarizeChildren(
