@@ -122,17 +122,29 @@ func NewTreeManager(
 func (tm *TreeManager) Producers(
 	ctx context.Context, database string,
 ) ([]string, error) {
-	return tm.rootmap.Producers(ctx, database)
+	producers, err := tm.rootmap.Producers(ctx, database)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get producers: %w", err)
+	}
+	return producers, nil
 }
 
 func (tm *TreeManager) Databases(ctx context.Context) ([]string, error) {
-	return tm.rootmap.Databases(ctx)
+	databases, err := tm.rootmap.Databases(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get databases: %w", err)
+	}
+	return databases, nil
 }
 
 func (tm *TreeManager) Topics(
 	ctx context.Context, database string,
 ) ([]string, error) {
-	return tm.rootmap.Topics(ctx, database)
+	topics, err := tm.rootmap.Topics(ctx, database)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get topics: %w", err)
+	}
+	return topics, nil
 }
 
 func (tm *TreeManager) DeleteMessages(

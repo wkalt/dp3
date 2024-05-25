@@ -98,7 +98,7 @@ func (c *Context) ToMetadata() (*mcap.Metadata, error) {
 		return nil, fmt.Errorf("failed to exec context to JSON: %w", err)
 	}
 	return &mcap.Metadata{
-		Name: "dp3.executor",
+		Name: c.Name,
 		Metadata: map[string]string{
 			"context": string(data),
 		},

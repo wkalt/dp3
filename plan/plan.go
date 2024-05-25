@@ -52,18 +52,12 @@ func (n NodeType) String() string {
 		return "asof"
 	case Scan:
 		return "scan"
-	case Limit:
-		return "limit"
-	case Offset:
-		return "offset"
 	case And:
 		return "and"
 	case Or:
 		return "or"
-	case BinaryExpression:
-		return "binaryexpr"
 	default:
-		panic("unknown")
+		panic("unsupported or unused")
 	}
 }
 

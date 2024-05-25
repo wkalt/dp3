@@ -135,6 +135,17 @@ func TestJSONTranscoder(t *testing.T) {
 		expected  string
 	}{
 		{
+			"array of byte structure",
+			`
+			MyType[] foo
+			===
+			MSG: test/MyType
+			uint8 bar
+			`,
+			testutils.Flatten(testutils.U32b(2), testutils.U8b(42), testutils.U8b(43)),
+			`{"foo":[{"bar":42},{"bar":43}]}`,
+		},
+		{
 			"byte array",
 			"uint8[] foo",
 			testutils.PrefixedString("foo"),

@@ -133,6 +133,13 @@ func TestCompileQuery(t *testing.T) {
 			  [scan (a db device all-time) [binexp [= a.b 1]]]]`,
 		},
 		{
+			"scan with limit and offset",
+			"from device a limit 10 offset 5;",
+			`[limit 10
+			  [offset 5
+			    [scan (a db device all-time)]]]`,
+		},
+		{
 			"merge join with descending",
 			"from device a, b desc;",
 			`[merge desc 
@@ -188,6 +195,13 @@ func TestCompileQuery(t *testing.T) {
 			  [scan (a db devices all-time) [or [binexp [= a.foo 10]] [binexp [= a.bar 20]]]]
 			  [scan (b db devices all-time) [binexp [= b.baz 30]]]]`,
 		},
+		{
+			"merge join with aliases",
+			"from device a as b, c as d;",
+			`[merge
+			  [scan (a b db device all-time)]
+			  [scan (c d db device all-time)]]`,
+		},
 	}
 	parser := ql.NewParser()
 	for _, c := range cases {
@@ -197,6 +211,35 @@ func TestCompileQuery(t *testing.T) {
 			plan, err := plan.CompileQuery("db", *ast)
 			require.NoError(t, err)
 			require.Equal(t, testutils.StripSpace(c.output), plan.String())
+		})
+	}
+}
+
+func TestQueryCompilationErrors(t *testing.T) {
+	cases := []struct {
+		assertion string
+		query     string
+		output    string
+	}{
+		{
+			"invalid alias reference",
+			"from device /fix as f where b.foo = 10;",
+			"unresolved table alias: b",
+		},
+		{
+			"missing alias",
+			"from device /fix where b.foo = 10;",
+			"unresolved table alias: b",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			parser := ql.NewParser()
+			ast, err := parser.ParseString("", c.query)
+			require.NoError(t, err)
+			_, err = plan.CompileQuery("db", *ast)
+			require.ErrorIs(t, err, plan.BadPlanError{})
+			require.Contains(t, err.Error(), c.output)
 		})
 	}
 }

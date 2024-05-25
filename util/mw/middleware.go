@@ -1,7 +1,6 @@
 package mw
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -29,7 +28,6 @@ func WithCORSAllowedOrigins(origins []string) func(http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			origin := r.Header.Get("Origin")
-			fmt.Println("ORIGIN", origin)
 			for _, o := range origins {
 				if o == origin {
 					w.Header().Set("Access-Control-Allow-Origin", o)
@@ -37,7 +35,7 @@ func WithCORSAllowedOrigins(origins []string) func(http.Handler) http.Handler {
 					break
 				}
 			}
-			if r.Method == "OPTIONS" {
+			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusOK)
 				return
 			}

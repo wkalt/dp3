@@ -334,31 +334,29 @@ func (p *Parser) popByte() byte {
 	return b
 }
 
-func (p *Parser) parseArrayProjection() ([][]int, error) {
-	s := p.popByte()
-	if s == 0x00 {
-		return nil, nil // no projection criteria
-	}
-	if s != 0x01 {
-		return nil, fmt.Errorf("invalid array projection byte: %d", s)
+func (p *Parser) parseArrayHeader() (bool, [][]int, error) {
+	isComplex := p.popByte() == 0x01
+	projected := p.popByte() == 0x01
+	if !projected {
+		return isComplex, nil, nil
 	}
 	ranges := [][]int{}
 	length, err := p.readVarint()
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse range length: %w", err)
+		return isComplex, nil, fmt.Errorf("failed to parse range length: %w", err)
 	}
 	for i := 0; i < int(length); i++ {
 		start, err := p.readVarint()
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse range start: %w", err)
+			return isComplex, nil, fmt.Errorf("failed to parse range start: %w", err)
 		}
 		end, err := p.readVarint()
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse range end: %w", err)
+			return isComplex, nil, fmt.Errorf("failed to parse range end: %w", err)
 		}
 		ranges = append(ranges, []int{int(start), int(end)})
 	}
-	return ranges, nil
+	return isComplex, ranges, nil
 }
 
 func (p *Parser) readVarint() (int64, error) {
@@ -369,12 +367,13 @@ func (p *Parser) readVarint() (int64, error) {
 	return x, nil
 }
 
-func buildArrayProjection(ranges [][]int) []byte {
+func buildArrayHeader(isComplex bool, ranges [][]int) []byte {
+	complexByte := util.When(isComplex, byte(0x01), byte(0x00))
 	if len(ranges) == 0 {
-		return []byte{0x00}
+		return []byte{complexByte, 0x00}
 	}
 	tmp := make([]byte, binary.MaxVarintLen64)
-	buf := []byte{0x01}
+	buf := []byte{complexByte, 0x01}
 	n := binary.PutVarint(tmp, int64(len(ranges)))
 	buf = append(buf, tmp[:n]...)
 	for _, r := range ranges {
@@ -430,7 +429,7 @@ func (p *Parser) handleByteArray(length int) error {
 }
 
 func (p *Parser) handleArray(length int64) error {
-	ranges, err := p.parseArrayProjection()
+	isComplex, ranges, err := p.parseArrayHeader()
 	if err != nil {
 		return fmt.Errorf("failed to parse array projection: %w", err)
 	}
@@ -459,7 +458,7 @@ func (p *Parser) handleArray(length int64) error {
 			if counter == 0 { // nolint: nestif
 				hasRanges := len(ranges) > 0
 
-				if !hasRanges && len(tmp) == 1 && tmp[0] == opUint8 {
+				if !isComplex && !hasRanges && len(tmp) == 1 && tmp[0] == opUint8 {
 					p.breaks = append(p.breaks, int(length))
 					return p.handleByteArray(int(length))
 				}
@@ -538,8 +537,9 @@ func compileSchemaByteCode(schema *Schema, fieldSelections []string) []byte { //
 				continue
 			}
 			if typ.Array {
+				isComplex := !typ.Items.IsPrimitive()
 				ranges := parseArraySelections(fieldSelections, prefix)
-				projection := buildArrayProjection(ranges)
+				projection := buildArrayHeader(isComplex, ranges)
 				if typ.FixedSize > 0 {
 					codes = append(codes, opFixedlenArrayStart)
 					codes = appendReverseVarint(codes, int64(typ.FixedSize))

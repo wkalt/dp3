@@ -34,10 +34,16 @@ func MakeRoutes(tmgr *treemgr.TreeManager) *mux.Router {
 	r := mux.NewRouter()
 	r.Use(
 		mw.WithRequestID,
-		mw.WithCORSAllowedOrigins([]string{"http://localhost:5174", "http://localhost:5173"}),
+		mw.WithCORSAllowedOrigins([]string{
+			"http://localhost:5174",
+			"http://localhost:5173",
+		}),
 	)
 	r.HandleFunc("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("DP3"))
+		_, err := w.Write([]byte("dp3"))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 	}))
 	r.HandleFunc("/export", newExportHandler(tmgr)).Methods("POST")
 	r.HandleFunc("/statrange", newStatRangeHandler(tmgr)).Methods("POST", "GET")
@@ -47,8 +53,10 @@ func MakeRoutes(tmgr *treemgr.TreeManager) *mux.Router {
 
 	r.HandleFunc("/databases/{database}/import", newImportHandler(tmgr)).Methods("POST")
 	r.HandleFunc("/databases/{database}/query", newQueryHandler(tmgr)).Methods("POST")
-	r.HandleFunc("/databases/{database}/summarize-children", summarizeChildrenHandler(tmgr)).Methods("GET")
-	r.HandleFunc("/databases/{database}/producers/{producer}/import", newImportStreamHandler(tmgr)).Methods("POST", "OPTIONS")
+	r.HandleFunc("/databases/{database}/summarize-children",
+		summarizeChildrenHandler(tmgr)).Methods("GET")
+	r.HandleFunc("/databases/{database}/producers/{producer}/import",
+		newImportStreamHandler(tmgr)).Methods("POST", "OPTIONS")
 	r.HandleFunc("/databases/{database}/topics", newTopicsHandler(tmgr)).Methods("GET")
 	r.HandleFunc("/databases/{database}/tables", newTablesHandler(tmgr)).Methods("GET")
 	r.HandleFunc("/databases/{database}/producers", newProducersHandler(tmgr)).Methods("GET")

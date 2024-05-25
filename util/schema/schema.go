@@ -147,30 +147,6 @@ type Type struct {
 	SizeBound int
 }
 
-// NewPrimitiveType creates a new primitive type.
-func NewPrimitiveType(p PrimitiveType) Type {
-	return Type{
-		Primitive: p,
-	}
-}
-
-// NewArrayType creates a new array type.
-func NewArrayType(size int, items Type) Type {
-	return Type{
-		Array:     true,
-		FixedSize: size,
-		Items:     &items,
-	}
-}
-
-// NewRecordType creates a new record type.
-func NewRecordType(fields []Field) Type {
-	return Type{
-		Record: true,
-		Fields: fields,
-	}
-}
-
 // IsPrimitive returns true if the type is a primitive type.
 func (t Type) IsPrimitive() bool {
 	return t.Primitive > 0
@@ -183,24 +159,8 @@ type Field struct {
 	Default any
 }
 
-// NewField creates a new field.
-func NewField(name string, typ Type) Field {
-	return Field{
-		Name: name,
-		Type: typ,
-	}
-}
-
 // Schema is a generic representation of a message schema.
 type Schema struct {
 	Name   string
 	Fields []Field
-}
-
-// NewSchema creates a new schema.
-func NewSchema(name string, fields ...Field) Schema {
-	return Schema{
-		Name:   name,
-		Fields: fields,
-	}
 }

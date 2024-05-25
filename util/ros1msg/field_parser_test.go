@@ -9,6 +9,46 @@ import (
 	"github.com/wkalt/dp3/util/schema"
 )
 
+// newSchema creates a new schema.
+func newSchema(fields ...schema.Field) schema.Schema {
+	return schema.Schema{
+		Name:   "",
+		Fields: fields,
+	}
+}
+
+// newPrimitiveType creates a new primitive type.
+func newPrimitiveType(p schema.PrimitiveType) schema.Type {
+	return schema.Type{
+		Primitive: p,
+	}
+}
+
+// newArrayType creates a new array type.
+func newArrayType(size int, items schema.Type) schema.Type {
+	return schema.Type{
+		Array:     true,
+		FixedSize: size,
+		Items:     &items,
+	}
+}
+
+// newRecordType creates a new record type.
+func newRecordType(fields []schema.Field) schema.Type {
+	return schema.Type{
+		Record: true,
+		Fields: fields,
+	}
+}
+
+// newSchemaField creates a new field.
+func newSchemaField(name string, typ schema.Type) schema.Field {
+	return schema.Field{
+		Name: name,
+		Type: typ,
+	}
+}
+
 func TestSchemaAnalyzer(t *testing.T) {
 	cases := []struct {
 		assertion string
@@ -17,9 +57,9 @@ func TestSchemaAnalyzer(t *testing.T) {
 	}{
 		{
 			"primitives",
-			schema.NewSchema("",
-				schema.NewField("field1", schema.NewPrimitiveType(schema.INT8)),
-				schema.NewField("field2", schema.NewPrimitiveType(schema.INT16)),
+			newSchema(
+				newSchemaField("field1", newPrimitiveType(schema.INT8)),
+				newSchemaField("field2", newPrimitiveType(schema.INT16)),
 			),
 			[]util.Named[schema.PrimitiveType]{
 				util.NewNamed("field1", schema.INT8),
@@ -28,9 +68,9 @@ func TestSchemaAnalyzer(t *testing.T) {
 		},
 		{
 			"complex type",
-			schema.NewSchema("",
-				schema.NewField("field1", schema.NewRecordType([]schema.Field{
-					schema.NewField("subfield1", schema.NewPrimitiveType(schema.INT8)),
+			newSchema(
+				newSchemaField("field1", newRecordType([]schema.Field{
+					newSchemaField("subfield1", newPrimitiveType(schema.INT8)),
 				})),
 			),
 			[]util.Named[schema.PrimitiveType]{
@@ -39,9 +79,9 @@ func TestSchemaAnalyzer(t *testing.T) {
 		},
 		{
 			"short fixed length arrays",
-			schema.NewSchema("",
-				schema.NewField("field1", schema.NewPrimitiveType(schema.INT8)),
-				schema.NewField("field2", schema.NewArrayType(3, schema.NewPrimitiveType(schema.INT16))),
+			newSchema(
+				newSchemaField("field1", newPrimitiveType(schema.INT8)),
+				newSchemaField("field2", newArrayType(3, newPrimitiveType(schema.INT16))),
 			),
 			[]util.Named[schema.PrimitiveType]{
 				util.NewNamed("field1", schema.INT8),
@@ -52,9 +92,9 @@ func TestSchemaAnalyzer(t *testing.T) {
 		},
 		{
 			"variable length arrays are skipped",
-			schema.NewSchema("",
-				schema.NewField("field1", schema.NewPrimitiveType(schema.INT8)),
-				schema.NewField("field2", schema.NewArrayType(0, schema.NewPrimitiveType(schema.INT8))),
+			newSchema(
+				newSchemaField("field1", newPrimitiveType(schema.INT8)),
+				newSchemaField("field2", newArrayType(0, newPrimitiveType(schema.INT8))),
 			),
 			[]util.Named[schema.PrimitiveType]{
 				util.NewNamed("field1", schema.INT8),
@@ -62,10 +102,10 @@ func TestSchemaAnalyzer(t *testing.T) {
 		},
 		{
 			"complex fixed-length array",
-			schema.NewSchema("",
-				schema.NewField("field1", schema.NewPrimitiveType(schema.INT8)),
-				schema.NewField("field2", schema.NewArrayType(2, schema.NewRecordType([]schema.Field{
-					schema.NewField("subfield1", schema.NewPrimitiveType(schema.INT16)),
+			newSchema(
+				newSchemaField("field1", newPrimitiveType(schema.INT8)),
+				newSchemaField("field2", newArrayType(2, newRecordType([]schema.Field{
+					newSchemaField("subfield1", newPrimitiveType(schema.INT16)),
 				}))),
 			),
 			[]util.Named[schema.PrimitiveType]{

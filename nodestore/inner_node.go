@@ -79,7 +79,8 @@ type MessageSummary struct {
 
 func (c *Child) MessageSummary() MessageSummary {
 	s := MessageSummary{}
-	var minObserved, maxObserved []int64
+	minObserved := make([]int64, 0, len(c.Statistics))
+	maxObserved := make([]int64, 0, len(c.Statistics))
 	for hash, stats := range c.Statistics {
 		s.Count += stats.MessageCount
 		s.BytesUncompressed += stats.BytesUncompressed
