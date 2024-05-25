@@ -20,7 +20,8 @@ type SummarizeChildrenRequest struct {
 	Topic           string `json:"topic"`
 }
 
-func (scr *SummarizeChildrenRequest) parse(req *http.Request) (err error) {
+func (scr *SummarizeChildrenRequest) parse(req *http.Request) {
+	var err error
 	scr.Producer = req.URL.Query().Get("producer")
 	scr.BucketWidthSecs, err = strconv.Atoi(req.URL.Query().Get("bucketWidthSecs"))
 	if err != nil {
@@ -35,17 +36,13 @@ func (scr *SummarizeChildrenRequest) parse(req *http.Request) (err error) {
 	if err != nil {
 		scr.EndSecs = math.MaxInt64
 	}
-	return nil
 }
 
 func summarizeChildrenHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		req := &SummarizeChildrenRequest{}
-		if err := req.parse(r); err != nil {
-			httputil.BadRequest(ctx, w, "invalid request: %s", err)
-			return
-		}
+		req.parse(r)
 		var topics []string
 		if req.Topic != "" {
 			topics = []string{req.Topic}

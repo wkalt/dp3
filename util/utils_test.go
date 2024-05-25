@@ -1,9 +1,11 @@
 package util_test
 
 import (
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"github.com/wkalt/dp3/util"
 )
 
@@ -45,6 +47,28 @@ func TestOkeys(t *testing.T) {
 	}
 }
 
+func TestMap(t *testing.T) {
+	arr := []int{1, 2, 3, 4, 5}
+	assert.Equal(t, []int{2, 4, 6, 8, 10}, util.Map(func(x int) int { return x * 2 }, arr))
+}
+
+func TestCryptoGraphicHash(t *testing.T) {
+	assert.Equal(
+		t,
+		"6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
+		util.CryptographicHash([]byte("1")),
+	)
+}
+
+func TestPointer(t *testing.T) {
+	assert.Equal(t, 1, *util.Pointer(1))
+}
+
+func TestAll(t *testing.T) {
+	assert.True(t, util.All([]bool{true, true, true}, func(b bool) bool { return b }))
+	assert.False(t, util.All([]bool{true, false, true}, func(b bool) bool { return b }))
+}
+
 func TestHumanBytes(t *testing.T) {
 	cases := []struct {
 		assertion string
@@ -63,7 +87,7 @@ func TestHumanBytes(t *testing.T) {
 		{"1 exabyte", 1024 * 1024 * 1024 * 1024 * 1024 * 1024, "1 EB"},
 	}
 	for _, c := range cases {
-		assert.Equal(t, c.expected, util.HumanBytes(c.input), c.assertion)
+		require.Equal(t, c.expected, util.HumanBytes(c.input), c.assertion)
 	}
 }
 
@@ -79,7 +103,7 @@ func TestWhen(t *testing.T) {
 		{"false", false, 1, 2, 2},
 	}
 	for _, c := range cases {
-		assert.Equal(t, c.expected, util.When(c.cond, c.a, c.b), c.assertion)
+		require.Equal(t, c.expected, util.When(c.cond, c.a, c.b), c.assertion)
 	}
 }
 
@@ -94,7 +118,7 @@ func TestReduce(t *testing.T) {
 		{"multiple", []int{1, 2, 3, 4, 5}, 15},
 	}
 	for _, c := range cases {
-		assert.Equal(t, c.expected, util.Reduce(func(a, b int) int { return a + b }, 0, c.input), c.assertion)
+		require.Equal(t, c.expected, util.Reduce(func(a, b int) int { return a + b }, 0, c.input), c.assertion)
 	}
 }
 
@@ -110,7 +134,7 @@ func TestMax(t *testing.T) {
 		{"a = b", 1, 1, 1},
 	}
 	for _, c := range cases {
-		assert.Equal(t, c.expected, util.Max(c.a, c.b), c.assertion)
+		require.Equal(t, c.expected, util.Max(c.a, c.b), c.assertion)
 	}
 }
 
@@ -126,6 +150,25 @@ func TestMin(t *testing.T) {
 		{"a = b", 1, 1, 1},
 	}
 	for _, c := range cases {
-		assert.Equal(t, c.expected, util.Min(c.a, c.b), c.assertion)
+		require.Equal(t, c.expected, util.Min(c.a, c.b), c.assertion)
 	}
+}
+
+func TestEnsureDirectoryExists(t *testing.T) {
+	subdir := "/subdir"
+	t.Run("directory already exists", func(t *testing.T) {
+		tmpdir, err := os.MkdirTemp("", "dp3")
+		require.NoError(t, err)
+		defer os.RemoveAll(tmpdir)
+		require.NoError(t, os.Mkdir(tmpdir+subdir, 0755))
+		require.NoError(t, util.EnsureDirectoryExists(tmpdir+subdir))
+	})
+	t.Run("directory does not exist", func(t *testing.T) {
+		tmpdir, err := os.MkdirTemp("", "dp3")
+		require.NoError(t, err)
+		defer os.RemoveAll(tmpdir)
+		require.NoError(t, util.EnsureDirectoryExists(tmpdir+subdir))
+		_, err = os.Stat(tmpdir + subdir)
+		require.NoError(t, err)
+	})
 }

@@ -2,6 +2,7 @@ package tree
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -60,10 +61,9 @@ func IterateChildren(
 				if inRange {
 					stack = append(stack, child.ID)
 				}
-
 			}
 		case *nodestore.LeafNode:
-			return fmt.Errorf("sorry, too granular")
+			return errors.New("sorry, too granular")
 		}
 	}
 	return nil

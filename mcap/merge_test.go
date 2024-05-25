@@ -287,3 +287,15 @@ func TestNMerge(t *testing.T) {
 		})
 	}
 }
+
+func TestWriteEmptyFile(t *testing.T) {
+	buf := &bytes.Buffer{}
+	require.NoError(t, mcap.WriteEmptyFile(buf))
+	reader, err := mcap.NewReader(bytes.NewReader(buf.Bytes()))
+	require.NoError(t, err)
+	info, err := reader.Info()
+	require.NoError(t, err)
+	assert.Equal(t, uint64(0), info.Statistics.MessageCount)
+	assert.Equal(t, uint64(0), info.Statistics.MessageStartTime)
+	assert.Equal(t, uint64(0), info.Statistics.MessageEndTime)
+}

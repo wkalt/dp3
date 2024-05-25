@@ -273,3 +273,216 @@ func TestReadPrefixedString(t *testing.T) {
 		})
 	}
 }
+
+func TestBoolb(t *testing.T) {
+	cases := []struct {
+		assertion string
+		in        bool
+		expected  []byte
+	}{
+		{
+			"false",
+			false,
+			[]byte{0},
+		},
+		{
+			"true",
+			true,
+			[]byte{1},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			require.Equal(t, c.expected, testutils.Boolb(c.in))
+		})
+	}
+}
+
+func TestI8b(t *testing.T) {
+	cases := []struct {
+		assertion string
+		in        int8
+		expected  []byte
+	}{
+		{
+			"zero",
+			0,
+			[]byte{0},
+		},
+		{
+			"one",
+			1,
+			[]byte{1},
+		},
+		{
+			"negative",
+			-1,
+			[]byte{255},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			require.Equal(t, c.expected, testutils.I8b(c.in))
+		})
+	}
+}
+
+func TestI16b(t *testing.T) {
+	cases := []struct {
+		assertion string
+		in        int16
+		expected  []byte
+	}{
+		{
+			"zero",
+			0,
+			[]byte{0, 0},
+		},
+		{
+			"one",
+			1,
+			[]byte{1, 0},
+		},
+		{
+			"negative",
+			-1,
+			[]byte{255, 255},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			require.Equal(t, c.expected, testutils.I16b(c.in))
+		})
+	}
+}
+
+func TestI32b(t *testing.T) {
+	cases := []struct {
+		assertion string
+		in        int32
+		expected  []byte
+	}{
+		{
+			"zero",
+			0,
+			[]byte{0, 0, 0, 0},
+		},
+		{
+			"one",
+			1,
+			[]byte{1, 0, 0, 0},
+		},
+		{
+			"negative",
+			-1,
+			[]byte{255, 255, 255, 255},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			require.Equal(t, c.expected, testutils.I32b(c.in))
+		})
+	}
+}
+
+func TestI64b(t *testing.T) {
+	cases := []struct {
+		assertion string
+		in        int64
+		expected  []byte
+	}{
+		{
+			"zero",
+			0,
+			[]byte{0, 0, 0, 0, 0, 0, 0, 0},
+		},
+		{
+			"one",
+			1,
+			[]byte{1, 0, 0, 0, 0, 0, 0, 0},
+		},
+		{
+			"negative",
+			-1,
+			[]byte{255, 255, 255, 255, 255, 255, 255, 255},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			require.Equal(t, c.expected, testutils.I64b(c.in))
+		})
+	}
+}
+
+func TestStripSpace(t *testing.T) {
+	cases := []struct {
+		assertion string
+		in        string
+		expected  string
+	}{
+		{
+			"empty",
+			"",
+			"",
+		},
+		{
+			"no space",
+			"foo",
+			"foo",
+		},
+		{
+			"space",
+			" foo ",
+			"foo",
+		},
+		{
+			"multiple spaces",
+			"  foo  ",
+			"foo",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			require.Equal(t, c.expected, testutils.StripSpace(c.in))
+		})
+	}
+}
+
+func TestTrimLeadingSpace(t *testing.T) {
+	cases := []struct {
+		assertion string
+		in        string
+		expected  string
+	}{
+		{
+			"empty",
+			"",
+			"",
+		},
+		{
+			"no space",
+			"foo",
+			"foo",
+		},
+		{
+			"space",
+			" foo ",
+			"foo ",
+		},
+		{
+			"multiple spaces",
+			"  foo  ",
+			"foo  ",
+		},
+		{
+			"multiple lines",
+			"  foo\n  bar",
+			"foo\nbar",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			require.Equal(t, c.expected, testutils.TrimLeadingSpace(c.in))
+		})
+	}
+}

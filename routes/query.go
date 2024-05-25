@@ -1,8 +1,10 @@
 package routes
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -36,6 +38,40 @@ func (req QueryRequest) validate() error {
 		return errors.New("missing query")
 	}
 	return nil
+}
+
+func streamQueryResults(
+	ctx context.Context,
+	w http.ResponseWriter,
+	qp *plan.Node,
+	sf executor.ScanFactory,
+	explain bool,
+	json bool,
+) (err error) {
+	var output io.Writer = w
+	done := make(chan error, 1)
+	var shutdown = func() error {
+		return nil
+	}
+	if json {
+		piperead, pipewrite := io.Pipe()
+		go func() {
+			if err := mcap.MCAPToJSON(w, piperead); err != nil {
+				done <- err
+				return
+			}
+			done <- nil
+		}()
+		output = pipewrite
+		shutdown = func() error {
+			pipewrite.Close()
+			return <-done
+		}
+	}
+	if err := executor.Run(ctx, output, qp, sf, explain); err != nil {
+		return fmt.Errorf("failed to execute query: %w", err)
+	}
+	return shutdown()
 }
 
 // newQueryHandler creates a new query handler.
@@ -76,69 +112,25 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			httputil.InternalServerError(ctx, w, "error compiling query: %s", err)
 			return
 		}
-
 		ctx = util.WithContext(ctx, "query")
-
-		// if the client asks for JSON, pipe the output of the executor into a
-		// JSON transcoder that wraps the output.
-
-		if r.Header.Get("Accept") == "application/json" {
-			w.Header().Set("Content-Type", "application/json")
-			piperead, pipewrite := io.Pipe()
-			done := make(chan error, 1)
-
-			go func() {
-				if err := mcap.MCAPToJSON(w, piperead); err != nil {
-					done <- err
-					return
-				}
-				done <- nil
-			}()
-			if err := executor.Run(ctx, pipewrite, qp, tmgr.NewTreeIterator, ast.Explain); err != nil {
-				fieldNotFound := executor.FieldNotFoundError{}
-				if errors.As(err, &fieldNotFound) {
-					httputil.BadRequest(ctx, w, "%w", fieldNotFound)
-					return
-				}
-				tableNotFound := rootmap.TableNotFoundError{}
-				if errors.As(err, &tableNotFound) {
-					httputil.BadRequest(ctx, w, "%w", tableNotFound)
-					return
-				}
-				if err := clientError(err); err != nil {
-					log.Infof(ctx, "Client closed connection: %s", err)
-					return
-				}
-				httputil.InternalServerError(ctx, w, "error executing query: %s", err)
+		json := r.Header.Get("Accept") == "application/json"
+		if err := streamQueryResults(ctx, w, qp, tmgr.NewTreeIterator, ast.Explain, json); err != nil {
+			fieldNotFound := executor.FieldNotFoundError{}
+			if errors.As(err, &fieldNotFound) {
+				httputil.BadRequest(ctx, w, "%w", fieldNotFound)
 				return
 			}
-			pipewrite.Close()
-			err := <-done
-			if err != nil {
-				httputil.InternalServerError(ctx, w, "error writing JSON: %s", err)
+			tableNotFound := rootmap.TableNotFoundError{}
+			if errors.As(err, &tableNotFound) {
+				httputil.BadRequest(ctx, w, "%w", tableNotFound)
 				return
 			}
-
-		} else {
-			if err := executor.Run(ctx, w, qp, tmgr.NewTreeIterator, ast.Explain); err != nil {
-				fieldNotFound := executor.FieldNotFoundError{}
-				if errors.As(err, &fieldNotFound) {
-					httputil.BadRequest(ctx, w, "%w", fieldNotFound)
-					return
-				}
-				tableNotFound := rootmap.TableNotFoundError{}
-				if errors.As(err, &tableNotFound) {
-					httputil.BadRequest(ctx, w, "%w", tableNotFound)
-					return
-				}
-				if err := clientError(err); err != nil {
-					log.Infof(ctx, "Client closed connection: %s", err)
-					return
-				}
-				httputil.InternalServerError(ctx, w, "error executing query: %s", err)
+			if err := clientError(err); err != nil {
+				log.Infof(ctx, "Client closed connection: %s", err)
 				return
 			}
+			httputil.InternalServerError(ctx, w, "error executing query: %s", err)
+			return
 		}
-		log.Debugf(ctx, "compiled query: %s", qp.String())
 	}
 }

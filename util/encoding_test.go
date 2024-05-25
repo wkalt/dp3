@@ -14,6 +14,28 @@ func TestReadU8(t *testing.T) {
 	require.Equal(t, uint8(0x01), x)
 }
 
+func TestReadBool(t *testing.T) {
+	var x bool
+	n := util.ReadBool([]byte{0x01}, &x)
+	require.Equal(t, 1, n)
+	require.True(t, x)
+
+	n = util.ReadBool([]byte{0x00}, &x)
+	require.Equal(t, 1, n)
+	require.False(t, x)
+}
+
+func TestBool(t *testing.T) {
+	buf := make([]byte, 1)
+	n := util.Bool(buf, true)
+	require.Equal(t, 1, n)
+	require.Equal(t, []byte{0x01}, buf)
+
+	n = util.Bool(buf, false)
+	require.Equal(t, 1, n)
+	require.Equal(t, []byte{0x00}, buf)
+}
+
 func TestReadU32(t *testing.T) {
 	var x uint32
 	n := util.ReadU32([]byte{0x01, 0x02, 0x03, 0x04}, &x)

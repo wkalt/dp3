@@ -46,14 +46,6 @@ func U16b(v uint16) []byte {
 	return buf
 }
 
-// Bool returns a byte slice containing a single boolean value.
-func Bool(v bool) []byte {
-	if v {
-		return U8b(1)
-	}
-	return U8b(0)
-}
-
 // U32b returns a byte slice containing a single uint32 value.
 func U32b(v uint32) []byte {
 	buf := make([]byte, 4)
@@ -133,4 +125,13 @@ func StripSpace(s string) string {
 	// replace runs of multiple spaces with a single space
 	s = strings.Join(strings.Fields(s), " ")
 	return s
+}
+
+// TrimLeadingSpace removes leading spaces from each line in a string.
+func TrimLeadingSpace(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		lines[i] = strings.TrimLeft(line, " ")
+	}
+	return strings.Join(lines, "\n")
 }
