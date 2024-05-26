@@ -110,7 +110,7 @@ func executeQuery(database string, query string, explain bool) error {
 	if err := json.NewEncoder(buf).Encode(req); err != nil {
 		return fmt.Errorf("error encoding request: %w", err)
 	}
-	url := fmt.Sprintf("http://localhost:8089/databases/%s/query", database)
+	url := fmt.Sprintf("%s/databases/%s/query", serverURL, database)
 	resp, err := http.Post(url, "application/json", buf)
 	if err != nil {
 		return fmt.Errorf("error calling export: %w", err)
@@ -330,7 +330,7 @@ func doDelete(database, producer, topic string, start, end int64) error {
 	if err := json.NewEncoder(buf).Encode(req); err != nil {
 		return fmt.Errorf("error encoding request: %w", err)
 	}
-	resp, err := http.Post("http://localhost:8089/delete", "application/json", buf)
+	resp, err := http.Post(serverURL+"/delete", "application/json", buf)
 	if err != nil {
 		return fmt.Errorf("error calling delete: %w", err)
 	}
@@ -376,7 +376,7 @@ func doTruncate(database, producer, topic string, timestamp int64) error {
 	if err := json.NewEncoder(buf).Encode(req); err != nil {
 		return fmt.Errorf("error encoding request: %w", err)
 	}
-	resp, err := http.Post("http://localhost:8089/truncate", "application/json", buf)
+	resp, err := http.Post(serverURL+"/truncate", "application/json", buf)
 	if err != nil {
 		return fmt.Errorf("error calling truncate: %w", err)
 	}
@@ -460,7 +460,7 @@ func printTables(w io.Writer, database string, producerID string, topic string) 
 	values.Add("producer", url.QueryEscape(producerID))
 	values.Add("topic", url.QueryEscape(topic))
 	values.Add("historical", strconv.FormatBool(historical))
-	url := fmt.Sprintf("http://localhost:8089/databases/%s/tables?%s", database, values.Encode())
+	url := fmt.Sprintf(serverURL+"/databases/%s/tables?%s", database, values.Encode())
 	resp, err := http.Get(url)
 	if err != nil {
 		return fmt.Errorf("error calling tables: %s", err)
