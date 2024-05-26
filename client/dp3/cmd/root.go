@@ -7,6 +7,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var serverURL string
+
 var rootCmd = &cobra.Command{
 	Use:   "dp3",
 	Short: "dp3 client and server",
@@ -25,5 +27,5 @@ func bailf(format string, args ...interface{}) {
 }
 
 func init() {
-	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	rootCmd.PersistentFlags().StringVarP(&serverURL, "server-url", "", "http://localhost:8089", "server-url")
 }
