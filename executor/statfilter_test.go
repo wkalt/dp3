@@ -11,6 +11,7 @@ import (
 	"github.com/wkalt/dp3/ql"
 	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/schema"
+	"github.com/wkalt/dp3/util/trigram"
 )
 
 type statconfig struct {
@@ -59,9 +60,13 @@ func newChild(t *testing.T, configs ...statconfig) *nodestore.Child {
 				Max: fieldmax.(float64),
 			}
 		case string:
+			signature := trigram.NewSignature(12)
+			signature.AddString(fieldmin)
+			signature.AddString(fieldmax.(string))
 			statistics.TextStats[idx] = &nodestore.TextSummary{
-				Min: fieldmin,
-				Max: fieldmax.(string),
+				Min:              fieldmin,
+				Max:              fieldmax.(string),
+				TrigramSignature: signature,
 			}
 		default:
 			t.Error("invalid type")
@@ -170,28 +175,46 @@ func TestStringStatFilters(t *testing.T) {
 	}
 
 	cases := []struct {
-		operator string
-		expected []bool
+		assertion string
+		operator  string
+		value     string
+		expected  []bool
 	}{
 		{
+			"less than",
 			"<",
+			"e",
 			[]bool{true, false, false},
 		},
 		{
+			"less than or equal",
 			"<=",
+			"e",
 			[]bool{true, true, false},
 		},
 		{
+			"greater than",
 			">",
+			"e",
 			[]bool{false, true, true},
 		},
 		{
+			"greater than or equal",
 			">=",
+			"e",
 			[]bool{true, true, true},
 		},
 		{
+			"equal",
 			"=",
+			"e",
 			[]bool{true, true, false},
+		},
+		{
+			"equal can exclude based on trigram",
+			"=",
+			"b",
+			[]bool{false, false, false},
 		},
 	}
 
@@ -204,7 +227,7 @@ func TestStringStatFilters(t *testing.T) {
 
 		for _, c := range cases {
 			t.Run(name+" "+c.operator, func(t *testing.T) {
-				query := basicScan(name, c.operator, "'e'")
+				query := basicScan(name, c.operator, "'"+c.value+"'")
 				node := extractWhere(t, query)
 				filter, err := executor.NewStatFilter(node)
 				require.NoError(t, err)

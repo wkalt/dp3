@@ -7,6 +7,7 @@ import (
 	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/schema"
+	"github.com/wkalt/dp3/util/trigram"
 )
 
 /*
@@ -104,7 +105,8 @@ type TextSummary struct {
 	nonempty bool
 	Min      string `json:"min"`
 	Max      string `json:"max"`
-	// todo: bloom filters, trigrams, etc.
+
+	TrigramSignature trigram.Signature `json:"trgmSignature"`
 }
 
 func (s *TextSummary) Merge(other *TextSummary) {
@@ -114,6 +116,7 @@ func (s *TextSummary) Merge(other *TextSummary) {
 	}
 	s.Min = min(s.Min, other.Min)
 	s.Max = max(s.Max, other.Max)
+	s.TrigramSignature.Add(other.TrigramSignature)
 }
 
 func (s *TextSummary) ranges(field string, start, end uint64, schemaHash string) []StatRange {
@@ -262,7 +265,8 @@ func (s *Statistics) observeNumeric(idx int, v float64) {
 func (s *Statistics) observeText(idx int, v string) {
 	summary, ok := s.TextStats[idx]
 	if !ok {
-		summary = &TextSummary{Min: v, Max: v}
+		summary = &TextSummary{Min: v, Max: v, TrigramSignature: trigram.NewSignature(12)}
+		summary.TrigramSignature.AddString(v)
 		s.TextStats[idx] = summary
 	} else {
 		if v < summary.Min {
@@ -271,6 +275,7 @@ func (s *Statistics) observeText(idx int, v string) {
 		if v > summary.Max {
 			summary.Max = v
 		}
+		summary.TrigramSignature.AddString(v)
 	}
 }
 

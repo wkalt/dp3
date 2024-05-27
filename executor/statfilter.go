@@ -7,6 +7,7 @@ import (
 
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/plan"
+	"github.com/wkalt/dp3/util/trigram"
 )
 
 type statfilterfn func(*nodestore.Child) (bool, error)
@@ -102,6 +103,8 @@ func compileExprEqualsStringFilter(node *plan.Node) (statfilterfn, error) {
 	if !found {
 		return passthroughFilter, nil
 	}
+	signature := trigram.NewSignature(12)
+	signature.AddString(s)
 	return func(child *nodestore.Child) (bool, error) {
 		textstat, err := child.GetTextStat(fieldname)
 		if err != nil {
@@ -109,6 +112,9 @@ func compileExprEqualsStringFilter(node *plan.Node) (statfilterfn, error) {
 				return true, nil
 			}
 			return true, fmt.Errorf("failed to get statistics: %w", err)
+		}
+		if !textstat.TrigramSignature.Contains(signature) {
+			return false, nil
 		}
 		return s >= textstat.Min && s <= textstat.Max, nil
 	}, nil
