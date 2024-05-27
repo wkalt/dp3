@@ -267,6 +267,7 @@ require (
 	github.com/minio/minio v0.0.0-20240312195911-24b4f9d748c4
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/relvacode/iso8601 v1.4.0
+	github.com/spaolacci/murmur3 v1.1.0
 	golang.org/x/exp v0.0.0-20240222234643-814bf88cf225
 	golang.org/x/sync v0.6.0
 	gopkg.in/yaml.v3 v3.0.1 // indirect

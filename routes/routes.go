@@ -37,6 +37,7 @@ func MakeRoutes(tmgr *treemgr.TreeManager) *mux.Router {
 		mw.WithCORSAllowedOrigins([]string{
 			"http://localhost:5174",
 			"http://localhost:5173",
+			"http://localhost:8080",
 		}),
 	)
 	r.HandleFunc("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
