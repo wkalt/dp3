@@ -20,6 +20,37 @@ func TestROS1MessageParser(t *testing.T) { // nolint: maintidx
 		expectedBreaks []int
 	}{
 		{
+			"complex fixed-length array nested element",
+			`Foo[2] a
+			===
+			MSG: pkg/Foo
+			string s`,
+			testutils.Flatten(
+				testutils.PrefixedString("hello"),
+				testutils.PrefixedString("world"),
+			),
+			[]string{"a[1].s"},
+			[]any{"world"},
+			[]int{2},
+		},
+		{
+			"complex fixed-length array with complex fixed nested element",
+			`Foo[1] a
+			===
+			MSG: pkg/Foo
+			Bar[2] b
+			===
+			MSG: pkg/Bar
+			string s`,
+			testutils.Flatten(
+				testutils.PrefixedString("hello"),
+				testutils.PrefixedString("world"),
+			),
+			[]string{"a[0].b[1].s"},
+			[]any{"world"},
+			[]int{1, 2},
+		},
+		{
 			"byte array",
 			"uint8[] bytes",
 			testutils.Flatten(
@@ -389,7 +420,8 @@ func TestROS1MessageParser(t *testing.T) { // nolint: maintidx
 			require.NoError(t, err)
 
 			decoder := ros1msg.NewDecoder(nil)
-			parser := schema.NewParser(parsed, c.selections, decoder)
+			parser, err := schema.NewParser(parsed, c.selections, decoder)
+			require.NoError(t, err)
 
 			breaks, values, err := parser.Parse(c.input)
 			require.NoError(t, err)

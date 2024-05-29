@@ -119,7 +119,8 @@ func TestJSONPrimitives(t *testing.T) {
 			decoder := ros1msg.NewDecoder(nil)
 			parsed, err := ros1msg.ParseROS1MessageDefinition("test", "test", []byte(c.msgdef))
 			require.NoError(t, err)
-			transcoder := schema.NewJSONTranscoder(parsed, decoder)
+			transcoder, err := schema.NewJSONTranscoder(parsed, decoder)
+			require.NoError(t, err)
 			buf := &bytes.Buffer{}
 			require.NoError(t, transcoder.Transcode(buf, c.msg))
 			require.Equal(t, c.expected, buf.String())
@@ -224,7 +225,8 @@ func TestJSONTranscoder(t *testing.T) {
 			decoder := ros1msg.NewDecoder(nil)
 			parsed, err := ros1msg.ParseROS1MessageDefinition("test", "test", []byte(c.msgdef))
 			require.NoError(t, err)
-			transcoder := schema.NewJSONTranscoder(parsed, decoder)
+			transcoder, err := schema.NewJSONTranscoder(parsed, decoder)
+			require.NoError(t, err)
 			buf := &bytes.Buffer{}
 			require.NoError(t, transcoder.Transcode(buf, c.msg))
 			require.Equal(t, c.expected, buf.String())
