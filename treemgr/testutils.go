@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/rootmap"
+	"github.com/wkalt/dp3/schemastore"
 	"github.com/wkalt/dp3/storage"
 	"github.com/wkalt/dp3/util"
 )
@@ -21,6 +22,7 @@ func TestTreeManager(ctx context.Context, tb testing.TB) (*TreeManager, func()) 
 	store := storage.NewMemStore()
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1000)
 	ns := nodestore.NewNodestore(store, cache)
+	ss := schemastore.NewSchemaStore(store, "schemas", 1000)
 
 	rm, err := rootmap.NewSQLRootmap(ctx, db, rootmap.WithReservationSize(1e9))
 	require.NoError(tb, err)
@@ -30,6 +32,7 @@ func TestTreeManager(ctx context.Context, tb testing.TB) (*TreeManager, func()) 
 	tmgr, err := NewTreeManager(
 		ctx,
 		ns,
+		ss,
 		rm,
 		WithWALBufferSize(100),
 		WithSyncWorkers(0), // control syncing manually

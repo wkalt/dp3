@@ -16,6 +16,7 @@ import (
 	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/rootmap"
+	"github.com/wkalt/dp3/schemastore"
 	"github.com/wkalt/dp3/tree"
 	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/log"
@@ -37,6 +38,7 @@ var ErrNotImplemented = errors.New("not implemented")
 // TreeManager is the main interface to the treemgr package.
 type TreeManager struct {
 	ns      *nodestore.Nodestore
+	ss      *schemastore.SchemaStore
 	rootmap rootmap.Rootmap
 	merges  <-chan *wal.Batch
 
@@ -51,7 +53,7 @@ func (tm *TreeManager) NewRoot(ctx context.Context, database string, producer st
 	safeProducer := strings.ReplaceAll(producer, "/", slashReplacementChar)
 	safeTopic := strings.ReplaceAll(topic, "/", slashReplacementChar)
 	safeDatabase := strings.ReplaceAll(database, "/", slashReplacementChar)
-	prefix := fmt.Sprintf("%s/%s/%s", safeDatabase, safeTopic, safeProducer)
+	prefix := fmt.Sprintf("%s/tables/%s/%s", safeDatabase, safeTopic, safeProducer)
 
 	rootID, version, err := tm.newRoot(
 		ctx,
@@ -74,6 +76,7 @@ func (tm *TreeManager) NewRoot(ctx context.Context, database string, producer st
 func NewTreeManager(
 	ctx context.Context,
 	ns *nodestore.Nodestore,
+	ss *schemastore.SchemaStore,
 	rm rootmap.Rootmap,
 	opts ...Option,
 ) (*TreeManager, error) {
@@ -96,6 +99,7 @@ func NewTreeManager(
 
 	tm := &TreeManager{
 		ns:          ns,
+		ss:          ss,
 		wal:         wmgr,
 		merges:      merges,
 		rootmap:     rm,
@@ -210,6 +214,7 @@ func (tm *TreeManager) Receive(
 	}
 	buf := make([]byte, 1024)
 	msg := &fmcap.Message{}
+	schemas := make(map[uint16]*fmcap.Schema)
 	for {
 		schema, channel, msg, err := it.NextInto(msg)
 		if err != nil {
@@ -218,24 +223,16 @@ func (tm *TreeManager) Receive(
 			}
 			return fmt.Errorf("failed to read next message: %w", err)
 		}
+		if _, ok := schemas[schema.ID]; !ok {
+			schemas[schema.ID] = schema
+		}
 		if len(msg.Data) > len(buf) {
 			buf = make([]byte, 2*len(msg.Data))
 		}
 		var writer *writer
 		var ok bool
 		if writer, ok = writers[channel.Topic]; !ok {
-			if _, _, _, _, err := tm.rootmap.GetLatest(ctx, database, producerID, channel.Topic); err != nil {
-				switch {
-				case errors.Is(err, rootmap.TableNotFoundError{}):
-					if err := tm.NewRoot(ctx, database, producerID, channel.Topic); err != nil &&
-						!errors.Is(err, rootmap.ErrRootAlreadyExists) {
-						return fmt.Errorf("failed to create new root: %w", err)
-					}
-				default:
-					return fmt.Errorf("failed to get latest root: %w", err)
-				}
-			}
-			writer, err = newWriter(ctx, tm, database, producerID, channel.Topic)
+			writer, err = tm.handleNewTopic(ctx, database, producerID, channel.Topic)
 			if err != nil {
 				return fmt.Errorf("failed to create writer: %w", err)
 			}
@@ -250,6 +247,62 @@ func (tm *TreeManager) Receive(
 		if err := writer.Close(ctx); err != nil {
 			return fmt.Errorf("failed to close writer: %w", err)
 		}
+	}
+	for _, schema := range schemas {
+		if err := tm.storeSchema(ctx, database, schema); err != nil {
+			return fmt.Errorf("failed to store schema: %w", err)
+		}
+	}
+	return nil
+}
+
+func (tm *TreeManager) GetSchema(
+	ctx context.Context,
+	database string,
+	hash string,
+) (*fmcap.Schema, error) {
+	schema, err := tm.ss.Get(ctx, database, hash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get schema: %w", err)
+	}
+	return schema, nil
+}
+
+func (tm *TreeManager) handleNewTopic(
+	ctx context.Context,
+	database string,
+	producer string,
+	topic string,
+) (*writer, error) {
+	if _, _, _, _, err := tm.rootmap.GetLatest(ctx, database, producer, topic); err != nil {
+		switch {
+		case errors.Is(err, rootmap.TableNotFoundError{}):
+			if err := tm.NewRoot(ctx, database, producer, topic); err != nil &&
+				!errors.Is(err, rootmap.ErrRootAlreadyExists) {
+				return nil, fmt.Errorf("failed to create new root: %w", err)
+			}
+		default:
+			return nil, fmt.Errorf("failed to get latest root: %w", err)
+		}
+	}
+	writer, err := newWriter(ctx, tm, database, producer, topic)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create writer: %w", err)
+	}
+	return writer, nil
+}
+
+func (tm *TreeManager) storeSchema(ctx context.Context, database string, schema *fmcap.Schema) error {
+	hash := util.CryptographicHash(schema.Data)
+	_, err := tm.ss.Get(ctx, database, hash)
+	if err != nil {
+		if errors.Is(err, schemastore.ErrSchemaNotFound) {
+			if err := tm.ss.Put(ctx, database, hash, schema); err != nil {
+				return fmt.Errorf("failed to put schema: %w", err)
+			}
+			return nil
+		}
+		return fmt.Errorf("failed to get schema: %w", err)
 	}
 	return nil
 }

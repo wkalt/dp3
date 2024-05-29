@@ -49,6 +49,17 @@ func (s *s3store) Put(ctx context.Context, id string, data []byte) error {
 	return nil
 }
 
+func (s *s3store) Get(ctx context.Context, id string) (io.ReadCloser, error) {
+	obj, err := s.mc.GetObject(ctx, s.bucket, id, minio.GetObjectOptions{})
+	if err != nil {
+		if err.Error() == minioErrObjectNotExist {
+			return nil, ErrObjectNotFound
+		}
+		return nil, fmt.Errorf("failed to get object: %w", err)
+	}
+	return obj, nil
+}
+
 // GetRange retrieves a range of bytes from the object store.
 func (s *s3store) GetRange(ctx context.Context, id string, offset int, length int) (io.ReadSeekCloser, error) {
 	req := minio.GetObjectOptions{}

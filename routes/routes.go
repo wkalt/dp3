@@ -61,5 +61,6 @@ func MakeRoutes(tmgr *treemgr.TreeManager) *mux.Router {
 	r.HandleFunc("/databases/{database}/topics", newTopicsHandler(tmgr)).Methods("GET")
 	r.HandleFunc("/databases/{database}/tables", newTablesHandler(tmgr)).Methods("GET")
 	r.HandleFunc("/databases/{database}/producers", newProducersHandler(tmgr)).Methods("GET")
+	r.HandleFunc("/databases/{database}/schemas/{hash}", newSchemasHandler(tmgr)).Methods("GET")
 	return r
 }

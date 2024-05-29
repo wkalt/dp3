@@ -17,6 +17,7 @@ import (
 	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/rootmap"
 	"github.com/wkalt/dp3/routes"
+	"github.com/wkalt/dp3/schemastore"
 	"github.com/wkalt/dp3/treemgr"
 	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/log"
@@ -70,9 +71,12 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 	if err := util.EnsureDirectoryExists(opts.WALDir); err != nil {
 		return fmt.Errorf("failed to ensure WAL directory exists: %w", err)
 	}
+
+	ss := schemastore.NewSchemaStore(store, "schemas", 1000)
 	tmgr, err := treemgr.NewTreeManager(
 		ctx,
 		ns,
+		ss,
 		rm,
 		treemgr.WithSyncWorkers(opts.SyncWorkers),
 		treemgr.WithWALOpts(walopts...),
