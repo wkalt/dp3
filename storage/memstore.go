@@ -29,6 +29,17 @@ func (m *MemStore) Put(_ context.Context, id string, data []byte) error {
 	return nil
 }
 
+func (m *MemStore) Get(_ context.Context, id string) (io.ReadCloser, error) {
+	m.mtx.RLock()
+	defer m.mtx.RUnlock()
+	data, ok := m.data[id]
+	if !ok {
+		return nil, ErrObjectNotFound
+	}
+
+	return util.NewReadSeekNopCloser(bytes.NewReader(data)), nil
+}
+
 // Get retrieves an object from the store.
 func (m *MemStore) GetRange(_ context.Context, id string, offset int, length int) (io.ReadSeekCloser, error) {
 	m.mtx.RLock()

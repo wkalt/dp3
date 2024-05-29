@@ -20,6 +20,7 @@ directory. It is not suitable for production use.
 
 ////////////////////////////////////////////////////////////////////////////////
 
+// DirectoryStore is a storage provider that stores objects in a local directory.
 type DirectoryStore struct {
 	root string
 }
@@ -46,6 +47,15 @@ func NewDirectoryStore(root string) (*DirectoryStore, error) {
 		return nil, fmt.Errorf("failed to clean up temporary files: %w", err)
 	}
 	return &DirectoryStore{root: root}, nil
+}
+
+// Get retrieves an object from the directory.
+func (d *DirectoryStore) Get(_ context.Context, id string) (io.ReadCloser, error) {
+	f, err := os.Open(d.root + "/" + id)
+	if err != nil {
+		return nil, ErrObjectNotFound
+	}
+	return f, nil
 }
 
 // Put stores an object in the directory.

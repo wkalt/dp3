@@ -155,7 +155,10 @@ func (w *writer) initialize(ts uint64) (err error) {
 			colnames[i] = field.Name
 		}
 		decoder := ros1msg.NewDecoder(nil)
-		parser := schema.NewParser(msgdef, colnames, decoder)
+		parser, err := schema.NewParser(msgdef, colnames, decoder)
+		if err != nil {
+			return fmt.Errorf("failed to create parser: %w", err)
+		}
 		w.parsers[existingSchema.ID] = parser
 		w.schemaStats[existingSchema.ID] = nodestore.NewStatistics(fields)
 		w.schemaHashes[existingSchema.ID] = util.CryptographicHash(existingSchema.Data)
