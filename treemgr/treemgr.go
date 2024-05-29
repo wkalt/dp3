@@ -758,7 +758,7 @@ func (tm *TreeManager) getMessages(
 	mc := mcap.NewMergeCoordinator(writer)
 	for pq.Len() > 0 {
 		rec := heap.Pop(pq).(record)
-		if err := mc.Write(rec.schema, rec.channel, rec.message); err != nil {
+		if err := mc.Write(rec.schema, rec.channel, rec.message, false); err != nil {
 			return fmt.Errorf("failed to write message: %w", err)
 		}
 		s, c, m, err := iterators[rec.idx].Next(ctx)

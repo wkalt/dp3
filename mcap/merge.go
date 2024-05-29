@@ -72,58 +72,82 @@ func (c *MergeCoordinator) WriteMetadata(metadata *mcap.Metadata) error {
 	return nil
 }
 
-func (c *MergeCoordinator) Write(schema *mcap.Schema, channel *mcap.Channel, msg *mcap.Message) error {
+func (c *MergeCoordinator) handleSchema(skeleton bool, schema *mcap.Schema) (uint16, error) {
+	var schemaID uint16
+	// check if we have a matching schema by hash
+	schemaHash := hashSchema(schema)
+	if mappedID, ok := c.schemaHashes[schemaHash]; ok {
+		// associate this schemau with the mapped ID
+		c.schemas[schema] = mappedID
+		schemaID = mappedID
+	} else {
+		schemaID = c.nextSchemaID
+		newSchema := &mcap.Schema{
+			ID:       schemaID,
+			Name:     schema.Name,
+			Encoding: schema.Encoding,
+			Data:     util.When(!skeleton, schema.Data, []byte{}),
+		}
+		if err := c.w.WriteSchema(newSchema); err != nil {
+			return schemaID, fmt.Errorf("failed to write schema: %w", err)
+		}
+		c.schemaHashes[schemaHash] = schemaID
+		c.schemas[schema] = schemaID
+		c.nextSchemaID++
+	}
+	return schemaID, nil
+}
+
+func (c *MergeCoordinator) handleChannel(schemaID uint16, channel *mcap.Channel) (uint16, error) {
+	var chanID uint16
+	// check if we have a matching channel by hash
+	channelHash := hashChannel(channel)
+	if mappedID, ok := c.channelHashes[channelHash]; ok {
+		// associate this channel with the mapped ID
+		c.channels[channel] = mappedID
+		chanID = mappedID
+	} else {
+		newChannel := &mcap.Channel{
+			ID:              c.nextChannelID,
+			SchemaID:        schemaID,
+			Topic:           channel.Topic,
+			MessageEncoding: channel.MessageEncoding,
+			Metadata:        channel.Metadata,
+		}
+		if err := c.w.WriteChannel(newChannel); err != nil {
+			return chanID, fmt.Errorf("failed to write channel: %w", err)
+		}
+		c.channels[channel] = c.nextChannelID
+		c.channelHashes[channelHash] = c.nextChannelID
+		chanID = c.nextChannelID
+		c.nextChannelID++
+	}
+	return chanID, nil
+}
+
+func (c *MergeCoordinator) Write(
+	schema *mcap.Schema,
+	channel *mcap.Channel,
+	msg *mcap.Message,
+	skeleton bool,
+) error {
+	var err error
 	schemaID, ok := c.schemas[schema]
 	if !ok {
-		// check if we have a matching schema by hash
-		schemaHash := hashSchema(schema)
-		if mappedID, ok := c.schemaHashes[schemaHash]; ok {
-			// associate this schemau with the mapped ID
-			c.schemas[schema] = mappedID
-			schemaID = mappedID
-		} else {
-			schemaID = c.nextSchemaID
-			newSchema := &mcap.Schema{
-				ID:       schemaID,
-				Name:     schema.Name,
-				Encoding: schema.Encoding,
-				Data:     schema.Data,
-			}
-			if err := c.w.WriteSchema(newSchema); err != nil {
-				return fmt.Errorf("failed to write schema: %w", err)
-			}
-			c.schemaHashes[schemaHash] = schemaID
-			c.schemas[schema] = schemaID
-			c.nextSchemaID++
+		if schemaID, err = c.handleSchema(skeleton, schema); err != nil {
+			return fmt.Errorf("failed to handle schema: %w", err)
 		}
 	}
-
 	chanID, ok := c.channels[channel]
 	if !ok {
-		// check if we have a matching channel by hash
-		channelHash := hashChannel(channel)
-		if mappedID, ok := c.channelHashes[channelHash]; ok {
-			// associate this channel with the mapped ID
-			c.channels[channel] = mappedID
-			chanID = mappedID
-		} else {
-			newChannel := &mcap.Channel{
-				ID:              c.nextChannelID,
-				SchemaID:        schemaID,
-				Topic:           channel.Topic,
-				MessageEncoding: channel.MessageEncoding,
-				Metadata:        channel.Metadata,
-			}
-			if err := c.w.WriteChannel(newChannel); err != nil {
-				return fmt.Errorf("failed to write channel: %w", err)
-			}
-			c.channels[channel] = c.nextChannelID
-			c.channelHashes[channelHash] = c.nextChannelID
-			chanID = c.nextChannelID
-			c.nextChannelID++
+		if chanID, err = c.handleChannel(schemaID, channel); err != nil {
+			return fmt.Errorf("failed to handle channel: %w", err)
 		}
 	}
 	msg.ChannelID = chanID
+	if skeleton {
+		msg.Data = []byte{}
+	}
 	if err := c.w.WriteMessage(msg); err != nil {
 		return fmt.Errorf("failed to write message: %w", err)
 	}
@@ -179,7 +203,7 @@ func Nmerge(writer io.Writer, iterators ...MessageIterator) error {
 		if !ok {
 			return errors.New("failed to pop from priority queue")
 		}
-		if err := mc.Write(rec.schema, rec.channel, rec.message); err != nil {
+		if err := mc.Write(rec.schema, rec.channel, rec.message, false); err != nil {
 			return err
 		}
 		s, c, m, err := iterators[rec.idx].Next(nil)
@@ -227,22 +251,22 @@ func Merge(writer io.Writer, a, b io.Reader) error {
 	for !errors.Is(err1, io.EOF) || !errors.Is(err2, io.EOF) {
 		switch {
 		case err1 == nil && errors.Is(err2, io.EOF):
-			if err := mc.Write(s1, c1, m1); err != nil {
+			if err := mc.Write(s1, c1, m1, false); err != nil {
 				return err
 			}
 			s1, c1, m1, err1 = it1.Next(nil)
 		case err2 == nil && errors.Is(err1, io.EOF):
-			if err := mc.Write(s2, c2, m2); err != nil {
+			if err := mc.Write(s2, c2, m2, false); err != nil {
 				return err
 			}
 			s2, c2, m2, err2 = it2.Next(nil)
 		case m1.LogTime < m2.LogTime:
-			if err := mc.Write(s1, c1, m1); err != nil {
+			if err := mc.Write(s1, c1, m1, false); err != nil {
 				return err
 			}
 			s1, c1, m1, err1 = it1.Next(nil)
 		default:
-			if err := mc.Write(s2, c2, m2); err != nil {
+			if err := mc.Write(s2, c2, m2, false); err != nil {
 				return err
 			}
 			s2, c2, m2, err2 = it2.Next(nil)
