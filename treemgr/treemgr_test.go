@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -153,18 +152,6 @@ func TestGetStatisticsLatest(t *testing.T) {
 			require.Equal(t, c.ranges, result)
 		})
 	}
-}
-
-func TestReceiveFile(t *testing.T) {
-	ctx := context.Background()
-	f, err := os.Open("/home/wyatt/data/bags/output.mcap")
-	require.NoError(t, err)
-	defer f.Close()
-	tmgr, finish := treemgr.TestTreeManager(ctx, t)
-	defer finish()
-	require.NoError(t, tmgr.Receive(ctx, "db", "my-device", f))
-	require.NoError(t, tmgr.ForceFlush(ctx))
-
 }
 
 func TestGetTables(t *testing.T) {

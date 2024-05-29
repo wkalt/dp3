@@ -86,7 +86,7 @@ func gatherInvolvedColumns(node *plan.Node) ([]string, error) {
 }
 
 // compileFilter compiles a filter function for a schema.
-func (e *expression) compileFilter(targetSchema *fmcap.Schema) (func(t *tuple) (bool, error), error) {
+func (e *expression) compileFilter(targetSchema *fmcap.Schema) (func(t *tuple) (bool, error), error) { // nolint: funlen
 	pkg, name, found := strings.Cut(targetSchema.Name, "/")
 	if !found {
 		pkg = ""
@@ -139,7 +139,10 @@ func (e *expression) compileFilter(targetSchema *fmcap.Schema) (func(t *tuple) (
 		}
 	}
 	decoder := ros1msg.NewDecoder(nil)
-	parser := schema.NewParser(parsed, colnames, decoder)
+	parser, err := schema.NewParser(parsed, colnames, decoder)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create parser for %s: %w", targetSchema.Name, err)
+	}
 	return func(t *tuple) (bool, error) {
 		_, values, err := parser.Parse(t.message.Data)
 		if err != nil {

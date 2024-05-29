@@ -275,7 +275,6 @@ func compileScan(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, er
 		}
 	}
 
-	// pass expression right here!
 	it, err := sf(ctx, database, producer, table, node.Descending, start, end, childFilter)
 	if err != nil {
 		return nil, err

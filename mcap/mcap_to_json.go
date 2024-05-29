@@ -112,15 +112,17 @@ func MCAPToJSON(
 				if err != nil {
 					return fmt.Errorf("failed to parse %s: %w", s.Name, err)
 				}
-				transcoder = schema.NewJSONTranscoder(parsed, decoder)
+				transcoder, err = schema.NewJSONTranscoder(parsed, decoder)
+				if err != nil {
+					return fmt.Errorf("failed to create transcoder for %s: %w", s.Name, err)
+				}
 				transcoders[c.SchemaID] = transcoder
 			}
 			if err := transcoder.Transcode(msg, m.Data); err != nil {
 				return fmt.Errorf("failed to transcode %s record on %s: %w", s.Name, c.Topic, err)
 			}
 		default:
-			return fmt.Errorf(
-				"JSON output only supported for ros1msg, protobuf, and jsonschema schemas. Found: %s",
+			return fmt.Errorf("JSON output only supported for ros1msg, protobuf, and jsonschema schemas. Found: %s",
 				s.Encoding,
 			)
 		}

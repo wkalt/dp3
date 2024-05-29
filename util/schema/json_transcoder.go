@@ -25,12 +25,16 @@ type element struct {
 	closer    string
 }
 
-func NewJSONTranscoder(schema *Schema, decoder Decoder) *JSONTranscoder {
+func NewJSONTranscoder(schema *Schema, decoder Decoder) (*JSONTranscoder, error) {
+	parser, err := NewParser(schema, nil, decoder)
+	if err != nil {
+		return nil, err
+	}
 	return &JSONTranscoder{
-		p:      NewParser(schema, nil, decoder),
+		p:      parser,
 		schema: schema,
 		buf:    []byte{},
-	}
+	}, nil
 }
 
 func (t *JSONTranscoder) formatPrimitive(typ PrimitiveType, value any) {

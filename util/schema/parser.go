@@ -3,6 +3,7 @@ package schema
 import (
 	"encoding/binary"
 	"fmt"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -123,9 +124,12 @@ type Parser struct {
 	buf []byte
 }
 
-func NewParser(schema *Schema, fieldSelections []string, decoder Decoder) *Parser {
+func NewParser(schema *Schema, fieldSelections []string, decoder Decoder) (*Parser, error) {
 	handlers := make([]func() error, 100)
-	opcodes := compileSchemaByteCode(schema, fieldSelections)
+	opcodes, err := compileSchemaByteCode(schema, fieldSelections)
+	if err != nil {
+		return nil, err
+	}
 	p := &Parser{
 		opcodes:        opcodes,
 		decoder:        decoder,
@@ -167,7 +171,7 @@ func NewParser(schema *Schema, fieldSelections []string, decoder Decoder) *Parse
 	handlers[opVarlenArrayStart] = p.handleArrayStart(false)
 	handlers[opFixedlenArrayStart] = p.handleArrayStart(true)
 	p.handlers = handlers
-	return p
+	return p, nil
 }
 
 // Parse the given buffer and return the set of parsed array lengths, the list
@@ -496,7 +500,7 @@ func includeToSkip(s byte) byte {
 // copied and repeatedly used for parsing. The stack is created by enqueuing
 // opcodes in a depth-first ordering of the schema. Then the queue is reversed
 // to form the stack.
-func compileSchemaByteCode(schema *Schema, fieldSelections []string) []byte { // nolint: funlen
+func compileSchemaByteCode(schema *Schema, fieldSelections []string) ([]byte, error) { // nolint: funlen
 	codes := []byte{}
 
 	unselected := make(map[string]struct{})
@@ -520,14 +524,16 @@ func compileSchemaByteCode(schema *Schema, fieldSelections []string) []byte { //
 			typ := pair.First
 			prefix := pair.Second
 			delete(unselected, prefix)
-			// what makes this difficult is the expansion of arrays at runtime.
-			// Somehow the array starts must be able to communicate a requested
-			// range of values.
 			include := fieldSelections == nil
 			if !include {
 				for _, selection := range fieldSelections {
-					if strings.HasPrefix(selection, prefix) {
+					re, err := regexp.Compile(`^` + prefix)
+					if err != nil {
+						return nil, fmt.Errorf("failed to compile prefix regex: %w", err)
+					}
+					if re.MatchString(selection) {
 						include = true
+						break
 					}
 				}
 			}
@@ -538,7 +544,10 @@ func compileSchemaByteCode(schema *Schema, fieldSelections []string) []byte { //
 			}
 			if typ.Array {
 				isComplex := !typ.Items.IsPrimitive()
-				ranges := parseArraySelections(fieldSelections, prefix)
+				ranges, err := parseArraySelections(fieldSelections, prefix)
+				if err != nil {
+					return nil, fmt.Errorf("failed to parse array selections: %w", err)
+				}
 				projection := buildArrayHeader(isComplex, ranges)
 				if typ.FixedSize > 0 {
 					codes = append(codes, opFixedlenArrayStart)
@@ -548,20 +557,20 @@ func compileSchemaByteCode(schema *Schema, fieldSelections []string) []byte { //
 				}
 				codes = append(codes, projection...)
 				stack = append(stack, nil)
-				stack = append(stack, util.Pointer(util.NewPair(typ.Items, prefix+"[")))
+				stack = append(stack, util.Pointer(util.NewPair(typ.Items, prefix+`\[\d*\]`)))
 				continue
 			}
 			if typ.Record {
 				for i := len(typ.Fields) - 1; i >= 0; i-- {
 					childType := &typ.Fields[i].Type
-					stack = append(stack, util.Pointer(util.NewPair(childType, prefix+"."+typ.Fields[i].Name)))
+					stack = append(stack, util.Pointer(util.NewPair(childType, prefix+`\.`+typ.Fields[i].Name)))
 				}
 				continue
 			}
 		}
 	}
 	slices.Reverse(codes)
-	return codes
+	return codes, nil
 }
 
 func buildDiscreteRanges(input []int) [][]int {
@@ -584,21 +593,26 @@ func buildDiscreteRanges(input []int) [][]int {
 	return ranges
 }
 
-func parseArraySelections(selectionFields []string, prefix string) [][]int {
+func parseArraySelections(selectionFields []string, prefix string) ([][]int, error) {
 	indexes := []int{}
+	re, err := regexp.Compile(`^` + prefix)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compile prefix regex: %w", err)
+	}
 	for _, field := range selectionFields {
-		if !strings.HasPrefix(field, prefix) {
+		if !re.MatchString(field) {
 			continue
 		}
-		bopen := strings.Index(field, "[")
+		trimmed := re.ReplaceAllString(field, "")
+		bopen := strings.Index(trimmed, "[")
 		if bopen == -1 {
 			continue
 		}
-		bclose := strings.Index(field, "]")
+		bclose := strings.Index(trimmed, "]")
 		if bclose == -1 {
 			continue
 		}
-		number := field[bopen+1 : bclose]
+		number := trimmed[bopen+1 : bclose]
 		index, err := strconv.Atoi(number)
 		if err != nil {
 			continue
@@ -606,10 +620,10 @@ func parseArraySelections(selectionFields []string, prefix string) [][]int {
 		indexes = append(indexes, index)
 	}
 	if len(indexes) == 0 {
-		return nil
+		return [][]int{}, nil
 	}
 	slices.Sort(indexes)
-	return buildDiscreteRanges(indexes)
+	return buildDiscreteRanges(indexes), nil
 }
 
 func (p *Parser) exec(s []byte) error {
