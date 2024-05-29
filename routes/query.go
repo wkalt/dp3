@@ -31,6 +31,14 @@ into an execution tree, and executes the query.
 // QueryRequest represents a query request.
 type QueryRequest struct {
 	Query string `json:"query"`
+
+	// These are all possible to express in the query language directly, but
+	// tooling may wish to use these params to modify the user's query for
+	// presentation.
+	Explain    bool `json:"explain"`
+	Limit      int  `json:"limit"`
+	Offset     int  `json:"offset"`
+	StampsOnly bool `json:"skeleton"`
 }
 
 func (req QueryRequest) validate() error {
@@ -46,6 +54,9 @@ func streamQueryResults(
 	qp *plan.Node,
 	sf executor.ScanFactory,
 	explain bool,
+	limit int,
+	offset int,
+	skeleton bool,
 	json bool,
 ) (err error) {
 	var output io.Writer = w
@@ -68,7 +79,7 @@ func streamQueryResults(
 			return <-done
 		}
 	}
-	if err := executor.Run(ctx, output, qp, sf, explain); err != nil {
+	if err := executor.Run(ctx, output, qp, sf, explain, limit, offset, skeleton); err != nil {
 		return fmt.Errorf("failed to execute query: %w", err)
 	}
 	return shutdown()
@@ -85,10 +96,7 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			httputil.BadRequest(ctx, w, "error decoding request: %s", err)
 			return
 		}
-		log.Infow(ctx, "query request",
-			"database", database,
-			"query", req.Query,
-		)
+		log.Infow(ctx, "query request", "database", database, "query", req.Query)
 		if err := req.validate(); err != nil {
 			httputil.BadRequest(ctx, w, "invalid request: %s", err)
 			return
@@ -97,7 +105,6 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			httputil.BadRequest(ctx, w, "queries must be terminated with a semicolon")
 			return
 		}
-
 		ast, err := parser.ParseString("", req.Query)
 		if err != nil {
 			httputil.BadRequest(ctx, w, "error parsing query: %s", err)
@@ -114,7 +121,13 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		}
 		ctx = util.WithContext(ctx, "query")
 		json := r.Header.Get("Accept") == "application/json"
-		if err := streamQueryResults(ctx, w, qp, tmgr.NewTreeIterator, ast.Explain, json); err != nil {
+		if err := streamQueryResults(ctx, w, qp, tmgr.NewTreeIterator,
+			ast.Explain || req.Explain,
+			req.Limit,
+			req.Offset,
+			req.StampsOnly,
+			json,
+		); err != nil {
 			fieldNotFound := executor.FieldNotFoundError{}
 			if errors.As(err, &fieldNotFound) {
 				httputil.BadRequest(ctx, w, "%w", fieldNotFound)

@@ -35,20 +35,20 @@ of the tree, until an io.EOF comes out.
 ////////////////////////////////////////////////////////////////////////////////
 
 // Run compiles a plan tree to an executor tree, and executes it to completion.
-func Run(
-	ctx context.Context,
-	w io.Writer,
-	node *plan.Node,
-	scanFactory ScanFactory,
+func Run(ctx context.Context, w io.Writer, node *plan.Node, scanFactory ScanFactory,
 	explain bool,
+	limit int,
+	offset int,
+	skeleton bool,
 ) error {
 	root, err := CompilePlan(ctx, node, scanFactory)
 	if err != nil {
 		return err
 	}
-	initialized := false
+	var initialized bool
 	var mc *mcap.MergeCoordinator
 	ctx = util.WithContext(ctx, "query")
+	root = addExternalPaging(root, limit, offset)
 	for {
 		tuple, err := root.Next(ctx)
 		if err != nil {
@@ -67,7 +67,7 @@ func Run(
 			defer mc.Close()
 		}
 		if !explain {
-			if err := mc.Write(tuple.schema, tuple.channel, tuple.message); err != nil {
+			if err := mc.Write(tuple.schema, tuple.channel, tuple.message, skeleton); err != nil {
 				return fmt.Errorf("failed to write message: %w", err)
 			}
 		}
@@ -287,4 +287,14 @@ func compileScan(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, er
 		return maybeWrapWithStats(node, NewFilterNode(expr.filter, scan), "filter"), nil
 	}
 	return scan, nil
+}
+
+func addExternalPaging(node Node, limit int, offset int) Node {
+	if offset > 0 {
+		node = NewOffsetNode(offset, node)
+	}
+	if limit > 0 {
+		node = NewLimitNode(limit, node)
+	}
+	return node
 }
