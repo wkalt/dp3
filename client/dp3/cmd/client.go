@@ -148,12 +148,11 @@ func executeQuery(database string, query string, explain bool) error {
 	}
 
 	for _, idx := range info.MetadataIndexes {
-		if idx.Name == "dp3.executor" {
+		if idx.Name == "query" {
 			metadata, err := reader.GetMetadata(idx.Offset)
 			if err != nil {
 				return fmt.Errorf("error reading metadata: %w", err)
 			}
-
 			context := &util.Context{}
 			if err := json.Unmarshal([]byte(metadata.Metadata["context"]), context); err != nil {
 				return fmt.Errorf("error unmarshalling context: %w", err)

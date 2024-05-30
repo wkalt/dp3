@@ -149,7 +149,7 @@ func (w *writer) initialize(ts uint64) (err error) {
 		if err != nil {
 			return fmt.Errorf("failed to parse ROS1 message definition: %w", err)
 		}
-		fields := ros1msg.AnalyzeSchema(*msgdef)
+		fields := schema.AnalyzeSchema(*msgdef)
 		colnames := make([]string, len(fields))
 		for i, field := range fields {
 			colnames[i] = field.Name
