@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -634,4 +635,14 @@ func TestReceive(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestReceiveFile(t *testing.T) {
+	ctx := context.Background()
+	f, err := os.Open("../example-data/velodyne_packets.mcap")
+	require.NoError(t, err)
+	tmgr, finish := treemgr.TestTreeManager(ctx, t)
+	defer finish()
+	require.NoError(t, tmgr.Receive(ctx, "db", "my-device", f))
+	require.NoError(t, tmgr.ForceFlush(ctx))
 }

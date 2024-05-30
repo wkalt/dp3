@@ -1,6 +1,7 @@
 package schema_test
 
 import (
+	"bytes"
 	"math"
 	"testing"
 
@@ -19,6 +20,69 @@ func TestROS1MessageParser(t *testing.T) { // nolint: maintidx
 		expectedOutput []any
 		expectedBreaks []int
 	}{
+		{
+			"velodyne packets",
+			`
+			Header           header
+			VelodynePacket[] packets
+			===
+			MSG: std_msgs/Header
+			uint32 seq
+			time stamp
+			string frame_id
+			===
+			MSG: pkg/VelodynePacket
+			time stamp
+			uint8[1206] data
+			`,
+			testutils.Flatten(
+				testutils.U32b(15),
+				testutils.U64b(100),
+				testutils.PrefixedString("foo"),
+				testutils.U32b(1),
+				testutils.U64b(200),
+				bytes.Repeat([]byte{1}, 1206),
+			),
+			[]string{"header.frame_id"},
+			[]any{"foo"},
+			[]int{1, 1206},
+		},
+		{
+			"fixed-length >= 64 byte array inside complex array followed by string not projected",
+			`
+			Foo[] a
+			string b
+			===
+			MSG: pkg/Foo
+			uint8[64] i`,
+			testutils.Flatten(
+				testutils.U32b(1),
+				bytes.Repeat([]byte{1}, 64),
+				testutils.PrefixedString("hello"),
+			),
+			[]string{"b"},
+			[]any{"hello"},
+			[]int{1, 64},
+		},
+		{
+			"fixed-length byte array inside variable length array not projected",
+			`
+			Foo[] a
+			string b
+			===
+			MSG: pkg/Foo
+			uint8[3] i`,
+			testutils.Flatten(
+				testutils.U32b(1),
+				testutils.U8b(1),
+				testutils.U8b(2),
+				testutils.U8b(3),
+				testutils.PrefixedString("hello"),
+			),
+			[]string{"b"},
+			[]any{"hello"},
+			[]int{1, 3},
+		},
 		{
 			"complex fixed-length array nested element",
 			`Foo[2] a
@@ -66,8 +130,8 @@ func TestROS1MessageParser(t *testing.T) { // nolint: maintidx
 		{
 			"project an array element and subsequent field",
 			`int32[] a
-			 uint32 b
-			`,
+			uint32 b
+					`,
 			testutils.Flatten(
 				testutils.U32b(3),
 				testutils.U32b(1),
@@ -208,10 +272,10 @@ func TestROS1MessageParser(t *testing.T) { // nolint: maintidx
 		{
 			"complex variable-length array",
 			`Foo[] a
-		          ===
-		          MSG: pkg/Foo
-		          string s
-		          int32 i`,
+			===
+			MSG: pkg/Foo
+			string s
+			int32 i`,
 			testutils.Flatten(
 				testutils.U32b(2),
 				testutils.PrefixedString("hello"),
@@ -226,10 +290,10 @@ func TestROS1MessageParser(t *testing.T) { // nolint: maintidx
 		{
 			"complex fixed-length array",
 			`Foo[2] a
-		    ===
-		    MSG: pkg/Foo
-		    string s
-		    int32 i`,
+			===
+			MSG: pkg/Foo
+			string s
+			int32 i`,
 			testutils.Flatten(
 				testutils.PrefixedString("hello"),
 				testutils.I32b(42),
@@ -355,7 +419,7 @@ func TestROS1MessageParser(t *testing.T) { // nolint: maintidx
 		{
 			"two fields first projected",
 			`string foo
-			string bar`,
+					string bar`,
 			testutils.Flatten(
 				testutils.PrefixedString("hello"),
 				testutils.PrefixedString("world"),
@@ -367,7 +431,7 @@ func TestROS1MessageParser(t *testing.T) { // nolint: maintidx
 		{
 			"two fields second projected",
 			`string foo
-			string bar`,
+					string bar`,
 			testutils.Flatten(
 				testutils.PrefixedString("hello"),
 				testutils.PrefixedString("world"),
@@ -379,7 +443,7 @@ func TestROS1MessageParser(t *testing.T) { // nolint: maintidx
 		{
 			"two fields both projected",
 			`string foo
-			string bar`,
+					string bar`,
 			testutils.Flatten(
 				testutils.PrefixedString("hello"),
 				testutils.PrefixedString("world"),
@@ -412,6 +476,20 @@ func TestROS1MessageParser(t *testing.T) { // nolint: maintidx
 			nil,
 			[]any{int32(1), int32(2), int32(3)},
 			[]int{3},
+		},
+		{
+			"primitive fixed-length array with multibyte size",
+			`
+			uint32[4096] a
+			string s
+			`,
+			testutils.Flatten(
+				bytes.Repeat(testutils.U32b(42), 4096),
+				testutils.PrefixedString("hello"),
+			),
+			[]string{"s"},
+			[]any{"hello"},
+			[]int{4096},
 		},
 	}
 	for _, c := range cases {

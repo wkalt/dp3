@@ -398,13 +398,6 @@ func overlaps(x int, ranges [][]int) bool {
 	return false
 }
 
-func appendReverseVarint(buf []byte, x int64) []byte {
-	tmp := make([]byte, binary.MaxVarintLen64)
-	n := binary.PutVarint(tmp, x)
-	slices.Reverse(tmp[:n])
-	return append(buf, tmp[:n]...)
-}
-
 func (p *Parser) handleArrayStart(fixedSize bool) func() error {
 	return func() (err error) {
 		var length int64
@@ -450,9 +443,9 @@ func (p *Parser) handleArray(length int64) error {
 				return fmt.Errorf("failed to read array size: %w", err)
 			}
 			tmp = append(tmp, s)
-			tmp = appendReverseVarint(tmp, size)
+			tmp = binary.AppendVarint(tmp, size)
 			tmpskip = append(tmpskip, s)
-			tmpskip = appendReverseVarint(tmpskip, size)
+			tmpskip = binary.AppendVarint(tmpskip, size)
 			counter++
 			continue
 		case opVarlenArrayStart:
@@ -551,7 +544,7 @@ func compileSchemaByteCode(schema *Schema, fieldSelections []string) ([]byte, er
 				projection := buildArrayHeader(isComplex, ranges)
 				if typ.FixedSize > 0 {
 					codes = append(codes, opFixedlenArrayStart)
-					codes = appendReverseVarint(codes, int64(typ.FixedSize))
+					codes = binary.AppendVarint(codes, int64(typ.FixedSize))
 				} else {
 					codes = append(codes, opVarlenArrayStart)
 				}
