@@ -97,7 +97,7 @@ func (e *expression) compileFilter(targetSchema *fmcap.Schema) (func(t *tuple) (
 		return nil, fmt.Errorf("failed to parse message definition %s: %w", targetSchema.Name, err)
 	}
 	// available and requested columns for the schema/query.
-	available := ros1msg.AnalyzeSchema(*parsed)
+	available := schema.AnalyzeSchema(*parsed)
 	requested, err := gatherInvolvedColumns(e.node)
 	if err != nil {
 		return nil, fmt.Errorf("failed to rewrite where clause: %w", err)

@@ -92,6 +92,16 @@ func Reduce[T any, U any](f func(U, T) U, init U, xs []T) U {
 	return acc
 }
 
+func Filter[T any](f func(T) bool, xs []T) []T {
+	ys := make([]T, 0, len(xs))
+	for _, x := range xs {
+		if f(x) {
+			ys = append(ys, x)
+		}
+	}
+	return ys
+}
+
 // Map applies a function to each element of a slice, returning a new slice.
 func Map[T any, U any](f func(T) U, xs []T) []U {
 	ys := make([]U, len(xs))

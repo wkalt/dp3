@@ -116,16 +116,19 @@ type Parser struct {
 	opcodes  []byte
 	breaks   []int
 	values   []any
+	permuted []any
 	decoder  Decoder
 	handlers []func() error
 
 	selectionCount int
+	permutation    []int
 
 	buf []byte
 }
 
 func NewParser(schema *Schema, fieldSelections []string, decoder Decoder) (*Parser, error) {
 	handlers := make([]func() error, 100)
+	permutation := inferPermutation(schema, fieldSelections)
 	opcodes, err := compileSchemaByteCode(schema, fieldSelections)
 	if err != nil {
 		return nil, err
@@ -134,10 +137,11 @@ func NewParser(schema *Schema, fieldSelections []string, decoder Decoder) (*Pars
 		opcodes:        opcodes,
 		decoder:        decoder,
 		values:         []any{},
+		permuted:       make([]any, len(permutation)),
 		buf:            make([]byte, binary.MaxVarintLen64),
 		selectionCount: len(fieldSelections),
+		permutation:    permutation,
 	}
-
 	handlers[opBool] = p.handleBool
 	handlers[opInt8] = p.handleInt8
 	handlers[opUint8] = p.handleUint8
@@ -174,6 +178,27 @@ func NewParser(schema *Schema, fieldSelections []string, decoder Decoder) (*Pars
 	return p, nil
 }
 
+func inferPermutation(schema *Schema, selections []string) []int {
+	var permutation []int
+	if len(selections) > 0 {
+		analyzed := AnalyzeSchema(*schema)
+		fieldNames := util.Map(func(n util.Named[PrimitiveType]) string {
+			return n.Name
+		}, analyzed)
+		relevant := util.Filter(func(s string) bool {
+			return slices.Index(selections, s) != -1
+		}, fieldNames)
+		permutation = make([]int, len(selections))
+		for i, selection := range selections {
+			permutation[i] = slices.Index(relevant, selection)
+		}
+	}
+	if !needsPermutation(permutation) {
+		return nil
+	}
+	return permutation
+}
+
 // Parse the given buffer and return the set of parsed array lengths, the list
 // of parsed values, and any error encountered. These can be used to reconstruct
 // the full message structure by walking the original schema. The parsed values
@@ -195,10 +220,32 @@ func (p *Parser) Parse(buf []byte) ([]int, []any, error) {
 			return nil, nil, err
 		}
 	}
+	p.permute()
 	if p.selectionCount > 0 && len(p.values) != p.selectionCount {
 		return nil, nil, fmt.Errorf("expected %d values, got %d", p.selectionCount, len(p.values))
 	}
 	return p.breaks, p.values, nil
+}
+
+func (p *Parser) permute() {
+	if len(p.permutation) == 0 {
+		return
+	}
+	for i, j := range p.permutation {
+		p.permuted[i] = p.values[j]
+	}
+	p.values = append(p.values[:0], p.permuted...)
+}
+
+func needsPermutation(permutation []int) bool {
+	last := -1
+	for i := 0; i < len(permutation); i++ {
+		if permutation[i] <= last {
+			return true
+		}
+		last = permutation[i]
+	}
+	return false
 }
 
 // ReadByte implements the io.ByteReader interface.
@@ -489,21 +536,77 @@ func includeToSkip(s byte) byte {
 	return s
 }
 
+func allZeros(m map[string]int) bool {
+	for _, v := range m {
+		if v != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// AnalyzeSchema returns a list of Named[schema.PrimitiveType] that represent
+// interesting values in a message. The length and ordering of this list match
+// the response of SkipMessage.
+func AnalyzeSchema(s Schema) []util.Named[PrimitiveType] {
+	fields := []util.Named[PrimitiveType]{}
+	for _, f := range s.Fields {
+		types := []Type{f.Type}
+		names := []string{f.Name}
+		for len(types) > 0 {
+			t := types[0]
+			types = types[1:]
+			name := names[0]
+			names = names[1:]
+			if t.Primitive > 0 {
+				fields = append(fields, util.NewNamed(name, t.Primitive))
+				continue
+			}
+			if t.Array {
+				if t.FixedSize > 0 && t.FixedSize < 10 {
+					elementtypes := make([]Type, 0, t.FixedSize+len(types))
+					elementnames := make([]string, 0, t.FixedSize+len(names))
+					for i := 0; i < t.FixedSize; i++ {
+						elementtypes = append(elementtypes, *t.Items)
+						elementnames = append(elementnames, fmt.Sprintf("%s[%d]", name, i))
+					}
+					// straight to the front
+					types = append(elementtypes, types...)
+					names = append(elementnames, names...)
+				}
+				continue
+			}
+			if t.Record {
+				for _, f := range t.Fields {
+					types = append(types, f.Type)
+					names = append(names, name+"."+f.Name)
+				}
+				continue
+			}
+		}
+	}
+	return fields
+}
+
 // compileSchemaByteCode compiles a schema to a stack of bytecodes that can be
 // copied and repeatedly used for parsing. The stack is created by enqueuing
 // opcodes in a depth-first ordering of the schema. Then the queue is reversed
 // to form the stack.
 func compileSchemaByteCode(schema *Schema, fieldSelections []string) ([]byte, error) { // nolint: funlen
+	// parse the field ordering of the schema to diff and correct against
+	// selections.
 	codes := []byte{}
 
-	unselected := make(map[string]struct{})
+	multiplicities := make(map[string]int)
+	unselected := make(map[string]int)
 	for _, selection := range fieldSelections {
-		unselected[selection] = struct{}{}
+		multiplicities[selection] += 1
+		unselected[selection] += 1
 	}
 	for _, field := range schema.Fields {
 		// if we were requested specific fields but they are all selected, we
 		// can stop early.
-		if fieldSelections != nil && len(unselected) == 0 {
+		if fieldSelections != nil && allZeros(unselected) {
 			break
 		}
 		stack := []*util.Pair[*Type, string]{util.Pointer(util.NewPair(&field.Type, field.Name))}
@@ -516,7 +619,7 @@ func compileSchemaByteCode(schema *Schema, fieldSelections []string) ([]byte, er
 			}
 			typ := pair.First
 			prefix := pair.Second
-			delete(unselected, prefix)
+			unselected[prefix] -= 1
 			include := fieldSelections == nil
 			if !include {
 				for _, selection := range fieldSelections {
@@ -531,6 +634,7 @@ func compileSchemaByteCode(schema *Schema, fieldSelections []string) ([]byte, er
 				}
 			}
 			if typ.IsPrimitive() {
+				// how to figure out right here what the relevant field index is?
 				code := util.When(include, primitivesToInclude[typ.Primitive], primitivesToSkip[typ.Primitive])
 				codes = append(codes, code)
 				continue
