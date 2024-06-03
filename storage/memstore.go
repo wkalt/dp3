@@ -3,6 +3,7 @@ package storage
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"sync"
 
@@ -21,14 +22,6 @@ type MemStore struct {
 	mtx  *sync.RWMutex
 }
 
-// Put stores an object in the store.
-func (m *MemStore) Put(_ context.Context, id string, data []byte) error {
-	m.mtx.Lock()
-	defer m.mtx.Unlock()
-	m.data[id] = data
-	return nil
-}
-
 func (m *MemStore) Get(_ context.Context, id string) (io.ReadCloser, error) {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
@@ -38,6 +31,18 @@ func (m *MemStore) Get(_ context.Context, id string) (io.ReadCloser, error) {
 	}
 
 	return util.NewReadSeekNopCloser(bytes.NewReader(data)), nil
+}
+
+// Put stores an object in the store.
+func (m *MemStore) Put(_ context.Context, id string, r io.Reader) error {
+	data, err := io.ReadAll(r)
+	if err != nil {
+		return fmt.Errorf("failed to read input: %w", err)
+	}
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.data[id] = data
+	return nil
 }
 
 // Get retrieves an object from the store.

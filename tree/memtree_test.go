@@ -3,6 +3,7 @@ package tree_test
 import (
 	"bytes"
 	"context"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -27,60 +28,74 @@ func TestMemtreeSerialization(t *testing.T) {
 			"[0-4096 [0-64:1 (1b count=2) [leaf 2 msgs]]]",
 		},
 		{
-			"tree trees",
+			"three trees",
 			1,
 			[]int64{100, 120, 1024 * 1e9},
-			"[0-4096 [0-64:1 (1b count=2) [leaf 2 msgs]] [1024-1088:2 (1b count=1) [leaf 1 msg]]]",
+			"[0-4096 [0-64:1 (1b count=2) [leaf 2 msgs]] [1024-1088:1 (1b count=1) [leaf 1 msg]]]",
 		},
 		{
 			"height 2",
 			2,
 			[]int64{100, 120, 1024 * 1e9},
-			"[0-262144 [0-4096:2 (1b count=3) [0-64:1 (1b count=2) [leaf 2 msgs]] [1024-1088:2 (1b count=1) [leaf 1 msg]]]]",
+			"[0-262144 [0-4096:1 (1b count=3) [0-64:1 (1b count=2) [leaf 2 msgs]] [1024-1088:1 (1b count=1) [leaf 1 msg]]]]",
 		},
 	}
 
 	for _, c := range cases {
-		root := nodestore.NewInnerNode(
-			c.height,
-			0,
-			util.Pow(uint64(64), int(c.height+1)),
-			64,
-		)
-		version := uint64(0)
+		t.Run(c.assertion, func(t *testing.T) {
+			root := nodestore.NewInnerNode(
+				c.height,
+				0,
+				util.Pow(uint64(64), int(c.height+1)),
+				64,
+			)
+			version := uint64(0)
 
-		trees := make([]*tree.MemTree, len(c.timestamps))
-		for i, ts := range c.timestamps {
-			data := &bytes.Buffer{}
-			mcap.WriteFile(t, data, []int64{ts})
-			schema := tree.GetSchema(t, bytes.NewReader(data.Bytes()))
-			schemaHash := util.CryptographicHash(schema.Data)
-			stats := map[string]*nodestore.Statistics{
-				schemaHash: {MessageCount: 1},
+			trees := make([]tree.TreeReader, len(c.timestamps))
+			for i, ts := range c.timestamps {
+				data := &bytes.Buffer{}
+				mcap.WriteFile(t, data, []int64{ts})
+				schema := tree.GetSchema(t, bytes.NewReader(data.Bytes()))
+				schemaHash := util.CryptographicHash(schema.Data)
+				stats := map[string]*nodestore.Statistics{
+					schemaHash: {MessageCount: 1},
+				}
+				mt, err := tree.NewInsertBranch(ctx, root, version, uint64(ts), data.Bytes(), stats)
+				require.NoError(t, err)
+				version++
+				trees[i] = mt
 			}
-			mt, err := tree.NewInsertBranch(ctx, root, version, uint64(ts), data.Bytes(), stats)
+
+			rootnode := nodestore.NewInnerNode(c.height, 0, util.Pow(uint64(64), int(c.height+1)), 64)
+			dest := tree.NewMemTree(nodestore.RandomNodeID(), rootnode)
+
+			buf := &bytes.Buffer{}
+			_, err := tree.Merge(ctx, buf, 1, dest, trees...)
 			require.NoError(t, err)
-			version++
-			trees[i] = mt
-		}
 
-		rootnode := nodestore.NewInnerNode(c.height, 0, util.Pow(uint64(64), int(c.height+1)), 64)
-		dest := tree.NewMemTree(nodestore.RandomNodeID(), rootnode)
-		merged, err := tree.MergeBranchesInto(ctx, dest, trees...)
-		require.NoError(t, err)
+			merged := &tree.MemTree{}
+			require.NoError(t, merged.FromBytes(ctx, buf.Bytes()))
 
-		s1, err := tree.Print(ctx, merged)
-		require.NoError(t, err)
+			s1, err := tree.Print(ctx, merged)
+			require.NoError(t, err)
 
-		bytes, err := merged.ToBytes(ctx, version)
-		require.NoError(t, err)
+			data, err := merged.ToBytes(ctx, version)
+			require.NoError(t, err)
 
-		var merged2 tree.MemTree
-		require.NoError(t, merged2.FromBytes(ctx, bytes))
+			var merged2 tree.MemTree
+			require.NoError(t, merged2.FromBytes(ctx, data))
 
-		s2, err := tree.Print(ctx, &merged2)
-		require.NoError(t, err)
+			s2, err := tree.Print(ctx, &merged2)
+			require.NoError(t, err)
 
-		require.Equal(t, c.expected, s1, s2)
+			require.Equal(t, c.expected, s1, s2)
+
+			filetree, err := tree.NewFileTree(func() (io.ReadSeekCloser, error) {
+				return util.NewReadSeekNopCloser(bytes.NewReader(data)), nil
+			}, 0, len(data))
+			require.NoError(t, err)
+
+			tree.Validate(t, ctx, filetree)
+		})
 	}
 }

@@ -54,7 +54,7 @@ func TestTreeIterator(t *testing.T) {
 					slices.Reverse(c.expectedTimes)
 				}
 				actualTimes := []uint64{}
-				tr := tree.MergeInserts(ctx, t, 0, util.Pow(uint64(64), 3), 2, 64, c.times)
+				_, tr := tree.MergeInserts(ctx, t, 1, 0, util.Pow(uint64(64), 3), 2, 64, c.times)
 				it := tree.NewTreeIterator(ctx, tr, descending, 0, math.MaxUint64, 0, nil)
 				for {
 					_, _, message, err := it.Next(ctx)

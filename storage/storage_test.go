@@ -1,6 +1,7 @@
 package storage_test
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"os"
@@ -45,10 +46,10 @@ func TestStorageProviders(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
 			t.Run("put", func(t *testing.T) {
-				require.NoError(t, c.store.Put(ctx, "test", []byte("hello")))
+				require.NoError(t, c.store.Put(ctx, "test", bytes.NewReader([]byte("hello"))))
 			})
 			t.Run("get range", func(t *testing.T) {
-				require.NoError(t, c.store.Put(ctx, "test2", []byte("hello")))
+				require.NoError(t, c.store.Put(ctx, "test2", bytes.NewReader([]byte("hello"))))
 				r, err := c.store.GetRange(ctx, "test2", 1, 4)
 				require.NoError(t, err)
 				defer r.Close()
@@ -57,7 +58,7 @@ func TestStorageProviders(t *testing.T) {
 				require.Equal(t, []byte("ello"), data)
 			})
 			t.Run("delete", func(t *testing.T) {
-				require.NoError(t, c.store.Put(ctx, "test3", []byte("hello")))
+				require.NoError(t, c.store.Put(ctx, "test3", bytes.NewReader([]byte("hello"))))
 				require.NoError(t, c.store.Delete(ctx, "test3"))
 				_, err := c.store.GetRange(ctx, "test3", 0, 5)
 				require.ErrorIs(t, err, storage.ErrObjectNotFound)

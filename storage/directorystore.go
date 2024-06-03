@@ -59,15 +59,23 @@ func (d *DirectoryStore) Get(_ context.Context, id string) (io.ReadCloser, error
 }
 
 // Put stores an object in the directory.
-func (d *DirectoryStore) Put(_ context.Context, id string, data []byte) error {
+func (d *DirectoryStore) Put(_ context.Context, id string, r io.Reader) error {
 	dir, _ := filepath.Split(d.root + "/" + id)
 	if err := util.EnsureDirectoryExists(dir); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 	path := d.root + "/" + id
 	tmpfile := path + ".tmp"
-	if err := os.WriteFile(tmpfile, data, 0600); err != nil {
-		return fmt.Errorf("write failure: %w", err)
+	f, err := os.Create(tmpfile)
+	if err != nil {
+		return fmt.Errorf("failed to create temporary file: %w", err)
+	}
+	defer f.Close()
+	if _, err := io.Copy(f, r); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("failed to close file: %w", err)
 	}
 	if err := os.Rename(tmpfile, path); err != nil {
 		return fmt.Errorf("rename failure: %w", err)

@@ -88,6 +88,31 @@ func ParseInsertRecord(data []byte) *InsertRecord {
 	}
 }
 
+func ParseInsertRecordHeader(r io.Reader) (int, error) {
+	buf := make([]byte, 9)
+	n, err := io.ReadFull(r, buf)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read insert record header: %w", err)
+	}
+	database, err := util.DecodePrefixedString(r)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse database: %w", err)
+	}
+	producer, err := util.DecodePrefixedString(r)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse producer: %w", err)
+	}
+	topic, err := util.DecodePrefixedString(r)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse topic: %w", err)
+	}
+	batchID, err := util.DecodePrefixedString(r)
+	if err != nil {
+		return 0, fmt.Errorf("failed to parse batch ID: %w", err)
+	}
+	return 24 + n + 4*4 + len(database) + len(producer) + len(topic) + len(batchID), nil
+}
+
 // Next returns the next record from the WAL file, with CRC validation.
 func (r *walReader) Next() (RecordType, []byte, error) {
 	header := make([]byte, 1+8)

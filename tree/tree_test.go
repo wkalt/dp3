@@ -55,22 +55,6 @@ func TestTreeErrors(t *testing.T) {
 
 func TestMergeErrors(t *testing.T) {
 	ctx := context.Background()
-	t.Run("merging trees of different height", func(t *testing.T) {
-		root := nodestore.NewInnerNode(1, 0, 4096, 64)
-		tw, err := tree.NewInsertBranch(ctx, root, 0, 1000*1e9, []byte{0x01}, nil)
-		require.NoError(t, err)
-
-		root2 := nodestore.NewInnerNode(2, 0, 4096, 64)
-		tw2, err := tree.NewInsertBranch(ctx, root2, 0, 64*1e9, []byte{0x01}, nil)
-		require.NoError(t, err)
-
-		root3 := nodestore.NewInnerNode(2, 0, 4096, 64)
-		tw3 := tree.NewMemTree(nodestore.RandomNodeID(), root3)
-
-		_, err = tree.MergeBranchesInto(ctx, tw3, tw, tw2)
-		require.ErrorIs(t, err, tree.MismatchedHeightsError{})
-	})
-
 	t.Run("merging tree with wrong height", func(t *testing.T) {
 		// build a corrupt tree
 		root := nodestore.NewInnerNode(2, 0, 64*64*64, 64)
@@ -106,29 +90,9 @@ func TestMergeErrors(t *testing.T) {
 		root3 := nodestore.NewInnerNode(2, 0, 64*64*64, 64)
 		tw3 := tree.NewMemTree(nodestore.RandomNodeID(), root3)
 
-		_, err = tree.MergeBranchesInto(ctx, tw3, tw, tw2)
+		buf := &bytes.Buffer{}
+		_, err = tree.Merge(ctx, buf, 1, tw3, tw, tw2)
 		require.Error(t, err)
-	})
-
-	t.Run("root is not an inner node", func(t *testing.T) {
-		root := nodestore.NewInnerNode(1, 0, 4096, 64)
-		tw, err := tree.NewInsertBranch(ctx, root, 0, 1000*1e9, []byte{0x01}, nil)
-		require.NoError(t, err)
-
-		leaf := nodestore.NewLeafNode([]byte{0x01}, nil, nil)
-		leafid := nodestore.RandomNodeID()
-		require.NoError(t, tw.Put(ctx, leafid, leaf))
-		tw.SetRoot(leafid)
-
-		root2 := nodestore.NewInnerNode(2, 0, 4096, 64)
-		tw2, err := tree.NewInsertBranch(ctx, root2, 0, 64*1e9, []byte{0x01}, nil)
-		require.NoError(t, err)
-
-		root3 := nodestore.NewInnerNode(2, 0, 4096, 64)
-		tw3 := tree.NewMemTree(nodestore.RandomNodeID(), root3)
-
-		_, err = tree.MergeBranchesInto(ctx, tw3, tw, tw2)
-		require.ErrorIs(t, err, tree.UnexpectedNodeError{})
 	})
 
 	t.Run("root does not exist", func(t *testing.T) {
@@ -140,7 +104,8 @@ func TestMergeErrors(t *testing.T) {
 		root2 := nodestore.NewInnerNode(2, 0, 4096, 64)
 		tw2 := tree.NewMemTree(nodestore.RandomNodeID(), root2)
 
-		_, err = tree.MergeBranchesInto(ctx, tw2, tw)
+		buf := &bytes.Buffer{}
+		_, err = tree.Merge(ctx, buf, 1, tw2, tw)
 		require.ErrorIs(t, err, nodestore.NodeNotFoundError{})
 	})
 }
@@ -175,19 +140,22 @@ func TestTreeInsert(t *testing.T) {
 			"two inserts into same bucket are merged",
 			1,
 			[][]int64{{10}, {20}},
-			"[0-4096 [0-64:2 (1b count=2) [leaf 2 msgs]]]",
+			"[0-4096 [0-64:1 (1b count=2) [leaf 2 msgs]]]",
 		},
 		{
 			"inserts into different buckets",
 			1,
 			[][]int64{{10}, {100}, {256}, {1000}},
-			`[0-4096 [0-64:1 (1b count=1) [leaf 1 msg]] [64-128:2 (1b count=1) [leaf 1 msg]]
-			[256-320:3 (1b count=1) [leaf 1 msg]] [960-1024:4 (1b count=1) [leaf 1 msg]]]`,
+			`[0-4096 [0-64:1 (1b count=1) [leaf 1 msg]] [64-128:1 (1b count=1) [leaf 1 msg]]
+			[256-320:1 (1b count=1) [leaf 1 msg]] [960-1024:1 (1b count=1) [leaf 1 msg]]]`,
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
-			output := tree.MergeInserts(ctx, t, 0, util.Pow(uint64(64), int(c.height+1)), c.height, 64, c.times)
+			_, output := tree.MergeInserts(
+				ctx, t, 1, 0, util.Pow(uint64(64), int(c.height+1)),
+				c.height, 64, c.times,
+			)
 			repr, err := tree.Print(ctx, output)
 			require.NoError(t, err)
 			assertEqualTrees(t, c.repr, repr)
@@ -213,7 +181,7 @@ func TestDeleteMessagesInRange(t *testing.T) {
 			[][]int64{},
 			0,
 			8,
-			"[0-16 [<del> 0-4:1] [<del> 4-8:1]]",
+			"[0-16 [<del> 0-4:2] [<del> 4-8:2]]",
 			"[0-16]",
 		},
 		{
@@ -231,8 +199,8 @@ func TestDeleteMessagesInRange(t *testing.T) {
 			[][]int64{{3}, {7}},
 			0,
 			4,
-			"[0-16 [<del> 0-4:3]]",
-			"[0-16 [<ref> 4-8:2 (1b count=1) [leaf 1 msg]]]",
+			"[0-16 [<del> 0-4:2]]",
+			"[0-16 [<ref> 4-8:1 (1b count=1) [leaf 1 msg]]]",
 		},
 		{
 			"delete middle leaf of three inserts results in a hole",
@@ -240,8 +208,8 @@ func TestDeleteMessagesInRange(t *testing.T) {
 			[][]int64{{3}, {7}, {11}},
 			4,
 			8,
-			`[0-16 [<del> 4-8:4]]`,
-			`[0-16 [<ref> 0-4:1 (1b count=1) [leaf 1 msg]] [<ref> 8-12:3 (1b count=1) [leaf 1 msg]]]`,
+			`[0-16 [<del> 4-8:2]]`,
+			`[0-16 [<ref> 0-4:1 (1b count=1) [leaf 1 msg]] [<ref> 8-12:1 (1b count=1) [leaf 1 msg]]]`,
 		},
 		{
 			"delete root node (should delete links to all immediate descendants)",
@@ -262,8 +230,8 @@ func TestDeleteMessagesInRange(t *testing.T) {
 			[][]int64{{7}, {11}},
 			4,
 			8,
-			`[0-64 [0-16:3 () [<del> 4-8:3]]]`,
-			`[0-64 [0-16:3 (1b count=2) [<ref> 8-12:2 (1b count=1) [leaf 1 msg]]]]`,
+			`[0-64 [0-16:2 () [<del> 4-8:2]]]`,
+			`[0-64 [0-16:3 (1b count=2) [<ref> 8-12:1 (1b count=1) [leaf 1 msg]]]]`,
 		},
 		{
 			"delete depth-1 inner node in a depth-2 tree",
@@ -271,8 +239,8 @@ func TestDeleteMessagesInRange(t *testing.T) {
 			[][]int64{{7}, {20}},
 			0,
 			16,
-			`[0-64 [<del> 0-16:3]]`,
-			`[0-64 [<ref> 16-32:2 (1b count=1) [<ref> 20-24:2 (1b count=1) [leaf 1 msg]]]]`,
+			`[0-64 [<del> 0-16:2]]`,
+			`[0-64 [<ref> 16-32:1 (1b count=1) [<ref> 20-24:1 (1b count=1) [leaf 1 msg]]]]`,
 		},
 		{
 			"delete that partially clears a populated leaf",
@@ -280,8 +248,8 @@ func TestDeleteMessagesInRange(t *testing.T) {
 			[][]int64{{3}, {7}},
 			0,
 			3,
-			`[0-16 [0-4:3 () [leaf 0 msgs]-<del 0 3>-> ??]]`,
-			`[0-16 [0-4:3 (1b count=1) [leaf 0 msgs]-<del 0-3>->[leaf 1 msg]] [<ref> 4-8:2 (1b count=1) [leaf 1 msg]]]`,
+			`[0-16 [0-4:2 () [leaf 0 msgs]-<del 0 3>-> ??]]`,
+			`[0-16 [0-4:3 (1b count=1) [leaf 0 msgs]-<del 0-3>->[leaf 1 msg]] [<ref> 4-8:1 (1b count=1) [leaf 1 msg]]]`,
 		},
 		{
 			"delete that partially clears an unpopulated leaf - results in no new empty node",
@@ -289,32 +257,37 @@ func TestDeleteMessagesInRange(t *testing.T) {
 			[][]int64{{3}, {7}},
 			0,
 			11e9,
-			`[0-16 [<del> 0-4:3] [<del> 4-8:3] [<del> 8-12:3] [<del> 12-16:3]]`,
+			`[0-16 [<del> 0-4:2] [<del> 4-8:2] [<del> 8-12:2] [<del> 12-16:2]]`,
 			`[0-16]`,
 		},
 	}
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
-			// Setup: construct a partial tree with the given inserts
-			setup := tree.MergeInserts(
-				ctx, t, 0, util.Pow(uint64(4), int(c.height+1)), c.height, 4, c.prep,
+			// Setup: construct a base tree with the given inserts
+			version, base := tree.MergeInserts(
+				ctx, t, 1, 0, util.Pow(uint64(4), int(c.height+1)), c.height, 4, c.prep,
 			)
 
 			// Construct a partial tree with the deletes
 			tmpRoot := nodestore.NewInnerNode(c.height, 0, util.Pow(uint64(4), int(c.height+1)), 4)
-			version := len(c.prep) + 1
-			partial, err := tree.NewDeleteBranch(ctx, tmpRoot, uint64(version), c.start*1e9, c.end*1e9)
+			partial, err := tree.NewDeleteBranch(ctx, tmpRoot, version, c.start*1e9, c.end*1e9)
 			require.NoError(t, err)
 
-			repr, err := tree.Print(ctx, partial, setup)
+			version++
+
+			repr, err := tree.Print(ctx, partial, base)
 			require.NoError(t, err)
 			assertEqualTrees(t, c.partialResult, repr)
 
 			// Merge the two trees, setup and partial
-			final, err := tree.MergeBranchesInto(ctx, setup, partial)
+			buf := &bytes.Buffer{}
+			_, err = tree.Merge(ctx, buf, version, base, partial)
 			require.NoError(t, err)
+
+			overlay := &tree.MemTree{}
+			require.NoError(t, overlay.FromBytes(ctx, buf.Bytes()))
 			// Print the tree to compare with expected output
-			repr, err = tree.Print(ctx, final, setup)
+			repr, err = tree.Print(ctx, overlay, base)
 			require.NoError(t, err)
 			assertEqualTrees(t, c.mergedResult, repr)
 		})
@@ -345,14 +318,6 @@ func TestStatRange(t *testing.T) {
 		granularity uint64
 		expected    []nodestore.StatRange
 	}{
-		{
-			"empty tree",
-			[][]int64{},
-			0,
-			100e9,
-			1e9,
-			[]nodestore.StatRange{},
-		},
 		{
 			"single insert",
 			[][]int64{{100}},
@@ -403,8 +368,8 @@ func TestStatRange(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
-			tw := tree.MergeInserts(ctx, t, 0, 64*64*64, 2, 64, c.messages)
-			statrange, err := tree.GetStatRange(ctx, tw, c.start, c.end, c.granularity)
+			_, tr := tree.MergeInserts(ctx, t, 0, 0, 64*64*64, 2, 64, c.messages)
+			statrange, err := tree.GetStatRange(ctx, tr, c.start, c.end, c.granularity)
 			require.NoError(t, err)
 			require.Equal(t, c.expected, statrange)
 		})
@@ -414,12 +379,12 @@ func TestStatRange(t *testing.T) {
 func TestMergingOutOfVersionOrder(t *testing.T) {
 	ctx := context.Background()
 
-	root1 := nodestore.NewInnerNode(1, 0, 4096, 64)
 	buf1 := &bytes.Buffer{}
 	mcap.WriteFile(t, buf1, []int64{100})
 	buf2 := &bytes.Buffer{}
 	mcap.WriteFile(t, buf2, []int64{100})
 
+	root1 := nodestore.NewInnerNode(1, 0, 4096, 64)
 	tw1, err := tree.NewInsertBranch(ctx, root1, 1, 100, buf1.Bytes(), nil)
 	require.NoError(t, err)
 
@@ -429,7 +394,8 @@ func TestMergingOutOfVersionOrder(t *testing.T) {
 
 	dest1 := tree.NewMemTree(nodestore.RandomNodeID(), root1)
 
-	_, err = tree.MergeBranchesInto(ctx, dest1, tw2, tw1)
+	buf := &bytes.Buffer{}
+	_, err = tree.Merge(ctx, buf, 3, dest1, tw2, tw1)
 	require.NoError(t, err)
 }
 
@@ -447,49 +413,54 @@ func TestMerge(t *testing.T) {
 			1,
 			[][]int64{},
 			[][]int64{{100}},
-			"[0-4096 [64-128:1 (1b count=1) [leaf 1 msg]]]",
+			"[0-4096 [64-128:3 (1b count=1) [leaf 1 msg]]]",
 		},
 		{
 			"merge into populated tree, nonoverlapping",
 			1,
 			[][]int64{{33}},
 			[][]int64{{100}},
-			"[0-4096 [<ref> 0-64:1 (1b count=1) [leaf 1 msg]] [64-128:1 (1b count=1) [leaf 1 msg]]]",
+			"[0-4096 [<ref> 0-64:1 (1b count=1) [leaf 1 msg]] [64-128:3 (1b count=1) [leaf 1 msg]]]",
 		},
 		{
 			"merge into populated tree, overlapping",
 			1,
 			[][]int64{{33}, {120}},
 			[][]int64{{100}},
-			"[0-4096 [<ref> 0-64:1 (1b count=1) [leaf 1 msg]] [64-128:1 (1b count=2) [leaf 1 msg]->[leaf 1 msg]]]",
+			"[0-4096 [<ref> 0-64:1 (1b count=1) [leaf 1 msg]] [64-128:3 (1b count=2) [leaf 1 msg]->[leaf 1 msg]]]",
 		},
 		{
 			"merge into a populated tree, multiple overlapping",
 			1,
 			[][]int64{{33}, {120}},
 			[][]int64{{39}, {121}},
-			"[0-4096 [0-64:1 (1b count=2) [leaf 1 msg]->[leaf 1 msg]] [64-128:2 (1b count=2) [leaf 1 msg]->[leaf 1 msg]]]",
+			"[0-4096 [0-64:3 (1b count=2) [leaf 1 msg]->[leaf 1 msg]] [64-128:3 (1b count=2) [leaf 1 msg]->[leaf 1 msg]]]",
 		},
 		{
 			"depth 2",
 			2,
 			[][]int64{{33}, {120}},
 			[][]int64{{1000}},
-			`[0-262144 [0-4096:1 (1b count=3) [<ref> 0-64:1 (1b count=1) [leaf 1 msg]]
-			[<ref> 64-128:2 (1b count=1) [leaf 1 msg]] [960-1024:1 (1b count=1) [leaf 1 msg]]]]`,
+			`[0-262144 [0-4096:3 (1b count=3) [<ref> 0-64:1 (1b count=1) [leaf 1 msg]]
+			[<ref> 64-128:1 (1b count=1) [leaf 1 msg]] [960-1024:3 (1b count=1) [leaf 1 msg]]]]`,
 		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
-			base := tree.MergeInserts(
-				ctx, t, 0, util.Pow(uint64(64), int(c.height+1)), c.height, 64, c.prep,
+			_, base := tree.MergeInserts(
+				ctx, t, 1, 0, util.Pow(uint64(64), int(c.height+1)), c.height, 64, c.prep,
 			)
-			partial := tree.MergeInserts(
-				ctx, t, 0, util.Pow(uint64(64), int(c.height+1)), c.height, 64, c.inserts,
+			_, partial := tree.MergeInserts(
+				ctx, t, 2, 0, util.Pow(uint64(64), int(c.height+1)), c.height, 64, c.inserts,
 			)
-			overlay, err := tree.MergeBranchesInto(ctx, base, partial)
+			buf := &bytes.Buffer{}
+			_, err := tree.Merge(ctx, buf, 3, base, partial)
 			require.NoError(t, err)
+
+			overlay := &tree.MemTree{}
+			require.NoError(t, overlay.FromBytes(ctx, buf.Bytes()))
+
 			repr, err := tree.Print(ctx, overlay, base)
 			require.NoError(t, err)
 			assertEqualTrees(t, c.expected, repr)

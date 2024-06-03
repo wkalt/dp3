@@ -65,11 +65,14 @@ func (m *MemTree) Root() nodestore.NodeID {
 	return m.root
 }
 
+// Problem: how does this know not to pursue links into other structures?
+
 // FromBytes deserializes the byte array into the memtree. Memtrees are
 // serialized to disk as bytetrees.
 func (m *MemTree) FromBytes(ctx context.Context, data []byte) error {
 	bt := byteTree{r: bytes.NewReader(data)}
 	rootID := bt.Root()
+	object := rootID.Object()
 	m.SetRoot(rootID)
 	ids := []nodestore.NodeID{rootID}
 	for len(ids) > 0 {
@@ -88,6 +91,9 @@ func (m *MemTree) FromBytes(ctx context.Context, data []byte) error {
 					continue
 				}
 				if child.IsTombstone() {
+					continue
+				}
+				if child.ID.Object() != object {
 					continue
 				}
 				ids = append(ids, child.ID)

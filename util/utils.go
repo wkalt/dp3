@@ -2,9 +2,11 @@ package util
 
 import (
 	"cmp"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"slices"
 	"strconv"
@@ -154,6 +156,30 @@ func EnsureDirectoryExists(dir string) error {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return fmt.Errorf("failed to make directory: %w", err)
 		}
+	}
+	return nil
+}
+
+func RunPipe(
+	ctx context.Context,
+	wf func(ctx context.Context, w io.Writer) error,
+	rf func(ctx context.Context, r io.Reader) error,
+) error {
+	r, w := io.Pipe()
+	errs := make(chan error, 1)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go func() {
+		errs <- rf(ctx, r)
+	}()
+	if err := wf(ctx, w); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return fmt.Errorf("failed to close writer: %w", err)
+	}
+	if err := <-errs; err != nil {
+		return err
 	}
 	return nil
 }

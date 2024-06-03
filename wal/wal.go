@@ -107,6 +107,10 @@ func (a Address) offset() int64 {
 	return int64(binary.LittleEndian.Uint64(a[8:16]))
 }
 
+func (a Address) length() int {
+	return int(binary.LittleEndian.Uint64(a[16:24]))
+}
+
 func (a Address) String() string {
 	return fmt.Sprintf("%d:%d:%d",
 		binary.LittleEndian.Uint64(a[:8]),
