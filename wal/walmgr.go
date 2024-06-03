@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/wkalt/dp3/tree"
 	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/log"
 	"golang.org/x/exp/maps"
@@ -168,6 +169,45 @@ func (w *WALManager) Insert(
 		}
 	}
 	return addr, nil
+}
+
+// GetReader gets a tree.TreeReader from a WAL address, presumed to be a leaf
+// address. The tree reader is backed by a limited reader over the data portion
+// of the insert record.
+func (w *WALManager) GetReader(addr Address) (tree.TreeReader, error) {
+	f, err := w.openr(addr.object())
+	if err != nil {
+		return nil, fmt.Errorf("failed to open wal file: %w", err)
+	}
+	defer f.Close()
+
+	_, err = f.Seek(addr.offset(), io.SeekStart)
+	if err != nil {
+		return nil, fmt.Errorf("failed to seek to record offset: %w", err)
+	}
+
+	headerlen, err := ParseInsertRecordHeader(f)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse insert record header: %w", err)
+	}
+
+	path := w.waldir + "/" + addr.object()
+
+	// account for the header of the insert record, and the trailing crc32
+	dataOffset := int(addr.offset() + int64(headerlen))
+	dataLength := addr.length() - headerlen - 4
+	factory := func() (io.ReadSeekCloser, error) {
+		f, err := os.Open(path)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open file: %w", err)
+		}
+		return f, nil
+	}
+	reader, err := tree.NewFileTree(factory, dataOffset, dataLength)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create tree reader: %w", err)
+	}
+	return reader, nil
 }
 
 // Get data from the WAL at a given address.

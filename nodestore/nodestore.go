@@ -53,9 +53,9 @@ func NewNodestore(
 }
 
 // Put an object to storage.
-func (n *Nodestore) Put(ctx context.Context, prefix string, oid uint64, data []byte) error {
+func (n *Nodestore) Put(ctx context.Context, prefix string, oid uint64, r io.Reader) error {
 	objectname := prefix + "/" + strconv.FormatUint(oid, 10)
-	if err := n.store.Put(ctx, objectname, data); err != nil {
+	if err := n.store.Put(ctx, objectname, r); err != nil {
 		return fmt.Errorf("failed to put object %d: %w", oid, err)
 	}
 	return nil

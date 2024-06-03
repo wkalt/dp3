@@ -7,7 +7,11 @@ that parsed string data is valid (i.e via crc content validation first), or a
 panic may result.
 */
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"fmt"
+	"io"
+)
 
 // ReadU8 reads a uint8 from src and stores it in x, returning the written length.
 func ReadU8(src []byte, x *uint8) int {
@@ -85,4 +89,25 @@ func WritePrefixedString(buf []byte, s string) int {
 	}
 	binary.LittleEndian.PutUint32(buf, uint32(len(s)))
 	return 4 + copy(buf[4:], s)
+}
+
+func DecodeU32(r io.Reader) (uint32, error) {
+	var x uint32
+	if err := binary.Read(r, binary.LittleEndian, &x); err != nil {
+		return 0, fmt.Errorf("failed to decode uint32: %w", err)
+	}
+	return x, nil
+}
+
+func DecodePrefixedString(r io.Reader) (string, error) {
+	length, err := DecodeU32(r)
+	if err != nil {
+		return "", fmt.Errorf("failed to read string length: %w", err)
+	}
+	buf := make([]byte, length)
+	_, err = io.ReadFull(r, buf)
+	if err != nil {
+		return "", fmt.Errorf("failed to read string: %w", err)
+	}
+	return string(buf), nil
 }

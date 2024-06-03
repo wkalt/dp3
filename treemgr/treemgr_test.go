@@ -402,9 +402,9 @@ func TestReceiveDifferentSchemas(t *testing.T) {
 		require.NoError(t, tmgr.Receive(ctx, "db", "my-device", buf))
 		require.NoError(t, tmgr.ForceFlush(ctx))
 
-		expected := `[0-64424509440 [0-1006632960:5 (12 count=1 13 count=1)
-		[0-15728640:5 (12 count=1 13 count=1) [0-245760:5 (12 count=1 13 count=1) [0-3840:5 (12 count=1 13 count=1)
-		[0-60:3 (13 count=1) [leaf 1 msg]] [60-120:5 (12 count=1) [leaf 1 msg]]]]]]]`
+		expected := `[0-64424509440 [0-1006632960:6 (12 count=1 13 count=1)
+		[0-15728640:6 (12 count=1 13 count=1) [0-245760:6 (12 count=1 13 count=1) [0-3840:6 (12 count=1 13 count=1)
+		[0-60:4 (13 count=1) [leaf 1 msg]] [60-120:6 (12 count=1) [leaf 1 msg]]]]]]]`
 
 		str := tmgr.PrintTable(ctx, "db", "my-device", "topic-0")
 		assertEqualTrees(t, expected, str)
@@ -591,27 +591,27 @@ func TestReceive(t *testing.T) {
 			"single-topic file, single message",
 			[][]int64{{10e9}},
 			[]string{
-				`[0-64424509440 [0-1006632960:3 (1b count=1) [0-15728640:3 (1b count=1)
-				[0-245760:3 (1b count=1) [0-3840:3 (1b count=1) [0-60:3 (1b count=1) [leaf 1 msg]]]]]]]`,
+				`[0-64424509440 [0-1006632960:4 (1b count=1) [0-15728640:4 (1b count=1) [0-245760:4
+				(1b count=1) [0-3840:4 (1b count=1) [0-60:4 (1b count=1) [leaf 1 msg]]]]]]]`,
 			},
 		},
 		{
 			"two topics, single messages, nonoverlapping",
 			[][]int64{{10e9}, {100e9}},
 			[]string{
-				`[0-64424509440 [0-1006632960:4 (1b count=1) [0-15728640:4 (1b count=1)
-				[0-245760:4 (1b count=1) [0-3840:4 (1b count=1) [0-60:4 (1b count=1) [leaf 1 msg]]]]]]]`,
-				`[0-64424509440 [0-1006632960:5 (1b count=1) [0-15728640:5 (1b count=1)
-				[0-245760:5 (1b count=1) [0-3840:5 (1b count=1) [60-120:5 (1b count=1) [leaf 1 msg]]]]]]]`,
+				`[0-64424509440 [0-1006632960:7 (1b count=1) [0-15728640:7 (1b count=1)
+				[0-245760:7 (1b count=1) [0-3840:7 (1b count=1) [0-60:7 (1b count=1) [leaf 1 msg]]]]]]]`,
+				`[0-64424509440 [0-1006632960:6 (1b count=1) [0-15728640:6 (1b count=1)
+				[0-245760:6 (1b count=1) [0-3840:6 (1b count=1) [60-120:6 (1b count=1) [leaf 1 msg]]]]]]]`,
 			},
 		},
 		{
 			"single-topic file, spanning leaf boundaries",
 			[][]int64{{10e9, 100e9}},
 			[]string{
-				`[0-64424509440 [0-1006632960:4 (1b count=2) [0-15728640:4 (1b count=2)
-				[0-245760:4 (1b count=2) [0-3840:4 (1b count=2) [0-60:3 (1b count=1) [leaf 1 msg]]
-				[60-120:4 (1b count=1) [leaf 1 msg]]]]]]]`,
+				`[0-64424509440 [0-1006632960:5 (1b count=2) [0-15728640:5 (1b count=2)
+				[0-245760:5 (1b count=2) [0-3840:5 (1b count=2) [0-60:5 (1b count=1) [leaf 1 msg]]
+				[60-120:5 (1b count=1) [leaf 1 msg]]]]]]]`,
 			},
 		},
 	}

@@ -32,6 +32,9 @@ func getNode(
 	readers ...TreeReader,
 ) (remote bool, node nodestore.Node, err error) {
 	for i, reader := range readers {
+		if reader == nil {
+			continue
+		}
 		node, err = reader.Get(ctx, id)
 		if err != nil {
 			if errors.Is(err, nodestore.NodeNotFoundError{}) {

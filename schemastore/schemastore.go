@@ -1,6 +1,7 @@
 package schemastore
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -84,7 +85,7 @@ func (s *SchemaStore) Put(
 		return fmt.Errorf("failed to serialize schema: %w", err)
 	}
 	id := path.Join(database, s.prefix, hash)
-	if err := s.store.Put(ctx, id, data); err != nil {
+	if err := s.store.Put(ctx, id, bytes.NewReader(data)); err != nil {
 		return fmt.Errorf("failed to put schema to storage: %w", err)
 	}
 	s.cacheSchema(database, hash, schema)

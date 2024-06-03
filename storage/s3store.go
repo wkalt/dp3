@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -33,18 +32,17 @@ func NewS3Store(mc *minio.Client, bucket string) *s3store {
 }
 
 // Put stores the data in the object store.
-func (s *s3store) Put(ctx context.Context, id string, data []byte) error {
-	n := int64(len(data))
+func (s *s3store) Put(ctx context.Context, id string, r io.Reader) error {
 	_, err := s.mc.PutObject(
 		ctx,
 		s.bucket,
 		id,
-		bytes.NewReader(data),
-		n,
+		r,
+		-1,
 		minio.PutObjectOptions{},
 	)
 	if err != nil {
-		return fmt.Errorf("failed to put object: %w", err)
+		return fmt.Errorf("failed to write object: %w", err)
 	}
 	return nil
 }

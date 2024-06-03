@@ -1,6 +1,7 @@
 package treemgr
 
 import (
+	"bytes"
 	"container/heap"
 	"context"
 	"errors"
@@ -541,19 +542,19 @@ func (tm *TreeManager) newRoot(
 	if err != nil {
 		return nodestore.NodeID{}, 0, fmt.Errorf("failed to get next version: %w", err)
 	}
+	// build an initial data file with inner node content followed by the root
+	// node ID.
 	nodeID := nodestore.NewNodeID(version, 0, uint64(len(data)))
 	buf := make([]byte, 0, len(data)+24)
 	buf = append(buf, data...)
 	buf = append(buf, nodeID[:]...)
-	if err := tm.ns.Put(ctx, prefix, version, buf); err != nil {
+	if err := tm.ns.Put(ctx, prefix, version, bytes.NewReader(buf)); err != nil {
 		return nodestore.NodeID{}, 0, fmt.Errorf("failed to put root: %w", err)
 	}
 	return nodeID, version, nil
 }
 
 func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
-	trees := make([]*tree.MemTree, 0, len(batch.Addrs)+1)
-
 	// Roots are created synchronously on first reception of data for a
 	// topic/producer, so we should have an existing one by the time we get to
 	// the point of merging.
@@ -563,33 +564,35 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 	}
 	basereader := tree.NewBYOTreeReader(prefix, existingRootID, tm.ns.Get)
 
+	readers := make([]tree.TreeReader, 0, len(batch.Addrs))
 	for _, addr := range batch.Addrs {
-		page, err := tm.wal.Get(addr)
+		reader, err := tm.wal.GetReader(addr)
 		if err != nil {
-			return fmt.Errorf("failed to get page %s: %w", addr, err)
+			return fmt.Errorf("failed to get reader: %w", err)
 		}
-		var mt tree.MemTree
-		if err := mt.FromBytes(ctx, page); err != nil {
-			return fmt.Errorf("failed to deserialize tree: %w", err)
-		}
-		trees = append(trees, &mt)
+		readers = append(readers, reader)
 	}
 	version, err := tm.rootmap.NextVersion(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get next version: %w", err)
 	}
-
-	merged, err := tree.MergeBranchesInto(ctx, basereader, trees...)
-	if err != nil {
+	var nodeID nodestore.NodeID
+	if err := util.RunPipe(ctx,
+		func(ctx context.Context, w io.Writer) error {
+			var err error
+			if nodeID, err = tree.Merge(ctx, w, version, basereader, readers...); err != nil {
+				return fmt.Errorf("failed to merge partial trees: %w", err)
+			}
+			return nil
+		},
+		func(ctx context.Context, r io.Reader) error {
+			if err := tm.ns.Put(ctx, prefix, version, r); err != nil {
+				return fmt.Errorf("failed to put root: %w", err)
+			}
+			return nil
+		},
+	); err != nil {
 		return fmt.Errorf("failed to merge partial trees: %w", err)
-	}
-	data, err := merged.ToBytes(ctx, version)
-	if err != nil {
-		return fmt.Errorf("failed to serialize partial tree: %w", err)
-	}
-	rootID := data[len(data)-24:]
-	if err := tm.ns.Put(ctx, prefix, version, data); err != nil {
-		return fmt.Errorf("failed to put tree: %w", err)
 	}
 	if err := tm.rootmap.Put(
 		ctx,
@@ -598,7 +601,7 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 		batch.Topic,
 		version,
 		prefix,
-		nodestore.NodeID(rootID),
+		nodeID,
 	); err != nil {
 		return fmt.Errorf("failed to put root: %w", err)
 	}
@@ -616,7 +619,7 @@ func (tm *TreeManager) drainWAL(ctx context.Context, n int) error {
 				return nil
 			}
 			if err := tm.mergeBatch(ctx, batch); err != nil {
-				return fmt.Errorf("failed to merge batch %s: %w", batch.ID, err)
+				return fmt.Errorf("failed to merge batch %s (%s): %w", batch.ID, batch.Topic, err)
 			}
 			if err := batch.Finish(); err != nil {
 				return fmt.Errorf("failed to commit batch success: %w", err)

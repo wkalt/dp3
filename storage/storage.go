@@ -19,7 +19,7 @@ var ErrObjectNotFound = errors.New("object not found")
 
 // Provider is the interface for a storage provider.
 type Provider interface {
-	Put(ctx context.Context, id string, data []byte) error
+	Put(ctx context.Context, id string, r io.Reader) error
 	Get(ctx context.Context, id string) (io.ReadCloser, error)
 	GetRange(ctx context.Context, id string, offset int, length int) (io.ReadSeekCloser, error)
 	Delete(ctx context.Context, id string) error

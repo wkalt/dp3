@@ -35,6 +35,24 @@ type LeafNode struct {
 
 const leafHeaderLength = 1 + 24 + 8 + 8 + 8
 
+func (n *LeafNode) Write(w io.Writer) error {
+	buf := make([]byte, leafHeaderLength+len(n.data))
+	offset := util.U8(buf, n.leafNodeVersion+128)
+	offset += copy(buf[offset:], n.ancestor[:])
+	offset += util.U64(buf[offset:], n.ancestorVersion)
+	offset += util.U64(buf[offset:], n.ancestorDeleteStart)
+	offset += util.U64(buf[offset:], n.ancestorDeleteEnd)
+	_, err := w.Write(buf[:offset])
+	if err != nil {
+		return fmt.Errorf("failed to write leaf node header: %w", err)
+	}
+	_, err = io.Copy(w, n.Data())
+	if err != nil {
+		return fmt.Errorf("failed to write leaf node data: %w", err)
+	}
+	return nil
+}
+
 // ToBytes serializes the node to a byte slice.
 func (n *LeafNode) ToBytes() []byte {
 	buf := make([]byte, leafHeaderLength+len(n.data))
