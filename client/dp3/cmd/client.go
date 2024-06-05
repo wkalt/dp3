@@ -319,11 +319,11 @@ func handleDelete(database string, line string) (err error) {
 
 func doDelete(database, producer, topic string, start, end int64) error {
 	req := &routes.DeleteRequest{
-		Database:   database,
-		ProducerID: producer,
-		Topic:      topic,
-		Start:      uint64(start),
-		End:        uint64(end),
+		Database: database,
+		Producer: producer,
+		Topic:    topic,
+		Start:    uint64(start),
+		End:      uint64(end),
 	}
 	buf := &bytes.Buffer{}
 	if err := json.NewEncoder(buf).Encode(req); err != nil {
@@ -366,10 +366,10 @@ func handleTruncate(database string, line string) error {
 
 func doTruncate(database, producer, topic string, timestamp int64) error {
 	req := &routes.TruncateRequest{
-		Database:   database,
-		ProducerID: producer,
-		Topic:      topic,
-		Timestamp:  timestamp,
+		Database:  database,
+		Producer:  producer,
+		Topic:     topic,
+		Timestamp: timestamp,
 	}
 	buf := &bytes.Buffer{}
 	if err := json.NewEncoder(buf).Encode(req); err != nil {
@@ -450,13 +450,13 @@ func parseErrorResponse(resp *http.Response) error {
 	return cutil.NewAPIError(response.Error, response.Detail)
 }
 
-func printTables(w io.Writer, database string, producerID string, topic string) error {
+func printTables(w io.Writer, database string, producer string, topic string) error {
 	var historical bool
-	if producerID != "" && topic != "" {
+	if producer != "" && topic != "" {
 		historical = true
 	}
 	values := url.Values{}
-	values.Add("producer", url.QueryEscape(producerID))
+	values.Add("producer", url.QueryEscape(producer))
 	values.Add("topic", url.QueryEscape(topic))
 	values.Add("historical", strconv.FormatBool(historical))
 	url := fmt.Sprintf(serverURL+"/databases/%s/tables?%s", database, values.Encode())
@@ -476,7 +476,7 @@ func printTables(w io.Writer, database string, producerID string, topic string) 
 
 	// Display a grouping appropriate to the request.
 	switch {
-	case producerID == "" && topic == "":
+	case producer == "" && topic == "":
 		// present an aggregation over producers
 		headers := []string{
 			"Topic",

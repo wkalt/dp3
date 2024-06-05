@@ -12,19 +12,19 @@ import (
 
 // ExportRequest is the request body for the export endpoint.
 type ExportRequest struct {
-	Database   string            `json:"database"`
-	ProducerID string            `json:"producerId"`
-	Topics     map[string]uint64 `json:"topics"`
-	Start      uint64            `json:"start"`
-	End        uint64            `json:"end"`
+	Database string            `json:"database"`
+	Producer string            `json:"producer"`
+	Topics   map[string]uint64 `json:"topics"`
+	Start    uint64            `json:"start"`
+	End      uint64            `json:"end"`
 }
 
 func (req ExportRequest) validate() error {
 	if req.Database == "" {
 		return errors.New("missing database")
 	}
-	if req.ProducerID == "" {
-		return errors.New("missing producerId")
+	if req.Producer == "" {
+		return errors.New("missing producer")
 	}
 	return nil
 }
@@ -38,7 +38,7 @@ func newExportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			return
 		}
 		log.Infow(ctx, "export request",
-			"producer_id", req.ProducerID,
+			"producer", req.Producer,
 			"topics", req.Topics,
 			"start", req.Start,
 			"end", req.End,
@@ -48,7 +48,7 @@ func newExportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			return
 		}
 		// negotiate request -> versioned roots
-		roots, err := tmgr.GetLatestRoots(ctx, req.Database, req.ProducerID, req.Topics)
+		roots, err := tmgr.GetLatestRoots(ctx, req.Database, req.Producer, req.Topics)
 		if err != nil {
 			httputil.InternalServerError(ctx, w, "error getting latest roots: %s", err)
 			return

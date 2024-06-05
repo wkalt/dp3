@@ -18,7 +18,7 @@ import (
 
 var (
 	statrangeDatabase    string
-	statrangeProducerID  string
+	statrangeProducer    string
 	statrangeTopic       string
 	statrangeStart       string
 	statrangeEnd         string
@@ -41,7 +41,7 @@ var statrangeCmd = &cobra.Command{
 		err = printStatRange(
 			os.Stdout,
 			statrangeDatabase,
-			statrangeProducerID,
+			statrangeProducer,
 			statrangeTopic,
 			statrangeGranularity*1e9,
 			start,
@@ -64,7 +64,7 @@ func printStatRange(
 ) error {
 	req := &routes.StatRangeRequest{
 		Database:    database,
-		ProducerID:  producer,
+		Producer:    producer,
 		Start:       uint64(start.UnixNano()),
 		End:         uint64(end.UnixNano()),
 		Topic:       topic,
@@ -107,7 +107,7 @@ func init() {
 	rootCmd.AddCommand(statrangeCmd)
 
 	statrangeCmd.PersistentFlags().StringVarP(&statrangeDatabase, "database", "d", "", "Database")
-	statrangeCmd.PersistentFlags().StringVarP(&statrangeProducerID, "producer", "p", "", "Producer ID")
+	statrangeCmd.PersistentFlags().StringVarP(&statrangeProducer, "producer", "p", "", "Producer ID")
 	statrangeCmd.MarkPersistentFlagRequired("producer")
 	statrangeCmd.PersistentFlags().StringVarP(&statrangeTopic, "topic", "t", "", "Topic")
 	statrangeCmd.MarkPersistentFlagRequired("topic")

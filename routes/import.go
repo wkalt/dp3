@@ -14,13 +14,13 @@ import (
 
 // ImportRequest is the request body for the import endpoint.
 type ImportRequest struct {
-	ProducerID string `json:"producerId"`
-	Path       string `json:"path"`
+	Producer string `json:"producer"`
+	Path     string `json:"path"`
 }
 
 func (req ImportRequest) validate() error {
-	if req.ProducerID == "" {
-		return errors.New("missing producerId")
+	if req.Producer == "" {
+		return errors.New("missing producer")
 	}
 	if req.Path == "" {
 		return errors.New("missing path")
@@ -38,7 +38,7 @@ func newImportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		}
 		defer r.Body.Close()
 		database := mux.Vars(r)["database"]
-		ctx = log.AddTags(ctx, "database", database, "producer", req.ProducerID, "path", req.Path)
+		ctx = log.AddTags(ctx, "database", database, "producer", req.Producer, "path", req.Path)
 		if err := req.validate(); err != nil {
 			httputil.BadRequest(ctx, w, "invalid request: %w", err)
 			return
@@ -50,7 +50,7 @@ func newImportHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		}
 		defer f.Close()
 		log.Infof(ctx, "Importing file")
-		if err := tmgr.Receive(ctx, database, req.ProducerID, f); err != nil {
+		if err := tmgr.Receive(ctx, database, req.Producer, f); err != nil {
 			httputil.InternalServerError(ctx, w, "error receiving file: %w", err)
 			return
 		}

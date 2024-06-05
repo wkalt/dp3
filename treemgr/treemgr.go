@@ -200,7 +200,7 @@ func (tm *TreeManager) DeleteMessages(
 func (tm *TreeManager) Receive(
 	ctx context.Context,
 	database string,
-	producerID string,
+	producer string,
 	data io.Reader,
 ) error {
 	writers := map[string]*writer{}
@@ -233,7 +233,7 @@ func (tm *TreeManager) Receive(
 		var writer *writer
 		var ok bool
 		if writer, ok = writers[channel.Topic]; !ok {
-			writer, err = tm.handleNewTopic(ctx, database, producerID, channel.Topic)
+			writer, err = tm.handleNewTopic(ctx, database, producer, channel.Topic)
 			if err != nil {
 				return fmt.Errorf("failed to create writer: %w", err)
 			}
@@ -319,13 +319,13 @@ type StatisticalSummary struct {
 func (tm *TreeManager) GetStatistics(
 	ctx context.Context,
 	database string,
-	producerID string,
+	producer string,
 	topic string,
 	start, end uint64,
 	version uint64,
 	granularity uint64,
 ) ([]nodestore.StatRange, error) {
-	prefix, rootID, err := tm.rootmap.Get(ctx, database, producerID, topic, version)
+	prefix, rootID, err := tm.rootmap.Get(ctx, database, producer, topic, version)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest root: %w", err)
 	}
@@ -463,10 +463,10 @@ func (tm *TreeManager) GetMessages(
 func (tm *TreeManager) GetLatestRoots(
 	ctx context.Context,
 	database string,
-	producerID string,
+	producer string,
 	topics map[string]uint64,
 ) ([]rootmap.RootListing, error) {
-	listing, err := tm.rootmap.GetLatestByTopic(ctx, database, producerID, topics)
+	listing, err := tm.rootmap.GetLatestByTopic(ctx, database, producer, topics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest roots: %w", err)
 	}
@@ -477,12 +477,12 @@ func (tm *TreeManager) GetLatestRoots(
 func (tm *TreeManager) GetStatisticsLatest(
 	ctx context.Context,
 	database,
-	producerID string,
+	producer string,
 	topic string,
 	start, end uint64,
 	granularity uint64,
 ) ([]nodestore.StatRange, error) {
-	prefix, rootID, _, _, err := tm.rootmap.GetLatest(ctx, database, producerID, topic)
+	prefix, rootID, _, _, err := tm.rootmap.GetLatest(ctx, database, producer, topic)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest root: %w", err)
 	}
@@ -508,8 +508,8 @@ func (tm *TreeManager) ForceFlush(ctx context.Context) error {
 }
 
 // PrintTable returns a string representation of the tree for the given table.
-func (tm *TreeManager) PrintTable(ctx context.Context, database string, producerID string, topic string) string {
-	prefix, root, _, _, err := tm.rootmap.GetLatest(ctx, database, producerID, topic)
+func (tm *TreeManager) PrintTable(ctx context.Context, database string, producer string, topic string) string {
+	prefix, root, _, _, err := tm.rootmap.GetLatest(ctx, database, producer, topic)
 	if err != nil {
 		return fmt.Sprintf("failed to get latest root: %v", err)
 	}
@@ -558,7 +558,7 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 	// Roots are created synchronously on first reception of data for a
 	// topic/producer, so we should have an existing one by the time we get to
 	// the point of merging.
-	prefix, existingRootID, _, _, err := tm.rootmap.GetLatest(ctx, batch.Database, batch.ProducerID, batch.Topic)
+	prefix, existingRootID, _, _, err := tm.rootmap.GetLatest(ctx, batch.Database, batch.Producer, batch.Topic)
 	if err != nil && !errors.Is(err, rootmap.TableNotFoundError{}) {
 		return fmt.Errorf("failed to get root: %w", err)
 	}
@@ -597,7 +597,7 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 	if err := tm.rootmap.Put(
 		ctx,
 		batch.Database,
-		batch.ProducerID,
+		batch.Producer,
 		batch.Topic,
 		version,
 		prefix,
@@ -653,7 +653,7 @@ func (tm *TreeManager) spawnWALConsumers(ctx context.Context) {
 			case batch := <-tm.merges:
 				hash := maphash.Hash{}
 				hash.SetSeed(seed)
-				_, _ = hash.WriteString(batch.ProducerID + batch.Topic)
+				_, _ = hash.WriteString(batch.Producer + batch.Topic)
 				bucket := hash.Sum64() % uint64(tm.syncWorkers)
 				mergechans[bucket] <- batch
 			}
@@ -679,7 +679,7 @@ func (tm *TreeManager) spawnWALConsumers(ctx context.Context) {
 				}
 				log.Infow(ctx, "Merged partial tree",
 					"size", util.HumanBytes(uint64(batch.Size)), "count", len(batch.Addrs),
-					"producer", batch.ProducerID, "topic", batch.Topic, "elapsed", time.Since(start),
+					"producer", batch.Producer, "topic", batch.Topic, "elapsed", time.Since(start),
 					"age", time.Since(batch.LastUpdate),
 				)
 			}
@@ -833,13 +833,13 @@ func (tm *TreeManager) getMessages(
 func (tm *TreeManager) insert(
 	ctx context.Context,
 	database string,
-	producerID string,
+	producer string,
 	topic string,
 	time uint64,
 	data []byte,
 	statistics map[string]*nodestore.Statistics,
 ) error {
-	prefix, rootID, _, _, err := tm.rootmap.GetLatest(ctx, database, producerID, topic)
+	prefix, rootID, _, _, err := tm.rootmap.GetLatest(ctx, database, producer, topic)
 	if err != nil {
 		return fmt.Errorf("failed to get root ID: %w", err)
 	}
@@ -863,7 +863,7 @@ func (tm *TreeManager) insert(
 	if err != nil {
 		return fmt.Errorf("failed to serialize tree: %w", err)
 	}
-	_, err = tm.wal.Insert(ctx, database, producerID, topic, serialized)
+	_, err = tm.wal.Insert(ctx, database, producer, topic, serialized)
 	if err != nil {
 		return fmt.Errorf("failed to insert into WAL: %w", err)
 	}
@@ -897,10 +897,10 @@ func (td treeDimensions) bounds(ts uint64) (uint64, uint64) {
 func (tm *TreeManager) dimensions(
 	ctx context.Context,
 	database string,
-	producerID string,
+	producer string,
 	topic string,
 ) (*treeDimensions, error) {
-	prefix, root, _, _, err := tm.rootmap.GetLatest(ctx, database, producerID, topic)
+	prefix, root, _, _, err := tm.rootmap.GetLatest(ctx, database, producer, topic)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest root: %w", err)
 	}

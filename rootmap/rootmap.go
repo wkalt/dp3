@@ -8,7 +8,7 @@ import (
 )
 
 /*
-The rootmap is an association between (producerID, topic, version) and available
+The rootmap is an association between (producer, topic, version) and available
 root node IDs in storage. Every write and read operation must ultimately consult
 the rootmap, to figure out what data to merge with or read.
 
@@ -38,7 +38,7 @@ type Rootmap interface {
 	Put(
 		ctx context.Context,
 		database string,
-		producerID string,
+		producer string,
 		topic string,
 		version uint64,
 		prefix string,
@@ -54,19 +54,19 @@ type Rootmap interface {
 	GetLatest(
 		ctx context.Context,
 		database string,
-		producerID string,
+		producer string,
 		topic string,
 	) (string, nodestore.NodeID, uint64, uint64, error)
 	GetLatestByTopic(
 		ctx context.Context,
 		database string,
-		producerID string,
+		producer string,
 		topics map[string]uint64,
 	) ([]RootListing, error)
 	Get(
 		ctx context.Context,
 		database string,
-		producerID string,
+		producer string,
 		topic string,
 		version uint64,
 	) (string, nodestore.NodeID, error)

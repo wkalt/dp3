@@ -14,7 +14,7 @@ import (
 // StatRangeRequest is the request body for the statrange endpoint.
 type StatRangeRequest struct {
 	Database    string `json:"database"`
-	ProducerID  string `json:"producerId"`
+	Producer    string `json:"producer"`
 	Start       uint64 `json:"start"`
 	End         uint64 `json:"end"`
 	Topic       string `json:"topic"`
@@ -25,8 +25,8 @@ func (req StatRangeRequest) validate() error {
 	if req.Database == "" {
 		return errors.New("missing database")
 	}
-	if req.ProducerID == "" {
-		return errors.New("missing producerId")
+	if req.Producer == "" {
+		return errors.New("missing producer")
 	}
 	if req.Topic == "" {
 		return errors.New("missing topic")
@@ -44,7 +44,7 @@ func newStatRangeHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		}
 		log.Infow(ctx, "statrange request",
 			"database", req.Database,
-			"producer_id", req.ProducerID,
+			"producer", req.Producer,
 			"start", req.Start,
 			"end", req.End,
 			"topic", req.Topic,
@@ -57,7 +57,7 @@ func newStatRangeHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		summary, err := tmgr.GetStatisticsLatest(
 			ctx,
 			req.Database,
-			req.ProducerID,
+			req.Producer,
 			req.Topic,
 			req.Start,
 			req.End,
