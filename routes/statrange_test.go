@@ -56,7 +56,7 @@ func TestStatRangeHandler(t *testing.T) {
 			"topic",
 			1,
 			http.StatusBadRequest,
-			"missing producerId",
+			"missing producer",
 		},
 		{
 			"missing topic",
@@ -81,7 +81,7 @@ func TestStatRangeHandler(t *testing.T) {
 		t.Run(c.assertion, func(t *testing.T) {
 			req := routes.StatRangeRequest{
 				Database:    c.database,
-				ProducerID:  c.producer,
+				Producer:    c.producer,
 				Start:       c.start,
 				End:         c.end,
 				Topic:       c.topic,

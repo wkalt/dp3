@@ -374,7 +374,7 @@ func listDir(dir string) ([]string, error) {
 func (w *WALManager) mergeBatch(batch *Batch) error {
 	if _, _, err := w.writer.WriteMergeRequest(MergeRequestRecord{
 		Database: batch.Database,
-		Producer: batch.ProducerID,
+		Producer: batch.Producer,
 		Topic:    batch.Topic,
 		BatchID:  batch.ID,
 		Addrs:    batch.Addrs,
@@ -382,7 +382,7 @@ func (w *WALManager) mergeBatch(batch *Batch) error {
 		return err
 	}
 	delete(w.pendingInserts, TreeID{
-		Database: batch.Database, Producer: batch.ProducerID, Topic: batch.Topic,
+		Database: batch.Database, Producer: batch.Producer, Topic: batch.Topic,
 	})
 	w.pendingMerges[batch.ID] = batch
 	w.merges <- batch
@@ -556,11 +556,11 @@ func (w *WALManager) scanfile(ctx context.Context, id uint64) error {
 			bat, ok := w.pendingInserts[NewTreeID(rec.Database, rec.Producer, rec.Topic)]
 			if !ok {
 				bat = &Batch{
-					ID:         rec.BatchID,
-					Database:   rec.Database,
-					ProducerID: rec.Producer,
-					Topic:      rec.Topic,
-					Addrs:      []Address{},
+					ID:       rec.BatchID,
+					Database: rec.Database,
+					Producer: rec.Producer,
+					Topic:    rec.Topic,
+					Addrs:    []Address{},
 					OnDone: func() error {
 						return w.completeMerge(rec.BatchID)
 					},
@@ -603,16 +603,16 @@ func (w *WALManager) setfile(id uint64) error {
 func (w *WALManager) newBatch(
 	id string,
 	database string,
-	producerID string,
+	producer string,
 	topic string,
 ) *Batch {
 	return &Batch{
-		ID:         id,
-		Database:   database,
-		ProducerID: producerID,
-		Topic:      topic,
-		Size:       0,
-		Addrs:      []Address{},
+		ID:       id,
+		Database: database,
+		Producer: producer,
+		Topic:    topic,
+		Size:     0,
+		Addrs:    []Address{},
 		OnDone: func() error {
 			return w.completeMerge(id)
 		},

@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	importProducerID  string
+	importProducer    string
 	importDatabase    string
 	importWorkerCount int
 )
@@ -32,8 +32,8 @@ func doImport(database string, producer string, paths []string, workers int) err
 				return fmt.Errorf("error getting absolute path: %w", err)
 			}
 			req := &routes.ImportRequest{
-				ProducerID: producer,
-				Path:       abs,
+				Producer: producer,
+				Path:     abs,
 			}
 			buf := &bytes.Buffer{}
 			if err = json.NewEncoder(buf).Encode(req); err != nil {
@@ -68,7 +68,7 @@ var importCmd = &cobra.Command{
 			cmd.Usage()
 			return
 		}
-		if err := doImport(importDatabase, importProducerID, paths, importWorkerCount); err != nil {
+		if err := doImport(importDatabase, importProducer, paths, importWorkerCount); err != nil {
 			bailf("Import error: %s", err)
 		}
 	},
@@ -76,7 +76,7 @@ var importCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(importCmd)
-	importCmd.PersistentFlags().StringVarP(&importProducerID, "producer", "p", "", "Producer ID")
+	importCmd.PersistentFlags().StringVarP(&importProducer, "producer", "p", "", "Producer ID")
 	importCmd.PersistentFlags().StringVarP(&importDatabase, "database", "d", "", "Database")
 	importCmd.PersistentFlags().IntVarP(&importWorkerCount, "workers", "w", 1, "Worker count")
 	importCmd.MarkFlagRequired("producer")

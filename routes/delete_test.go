@@ -45,7 +45,7 @@ func TestDeleteHandler(t *testing.T) {
 			0,
 			100,
 			http.StatusBadRequest,
-			"missing producerId",
+			"missing producer",
 		},
 		{
 			"missing topic",
@@ -104,11 +104,11 @@ func TestDeleteHandler(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
 			req := routes.DeleteRequest{
-				Database:   c.db,
-				ProducerID: c.producer,
-				Topic:      c.topic,
-				Start:      c.start,
-				End:        c.end,
+				Database: c.db,
+				Producer: c.producer,
+				Topic:    c.topic,
+				Start:    c.start,
+				End:      c.end,
 			}
 			body, err := json.Marshal(req)
 			require.NoError(t, err)

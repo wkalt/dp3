@@ -218,7 +218,7 @@ func TestWALRecovery(t *testing.T) {
 
 				foundMerges := map[string]int{}
 				for _, batch := range wm2.Stats().PendingMerges {
-					foundMerges[batch.ProducerID] = len(batch.Addrs)
+					foundMerges[batch.Producer] = len(batch.Addrs)
 				}
 				require.Equal(t, c.expectedMerges, foundMerges)
 			})

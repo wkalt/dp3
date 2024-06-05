@@ -74,7 +74,7 @@ type MergeCompleteRecord struct {
 type Batch struct {
 	ID         string
 	Database   string
-	ProducerID string
+	Producer   string
 	Topic      string
 	Size       int
 	LastUpdate time.Time

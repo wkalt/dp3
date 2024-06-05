@@ -39,9 +39,9 @@ type writer struct {
 	lower uint64
 	upper uint64
 
-	database   string
-	producerID string
-	topic      string
+	database string
+	producer string
+	topic    string
 
 	schemas  map[uint16]*fmcap.Schema
 	channels map[uint16]*fmcap.Channel
@@ -63,10 +63,10 @@ func newWriter(
 	ctx context.Context,
 	tmgr *TreeManager,
 	database string,
-	producerID string,
+	producer string,
 	topic string,
 ) (*writer, error) {
-	dims, err := tmgr.dimensions(ctx, database, producerID, topic)
+	dims, err := tmgr.dimensions(ctx, database, producer, topic)
 	if err != nil {
 		return nil, fmt.Errorf("unable to find tree dimensions: %w", err)
 	}
@@ -83,7 +83,7 @@ func newWriter(
 		dims:        dims,
 
 		database:     database,
-		producerID:   producerID,
+		producer:     producer,
 		topic:        topic,
 		schemaStats:  map[uint16]*nodestore.Statistics{},
 		schemaHashes: map[uint16]string{},
@@ -184,14 +184,14 @@ func (w *writer) flush(ctx context.Context) error {
 		}
 		statistics[schemaHash] = stats
 	}
-	if err := w.tmgr.insert(ctx, w.database, w.producerID, w.topic, w.lower*1e9, w.buf.Bytes(), statistics); err != nil {
+	if err := w.tmgr.insert(ctx, w.database, w.producer, w.topic, w.lower*1e9, w.buf.Bytes(), statistics); err != nil {
 		return fmt.Errorf("failed to insert %d bytes data for table %s/%s at time %d: %w",
-			w.buf.Len(), w.producerID, w.topic, w.lower, err)
+			w.buf.Len(), w.producer, w.topic, w.lower, err)
 	}
 	w.buf.Reset()
 	w.initialized = false
 	log.Debugw(ctx, "flushed writer",
-		"producer_id", w.producerID,
+		"producer", w.producer,
 		"topic", w.topic,
 		"lower", w.lower,
 		"upper", w.upper)

@@ -18,11 +18,11 @@ import (
 )
 
 var (
-	tailProducerID string
-	tailEndDate    string
-	tailStartDate  string
-	tailDatabase   string
-	tailTopics     []string
+	tailProducer  string
+	tailEndDate   string
+	tailStartDate string
+	tailDatabase  string
+	tailTopics    []string
 )
 
 // tailCmd represents the tail command
@@ -51,11 +51,11 @@ var tailCmd = &cobra.Command{
 
 		for {
 			messageRequest := &routes.ExportRequest{
-				Database:   tailDatabase,
-				Start:      uint64(start.UnixNano()),
-				End:        uint64(end.UnixNano()),
-				ProducerID: tailProducerID,
-				Topics:     topics,
+				Database: tailDatabase,
+				Start:    uint64(start.UnixNano()),
+				End:      uint64(end.UnixNano()),
+				Producer: tailProducer,
+				Topics:   topics,
 			}
 			buf := &bytes.Buffer{}
 			if err := json.NewEncoder(buf).Encode(messageRequest); err != nil {
@@ -87,7 +87,7 @@ func init() {
 	rootCmd.AddCommand(tailCmd)
 
 	tailCmd.PersistentFlags().StringVarP(&tailDatabase, "database", "d", "", "Database name")
-	tailCmd.PersistentFlags().StringVarP(&tailProducerID, "producer", "p", "", "Producer ID")
+	tailCmd.PersistentFlags().StringVarP(&tailProducer, "producer", "p", "", "Producer ID")
 	tailCmd.PersistentFlags().StringVarP(&tailStartDate, "start", "s", "", "Start date")
 	tailCmd.PersistentFlags().StringVarP(&tailEndDate, "end", "e", "", "End date")
 	tailCmd.PersistentFlags().StringArrayVarP(&tailTopics, "topics", "t", []string{}, "Topics to query")

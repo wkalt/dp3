@@ -12,19 +12,19 @@ import (
 )
 
 type DeleteRequest struct {
-	Database   string `json:"database"`
-	ProducerID string `json:"producerId"`
-	Topic      string `json:"topic"`
-	Start      uint64 `json:"start"`
-	End        uint64 `json:"end"`
+	Database string `json:"database"`
+	Producer string `json:"producer"`
+	Topic    string `json:"topic"`
+	Start    uint64 `json:"start"`
+	End      uint64 `json:"end"`
 }
 
 func (req DeleteRequest) validate() error {
 	if req.Database == "" {
 		return errors.New("missing database")
 	}
-	if req.ProducerID == "" {
-		return errors.New("missing producerId")
+	if req.Producer == "" {
+		return errors.New("missing producer")
 	}
 	if req.Topic == "" {
 		return errors.New("missing topic")
@@ -46,7 +46,7 @@ func newDeleteHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		defer r.Body.Close()
 		log.Infow(ctx, "delete request",
 			"database", req.Database,
-			"producerId", req.ProducerID,
+			"producer", req.Producer,
 			"topic", req.Topic,
 			"start", req.Start,
 			"end", req.End,
@@ -55,8 +55,8 @@ func newDeleteHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			httputil.BadRequest(ctx, w, "invalid request: %s", err)
 			return
 		}
-		ctx = log.AddTags(ctx, "producer", req.ProducerID, "topic", req.Topic)
-		if err := tmgr.DeleteMessages(ctx, req.Database, req.ProducerID, req.Topic, req.Start, req.End); err != nil {
+		ctx = log.AddTags(ctx, "producer", req.Producer, "topic", req.Topic)
+		if err := tmgr.DeleteMessages(ctx, req.Database, req.Producer, req.Topic, req.Start, req.End); err != nil {
 			if errors.Is(err, rootmap.TableNotFoundError{}) {
 				httputil.NotFound(ctx, w, "topic %s not found", req.Topic)
 				return

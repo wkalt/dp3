@@ -13,18 +13,18 @@ import (
 
 // TruncateRequest is the request body for the truncate endpoint.
 type TruncateRequest struct {
-	Database   string `json:"database"`
-	ProducerID string `json:"producerId"`
-	Topic      string `json:"topic"`
-	Timestamp  int64  `json:"timestamp"`
+	Database  string `json:"database"`
+	Producer  string `json:"producer"`
+	Topic     string `json:"topic"`
+	Timestamp int64  `json:"timestamp"`
 }
 
 func (req TruncateRequest) validate() error {
 	if req.Database == "" {
 		return errors.New("missing database")
 	}
-	if req.ProducerID == "" {
-		return errors.New("missing producerId")
+	if req.Producer == "" {
+		return errors.New("missing producer")
 	}
 	if req.Topic == "" {
 		return errors.New("missing topic")
@@ -43,7 +43,7 @@ func newTruncateHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		defer r.Body.Close()
 		log.Infow(ctx, "truncate request",
 			"database", req.Database,
-			"producerId", req.ProducerID,
+			"producer", req.Producer,
 			"topic", req.Topic,
 			"timestamp", req.Timestamp,
 		)
@@ -51,8 +51,8 @@ func newTruncateHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			httputil.BadRequest(ctx, w, "invalid request: %s", err)
 			return
 		}
-		ctx = log.AddTags(ctx, "producer", req.ProducerID, "topic", req.Topic, "timestamp", req.Timestamp)
-		if err := tmgr.Truncate(ctx, req.Database, req.ProducerID, req.Topic, req.Timestamp); err != nil {
+		ctx = log.AddTags(ctx, "producer", req.Producer, "topic", req.Topic, "timestamp", req.Timestamp)
+		if err := tmgr.Truncate(ctx, req.Database, req.Producer, req.Topic, req.Timestamp); err != nil {
 			if errors.Is(err, rootmap.TableNotFoundError{}) {
 				httputil.NotFound(ctx, w, "topic %s not found", req.Topic)
 				return

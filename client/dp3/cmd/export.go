@@ -14,12 +14,12 @@ import (
 )
 
 var (
-	exportProducerID string
-	exportDatabase   string
-	exportEndDate    string
-	exportStartDate  string
-	exportTopics     []string
-	exportJSON       bool
+	exportProducer  string
+	exportDatabase  string
+	exportEndDate   string
+	exportStartDate string
+	exportTopics    []string
+	exportJSON      bool
 )
 
 // exportCmd represents the export command
@@ -51,11 +51,11 @@ var exportCmd = &cobra.Command{
 			topics[topic] = 0
 		}
 		messageRequest := &routes.ExportRequest{
-			Database:   exportDatabase,
-			Start:      uint64(start.UnixNano()),
-			End:        uint64(end.UnixNano()),
-			ProducerID: exportProducerID,
-			Topics:     topics,
+			Database: exportDatabase,
+			Start:    uint64(start.UnixNano()),
+			End:      uint64(end.UnixNano()),
+			Producer: exportProducer,
+			Topics:   topics,
 		}
 		buf := &bytes.Buffer{}
 		if err := json.NewEncoder(buf).Encode(messageRequest); err != nil {
@@ -84,7 +84,7 @@ func init() {
 	rootCmd.AddCommand(exportCmd)
 
 	exportCmd.PersistentFlags().StringVarP(&exportDatabase, "database", "d", "", "Database name")
-	exportCmd.PersistentFlags().StringVarP(&exportProducerID, "producer", "p", "", "Producer ID")
+	exportCmd.PersistentFlags().StringVarP(&exportProducer, "producer", "p", "", "Producer ID")
 	exportCmd.PersistentFlags().StringVarP(&exportStartDate, "start", "s", "", "Start date")
 	exportCmd.PersistentFlags().StringVarP(&exportEndDate, "end", "e", "", "End date")
 	exportCmd.PersistentFlags().StringArrayVarP(&exportTopics, "topics", "t", []string{}, "Topics to query")

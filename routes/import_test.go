@@ -38,7 +38,7 @@ func TestImportHandler(t *testing.T) {
 			"",
 			"../example-data/fix.mcap",
 			http.StatusBadRequest,
-			"missing producerId",
+			"missing producer",
 		},
 		{
 			"missing path",
@@ -67,8 +67,8 @@ func TestImportHandler(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
 			req := routes.ImportRequest{
-				ProducerID: c.producer,
-				Path:       c.filepath,
+				Producer: c.producer,
+				Path:     c.filepath,
 			}
 			body, err := json.Marshal(req)
 			require.NoError(t, err)
