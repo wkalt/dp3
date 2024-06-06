@@ -19,6 +19,14 @@ func TestAsofJoinNode(t *testing.T) {
 		expected  []uint64
 	}{
 		{
+			"nonimmediate asof join returns all matches",
+			executor.NewMockNode(0, 1, 2, 3, 4),
+			executor.NewMockNode(0, 2, 4, 6, 8),
+			false,
+			2,
+			[]uint64{0, 0, 2, 2, 4, 4},
+		},
+		{
 			"simple asof join",
 			executor.NewMockNode(1, 5, 10),
 			executor.NewMockNode(4, 7, 15),
@@ -40,7 +48,7 @@ func TestAsofJoinNode(t *testing.T) {
 			executor.NewMockNode(4, 7, 15),
 			true,
 			2,
-			[]uint64{3, 4},
+			[]uint64{4, 4},
 		},
 	}
 

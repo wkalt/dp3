@@ -175,7 +175,7 @@ func (tm *TreeManager) DeleteMessages(
 	if !ok {
 		return fmt.Errorf("unexpected node type: %w", tree.NewUnexpectedNodeError(nodestore.Inner, root))
 	}
-	mt, err := tree.NewDeleteBranch(ctx, inner, version, start, end)
+	mt, err := tree.NewDelete(ctx, inner, version, start, end)
 	if err != nil {
 		return fmt.Errorf("failed to delete messages: %w", err)
 	}
@@ -837,7 +837,6 @@ func (tm *TreeManager) insert(
 	topic string,
 	time uint64,
 	data []byte,
-	statistics map[string]*nodestore.Statistics,
 ) error {
 	prefix, rootID, _, _, err := tm.rootmap.GetLatest(ctx, database, producer, topic)
 	if err != nil {
@@ -855,7 +854,7 @@ func (tm *TreeManager) insert(
 	if !ok {
 		return fmt.Errorf("unexpected node type: %w", tree.NewUnexpectedNodeError(nodestore.Inner, currentRoot))
 	}
-	mt, err := tree.NewInsertBranch(ctx, currentRootNode, version, time, data, statistics)
+	mt, err := tree.NewInsert(ctx, currentRootNode, version, time, data)
 	if err != nil {
 		return fmt.Errorf("insertion failure: %w", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"testing"
 
 	fmcap "github.com/foxglove/mcap/go/mcap"
@@ -72,7 +73,7 @@ func TestQueryExecution(t *testing.T) {
 			{
 				"asof join succeeds",
 				"from device t0 succeeds t1 by less than 2 nanoseconds;",
-				[]message{{"t1", 0}, {"t0", 1}, {"t1", 2}, {"t0", 3}},
+				[]message{{"t1", 0}, {"t0", 0}, {"t0", 1}, {"t1", 2}, {"t0", 2}, {"t0", 3}, {"t1", 4}, {"t0", 4}},
 			},
 			{
 				"asof join with precedes without immediate",
@@ -371,8 +372,12 @@ func prepTmgr2(t *testing.T, ctx context.Context, tmgr *treemgr.TreeManager) {
 				testutils.F64b(float64(c)),
 				testutils.PrefixedString("hello"),
 			)
+
+			log.Println("topic", "t"+fmt.Sprint(i), "time", c+i*c)
+
 			require.NoError(t, w.WriteMessage(&fmcap.Message{
 				ChannelID:   uint16(i),
+				Sequence:    uint32(c),
 				LogTime:     uint64(c + i*c),
 				PublishTime: 0,
 				Data:        data,

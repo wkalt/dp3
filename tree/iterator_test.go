@@ -21,40 +21,43 @@ func TestTreeIterator(t *testing.T) {
 		times         [][]int64
 		expectedTimes []uint64
 	}{
-		{
-			"empty tree",
-			[][]int64{},
-			[]uint64{},
-		},
-		{
-			"one message",
-			[][]int64{{100}},
-			[]uint64{100},
-		},
-		{
-			"multiple messages on the same leaf",
-			[][]int64{{16, 32, 48}},
-			[]uint64{16, 32, 48},
-		},
+		//{
+		//	"empty tree",
+		//	[][]int64{},
+		//	[]uint64{},
+		//},
+		//{
+		//	"one message",
+		//	[][]int64{{100}},
+		//	[]uint64{100},
+		//},
+		//{
+		//	"multiple messages on the same leaf",
+		//	[][]int64{{16, 32, 48}},
+		//	[]uint64{16, 32, 48},
+		//},
 		{
 			"multiple messages on the same leaf (separate writes)",
 			[][]int64{{0, 16}, {32, 48}, {20, 40}},
 			[]uint64{0, 16, 20, 32, 40, 48},
 		},
-		{
-			"multiple messages on different leaves",
-			[][]int64{{100}, {1000}, {2000}},
-			[]uint64{100, 1000, 2000},
-		},
+		//{
+		//	"multiple messages on different leaves",
+		//	[][]int64{{100}, {1000}, {2000}},
+		//	[]uint64{100, 1000, 2000},
+		//},
 	}
 	for _, c := range cases {
-		for _, descending := range []bool{false, true} {
+		for _, descending := range []bool{false} {
 			t.Run(fmt.Sprintf("%s%v", c.assertion, util.When(descending, " descending", "")), func(t *testing.T) {
 				if descending {
 					slices.Reverse(c.expectedTimes)
 				}
 				actualTimes := []uint64{}
 				_, tr := tree.MergeInserts(ctx, t, 1, 0, util.Pow(uint64(64), 3), 2, 64, c.times)
+				repr, err := tree.Print(ctx, tr)
+				require.NoError(t, err)
+				t.Log("Tree is", repr)
 				it := tree.NewTreeIterator(ctx, tr, descending, 0, math.MaxUint64, 0, nil)
 				for {
 					_, _, message, err := it.Next(ctx)

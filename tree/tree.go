@@ -42,7 +42,7 @@ children that do not exist, your code is safe from overflows.
 
 // //////////////////////////////////////////////////////////////////////////////
 
-// NewInsertBranch writes the provided slice of data into a new (empty) tree writer, into
+// NewInsert writes the provided slice of data into a new (empty) tree writer, into
 // the leaf of the tree that spans the requested timestamp. Assuming no error,
 // after insert has returned, the tree writer will reflect a partial tree from
 // root to leaf. The partial trees that result from insert are serialized to the
@@ -50,13 +50,12 @@ children that do not exist, your code is safe from overflows.
 //
 // Note that the root is merely used as a template for determining the structure
 // of the partial tree.
-func NewInsertBranch(
+func NewInsert(
 	ctx context.Context,
 	root *nodestore.InnerNode,
 	version uint64,
 	timestamp uint64,
 	data []byte,
-	statistics map[string]*nodestore.Statistics,
 ) (*MemTree, error) {
 	if root == nil {
 		return nil, errors.New("root is nil")
@@ -93,7 +92,7 @@ func NewInsertBranch(
 		if err := tw.Put(ctx, ids[i], node); err != nil {
 			return nil, fmt.Errorf("failed to store inner node: %w", err)
 		}
-		current.PlaceChild(bucket, ids[i], version, statistics)
+		current.PlaceChild(bucket, ids[i], version, nil)
 		current = node
 	}
 	// now at the parent of the leaf
@@ -103,12 +102,12 @@ func NewInsertBranch(
 	if err := tw.Put(ctx, nodeID, node); err != nil {
 		return nil, fmt.Errorf("failed to store leaf node: %w", err)
 	}
-	current.PlaceChild(bucket, nodeID, version, statistics)
+	current.PlaceChild(bucket, nodeID, version, nil)
 	tw.SetRoot(rootID)
 	return tw, nil
 }
 
-// NewDeleteBranch constructs a partial tree that represents the deletion
+// NewDelete constructs a partial tree that represents the deletion
 // of messages in the given range. Start (inclusive) and end (exclusive) times
 // are expected in nanoseconds. The tree writer returned by this function is
 // expected to be serialized to the WAL and later merged into the main tree by
@@ -137,7 +136,7 @@ func NewInsertBranch(
 //
 // The root argument is merely used as a template for determining the structure
 // of the partial tree -- no storage IO is performed in this function.
-func NewDeleteBranch(
+func NewDelete(
 	ctx context.Context, oldroot *nodestore.InnerNode, version uint64, start uint64, end uint64,
 ) (*MemTree, error) {
 	if start >= end {
@@ -202,8 +201,8 @@ func NewDeleteBranch(
 // GetStatRange returns the statistics for the given range of time, for the tree
 // rooted at rootID. The granularity parameter is interpreted as a "maximum
 // granularity". The returned granularity is guaranteed to be at least as fine
-// as the one requested, and in practice can be considerably finer. This can
-// lead to confusing results so clients must be prepared to handle it.
+// as the one requested, and in practice can be finer. This can lead to
+// confusing results so clients must be prepared to handle it.
 func GetStatRange(
 	ctx context.Context,
 	tr TreeReader,

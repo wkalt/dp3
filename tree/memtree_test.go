@@ -55,12 +55,7 @@ func TestMemtreeSerialization(t *testing.T) {
 			for i, ts := range c.timestamps {
 				data := &bytes.Buffer{}
 				mcap.WriteFile(t, data, []int64{ts})
-				schema := tree.GetSchema(t, bytes.NewReader(data.Bytes()))
-				schemaHash := util.CryptographicHash(schema.Data)
-				stats := map[string]*nodestore.Statistics{
-					schemaHash: {MessageCount: 1},
-				}
-				mt, err := tree.NewInsertBranch(ctx, root, version, uint64(ts), data.Bytes(), stats)
+				mt, err := tree.NewInsert(ctx, root, version, uint64(ts), data.Bytes())
 				require.NoError(t, err)
 				version++
 				trees[i] = mt

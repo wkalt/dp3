@@ -86,29 +86,44 @@ func (t *fileTree) GetLeafNode(ctx context.Context, id nodestore.NodeID) (
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to instantiate reader: %w", err)
 	}
-	rsc, err := util.NewReadSeekCloserAt(
-		f,
-		t.offset+int(id.Offset()),
-		int(id.Length()),
-	)
+	start, err := f.Seek(int64(t.offset)+int64(id.Offset()), io.SeekStart)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to instantiate reader: %w", err)
+		return nil, nil, fmt.Errorf("failed to seek to offset %d: %w", id.Offset(), err)
 	}
+
 	leafHeaderLength := 1 + 24 + 8 + 8 + 8
 	header := make([]byte, leafHeaderLength)
-	if _, err = io.ReadFull(rsc, header); err != nil {
-		rsc.Close()
+	if _, err = io.ReadFull(f, header); err != nil {
+		if err := f.Close(); err != nil {
+			return nil, nil, fmt.Errorf("failed to close file: %w", err)
+		}
 		return nil, nil, fmt.Errorf("failed to read header: %w", err)
 	}
+
 	node, err := nodestore.BytesToNode(header)
 	if err != nil {
-		rsc.Close()
+		if err := f.Close(); err != nil {
+			return nil, nil, fmt.Errorf("failed to close file: %w", err)
+		}
 		return nil, nil, fmt.Errorf("failed to parse header: %w", err)
 	}
 	leaf, ok := node.(*nodestore.LeafNode)
 	if !ok {
-		rsc.Close()
+		if err := f.Close(); err != nil {
+			return nil, nil, fmt.Errorf("failed to close file: %w", err)
+		}
 		return nil, nil, errors.New("not a leaf node")
 	}
+
+	// return rsc adjusted to read only the leaf data.
+	rsc, err := util.NewReadSeekCloserAt(
+		f,
+		int(start)+leafHeaderLength,
+		int(int(id.Length())-leafHeaderLength),
+	)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to instantiate reader: %w", err)
+	}
+
 	return leaf, rsc, nil
 }

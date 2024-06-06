@@ -414,3 +414,30 @@ func (s *Statistics) Add(other *Statistics) error {
 func (s *Statistics) String() string {
 	return fmt.Sprintf("count=%d", s.MessageCount)
 }
+
+func MergeStatsMaps(a map[string]*Statistics, b map[string]*Statistics) (map[string]*Statistics, error) {
+	m := make(map[string]*Statistics)
+	for k, v := range b {
+		if _, ok := a[k]; ok {
+			left := a[k].Clone()
+			left.Add(v)
+			m[k] = left
+		} else {
+			m[k] = v.Clone()
+		}
+	}
+	for k, v := range a {
+		if _, ok := b[k]; !ok {
+			m[k] = v.Clone()
+		}
+	}
+	return m, nil
+}
+
+func CloneStatsMap(stats map[string]*Statistics) map[string]*Statistics {
+	clone := make(map[string]*Statistics, len(stats))
+	for k, v := range stats {
+		clone[k] = v.Clone()
+	}
+	return clone
+}

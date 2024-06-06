@@ -333,6 +333,7 @@ func removeSpace(s string) string {
 	s = strings.ReplaceAll(s, "\n", " ")
 	s = strings.ReplaceAll(s, "  ", "")
 	s = strings.ReplaceAll(s, "\t", "")
+	s = strings.TrimSpace(s)
 	return s
 }
 
@@ -353,7 +354,7 @@ func TestStreamingAcrossMultipleReceives(t *testing.T) {
 
 	// overlapping
 	buf.Reset()
-	mcap.WriteFile(t, buf, []int64{10e9})
+	mcap.WriteFile(t, buf, []int64{10e9 + 1})
 	require.NoError(t, tmgr.Receive(ctx, "db", "my-device", buf))
 	require.NoError(t, tmgr.ForceFlush(ctx))
 
@@ -363,10 +364,10 @@ func TestStreamingAcrossMultipleReceives(t *testing.T) {
 	require.NoError(t, tmgr.Receive(ctx, "db", "my-device", buf))
 	require.NoError(t, tmgr.ForceFlush(ctx))
 
-	output := &bytes.Buffer{}
 	roots, err := tmgr.GetLatestRoots(ctx, "db", "my-device", map[string]uint64{"topic-0": 0})
 	require.NoError(t, err)
 
+	output := &bytes.Buffer{}
 	require.NoError(t, tmgr.GetMessages(ctx, output, 0, 100000e9, roots))
 
 	reader, err := mcap.NewReader(bytes.NewReader(output.Bytes()))
@@ -547,7 +548,8 @@ func TestTreeIteration(t *testing.T) {
 		t.Run(c.assertion, func(t *testing.T) {
 			tmgr, finish := treemgr.TestTreeManager(ctx, t)
 			defer finish()
-			runSequence(ctx, t, tmgr, c.input)
+			s := runSequence(ctx, t, tmgr, c.input)
+			t.Log("Tree", s)
 
 			output := &bytes.Buffer{}
 			roots, err := tmgr.GetLatestRoots(
@@ -578,6 +580,81 @@ func TestTreeIteration(t *testing.T) {
 			require.Equal(t, c.messages, messages)
 		})
 	}
+}
+
+func TestDuplicatesResolvedOnIngest(t *testing.T) {
+	ctx := context.Background()
+	t.Run("duplication in concurrent inserts", func(t *testing.T) {
+		input1 := [][]int64{{10e9, 12e9}}
+		input2 := [][]int64{{10e9, 13e9}}
+		var buf1, buf2 bytes.Buffer
+		mcap.WriteFile(t, &buf1, input1...)
+		mcap.WriteFile(t, &buf2, input2...)
+		tmgr, finish := treemgr.TestTreeManager(ctx, t)
+		defer finish()
+		require.NoError(t, tmgr.Receive(ctx, "db", "my-device", &buf1))
+		require.NoError(t, tmgr.Receive(ctx, "db", "my-device", &buf2))
+		require.NoError(t, tmgr.ForceFlush(ctx))
+		expected := `
+		[0-64424509440
+		  [0-1006632960:5 (1b count=3)
+		    [0-15728640:5 (1b count=3)
+			  [0-245760:5 (1b count=3)
+			    [0-3840:5 (1b count=3)
+				  [0-60:5 (1b count=3)
+				    [leaf 3 msgs]]]]]]]
+		`
+		str := tmgr.PrintTable(ctx, "db", "my-device", "topic-0")
+		assertEqualTrees(t, expected, str)
+	})
+	t.Run("partial duplication in independent inserts", func(t *testing.T) {
+		input1 := [][]int64{{10e9, 12e9}}
+		input2 := [][]int64{{10e9, 13e9}}
+		var buf1, buf2 bytes.Buffer
+		mcap.WriteFile(t, &buf1, input1...)
+		mcap.WriteFile(t, &buf2, input2...)
+		tmgr, finish := treemgr.TestTreeManager(ctx, t)
+		defer finish()
+		require.NoError(t, tmgr.Receive(ctx, "db", "my-device", &buf1))
+		require.NoError(t, tmgr.ForceFlush(ctx))
+		require.NoError(t, tmgr.Receive(ctx, "db", "my-device", &buf2))
+		require.NoError(t, tmgr.ForceFlush(ctx))
+		expected := `
+		[0-64424509440
+		  [0-1006632960:6 (1b count=3)
+		    [0-15728640:6 (1b count=3)
+			  [0-245760:6 (1b count=3)
+			    [0-3840:6 (1b count=3)
+				  [0-60:6 (1b count=3)
+				    [leaf 1 msg]->[leaf 2 msgs]]]]]]]
+		`
+		str := tmgr.PrintTable(ctx, "db", "my-device", "topic-0")
+		assertEqualTrees(t, expected, str)
+	})
+	t.Run("total duplication in independent inserts", func(t *testing.T) {
+		input1 := [][]int64{{10e9, 12e9}}
+		input2 := [][]int64{{10e9, 12e9}}
+		var buf1, buf2 bytes.Buffer
+		mcap.WriteFile(t, &buf1, input1...)
+		mcap.WriteFile(t, &buf2, input2...)
+		tmgr, finish := treemgr.TestTreeManager(ctx, t)
+		defer finish()
+		require.NoError(t, tmgr.Receive(ctx, "db", "my-device", &buf1))
+		require.NoError(t, tmgr.ForceFlush(ctx))
+		require.NoError(t, tmgr.Receive(ctx, "db", "my-device", &buf2))
+		require.NoError(t, tmgr.ForceFlush(ctx))
+		expected := `
+		[0-64424509440
+		  [0-1006632960:6 (1b count=2)
+		    [0-15728640:6 (1b count=2)
+			  [0-245760:6 (1b count=2)
+			    [0-3840:6 (1b count=2)
+				  [0-60:6 (1b count=2)
+				    [leaf 0 msgs]->[leaf 2 msgs]]]]]]]
+		`
+		str := tmgr.PrintTable(ctx, "db", "my-device", "topic-0")
+		assertEqualTrees(t, expected, str)
+	})
 }
 
 func TestReceive(t *testing.T) {
@@ -618,7 +695,6 @@ func TestReceive(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
 			buf := &bytes.Buffer{}
-			buf.Reset()
 			mcap.WriteFile(t, buf, c.input...)
 			tmgr, finish := treemgr.TestTreeManager(ctx, t)
 			defer finish()

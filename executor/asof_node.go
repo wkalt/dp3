@@ -126,9 +126,9 @@ func (n *asofJoinNode) String() string {
 // NewAsofJoinNode constructs a new as-of join node.
 func NewAsofJoinNode(left, right Node, immediate bool, threshold uint64) *asofJoinNode {
 	children := []Node{left, right}
-	pq := util.NewPriorityQueue[queueElement](func(a, b queueElement) bool {
+	pq := util.NewPriorityQueue(func(a, b queueElement) bool {
 		if a.tuple.message.LogTime == b.tuple.message.LogTime {
-			return a.tuple.message.ChannelID < b.tuple.message.ChannelID
+			return a.index < b.index
 		}
 		return a.tuple.message.LogTime < b.tuple.message.LogTime
 	})
