@@ -45,7 +45,7 @@ func NewMergeNode(descending bool, children ...Node) *mergeNode {
 		children: children,
 		pq: util.NewPriorityQueue(func(a, b queueElement) bool {
 			if a.tuple.message.LogTime == b.tuple.message.LogTime {
-				return a.tuple.message.ChannelID < b.tuple.message.ChannelID
+				return a.index < b.index
 			}
 			if descending {
 				return a.tuple.message.LogTime > b.tuple.message.LogTime

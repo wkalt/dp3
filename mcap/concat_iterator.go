@@ -23,10 +23,6 @@ type concatIterator struct {
 	rs        io.ReadSeeker
 }
 
-type MessageIterator interface {
-	Next(buf []byte) (*mcap.Schema, *mcap.Channel, *mcap.Message, error)
-}
-
 // Next returns the next message in the iterator.
 func (ci *concatIterator) Next(buf []byte) (*mcap.Schema, *mcap.Channel, *mcap.Message, error) {
 	if ci.idx >= len(ci.iterators) {

@@ -4,14 +4,12 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"math"
 	"testing"
 
 	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/stretchr/testify/require"
 	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
-	"github.com/wkalt/dp3/util"
 	"golang.org/x/exp/maps"
 )
 
@@ -54,17 +52,13 @@ func MergeInserts(
 		root := nodestore.NewInnerNode(height, start, end, bfactor)
 		buf := &bytes.Buffer{}
 		mcap.WriteFile(t, buf, batch)
-		schema := GetSchema(t, bytes.NewReader(buf.Bytes()))
-		hash := util.CryptographicHash(schema.Data)
-		stats := map[string]*nodestore.Statistics{
-			hash: {
-				MessageCount:    int64(len(batch)),
-				MaxObservedTime: util.Reduce(util.Max, 0, batch),
-				MinObservedTime: util.Reduce(util.Min, math.MaxInt64, batch),
-			},
-		}
-		tmp, err := NewInsertBranch(ctx, root, version, uint64(batch[0]*1e9), buf.Bytes(), stats)
+		tmp, err := NewInsert(ctx, root, version, uint64(batch[0]*1e9), buf.Bytes())
 		require.NoError(t, err)
+
+		repr, err := Print(ctx, tmp)
+		require.NoError(t, err)
+		t.Log(repr)
+
 		trees = append(trees, tmp)
 	}
 

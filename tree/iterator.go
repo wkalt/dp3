@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"slices"
 
 	fmcap "github.com/foxglove/mcap/go/mcap"
@@ -192,6 +193,79 @@ func (ti *Iterator) getNextLeaf(ctx context.Context) (nodeID nodestore.NodeID, e
 		}
 	}
 	return nodeID, io.EOF
+}
+
+// BuildLeafIterator returns an mcap.MessageIterator over a leaf node, accounting for ancestors.
+func BuildLeafIterator(
+	ctx context.Context,
+	tr TreeReader,
+	leafID nodestore.NodeID,
+	descending bool,
+) (mcap.MessageIterator, func() error, error) {
+	// merge iterator of mcap iterators, or just the singleton.
+	nodes := []*nodestore.LeafNode{}
+	readers := []io.ReadSeekCloser{}
+
+	leaf, rsc, err := tr.GetLeafNode(ctx, leafID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get leaf: %w", err)
+	}
+	nodes = append(nodes, leaf)
+	readers = append(readers, rsc)
+
+	ancestor := leaf.Ancestor()
+	for (ancestor != nodestore.NodeID{}) {
+		leaf, rsc, err := tr.GetLeafNode(ctx, ancestor)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get ancestor: %w", err)
+		}
+		nodes = append(nodes, leaf)
+		readers = append(readers, rsc)
+		ancestor = leaf.Ancestor()
+	}
+	// now we have the full list of ancestors, and readers, in reverse
+	// chronological order. Most likely (technically up to the storage
+	// implementation) no IO has been performed. Now go forward through the list
+	// to figure out what time ranges we need to grab from each element.
+	slices.Reverse(nodes)
+	slices.Reverse(readers)
+	rangesets := [][][]uint64{}
+	start := uint64(0)
+	end := uint64(math.MaxUint64)
+	for _, leaf := range nodes {
+		if leaf.AncestorDeleted() {
+			for i, rangeset := range rangesets {
+				rangesets[i] = SplitRangeSet(rangeset, leaf.AncestorDeleteStart(), leaf.AncestorDeleteEnd())
+			}
+		}
+		rangesets = append(rangesets, [][]uint64{{start, end}})
+	}
+	iterators := make([]mcap.MessageIterator, len(rangesets))
+	for i := range rangesets {
+		iterators[i] = mcap.NewConcatIterator(readers[i], rangesets[i], descending)
+	}
+	finish := func() error {
+		errs := make([]error, 0, len(readers))
+		for i, reader := range readers {
+			if err := reader.Close(); err != nil {
+				errs[i] = err
+			}
+		}
+		for _, err := range errs {
+			if err != nil {
+				return fmt.Errorf("failed to close reader: %w", err)
+			}
+		}
+		return nil
+	}
+	if len(iterators) == 1 {
+		return iterators[0], finish, nil
+	}
+	it, err := mcap.NmergeIterator(descending, iterators...)
+	if err != nil {
+		return nil, finish, fmt.Errorf("failed to merge iterators: %w", err)
+	}
+	return it, finish, nil
 }
 
 // openNextLeaf opens the next iterator to scan. A leaf may be a single node, or
