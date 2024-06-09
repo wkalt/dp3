@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
 	"testing"
 
 	fmcap "github.com/foxglove/mcap/go/mcap"
@@ -372,9 +371,6 @@ func prepTmgr2(t *testing.T, ctx context.Context, tmgr *treemgr.TreeManager) {
 				testutils.F64b(float64(c)),
 				testutils.PrefixedString("hello"),
 			)
-
-			log.Println("topic", "t"+fmt.Sprint(i), "time", c+i*c)
-
 			require.NoError(t, w.WriteMessage(&fmcap.Message{
 				ChannelID:   uint16(i),
 				Sequence:    uint32(c),

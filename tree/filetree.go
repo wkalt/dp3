@@ -119,7 +119,7 @@ func (t *fileTree) GetLeafNode(ctx context.Context, id nodestore.NodeID) (
 	rsc, err := util.NewReadSeekCloserAt(
 		f,
 		int(start)+leafHeaderLength,
-		int(int(id.Length())-leafHeaderLength),
+		int(id.Length())-leafHeaderLength,
 	)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to instantiate reader: %w", err)

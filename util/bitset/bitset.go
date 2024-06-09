@@ -7,13 +7,13 @@ func New(sizeBytes int) Bitset {
 }
 
 func (b Bitset) SetBit(i int) {
-	m := i % len(b)
-	b[m/8] |= 1 << (m % 8)
+	bitidx := i % (len(b) * 8)
+	b[bitidx/8] |= 1 << (bitidx % 8)
 }
 
 func (b Bitset) HasBit(i int) bool {
-	m := i % len(b)
-	return b[m/8]&(1<<(m%8)) != 0
+	bitidx := i % (len(b) * 8)
+	return b[bitidx/8]&(1<<(bitidx%8)) != 0
 }
 
 func (b Bitset) Contains(other Bitset) bool {
@@ -25,7 +25,7 @@ func (b Bitset) Contains(other Bitset) bool {
 	return true
 }
 
-func (b Bitset) Union(other Bitset) {
+func (b Bitset) Add(other Bitset) {
 	for i, v := range other {
 		b[i] |= v
 	}

@@ -178,9 +178,7 @@ func NewNmergeFilterIterator(
 
 func NFilterMerge(
 	w io.Writer,
-	onInit func() error,
 	msgCallback func(*mcap.Schema, *mcap.Channel, *mcap.Message) error,
-	closeEmpty bool,
 	mask MessageIterator,
 	iterators ...MessageIterator,
 ) error {
@@ -188,5 +186,5 @@ func NFilterMerge(
 	if err != nil {
 		return err
 	}
-	return SerializeIterator(w, iterator, onInit, closeEmpty, msgCallback)
+	return SerializeIterator(w, iterator, msgCallback)
 }

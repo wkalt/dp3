@@ -195,17 +195,16 @@ func (ti *Iterator) getNextLeaf(ctx context.Context) (nodeID nodestore.NodeID, e
 	return nodeID, io.EOF
 }
 
-// BuildLeafIterator returns an mcap.MessageIterator over a leaf node, accounting for ancestors.
+// BuildLeafIterator returns an mcap.MessageIterator over a leaf node,
+// accounting for ancestors.
 func BuildLeafIterator(
 	ctx context.Context,
 	tr TreeReader,
 	leafID nodestore.NodeID,
 	descending bool,
 ) (mcap.MessageIterator, func() error, error) {
-	// merge iterator of mcap iterators, or just the singleton.
 	nodes := []*nodestore.LeafNode{}
 	readers := []io.ReadSeekCloser{}
-
 	leaf, rsc, err := tr.GetLeafNode(ctx, leafID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get leaf: %w", err)
@@ -245,16 +244,8 @@ func BuildLeafIterator(
 		iterators[i] = mcap.NewConcatIterator(readers[i], rangesets[i], descending)
 	}
 	finish := func() error {
-		errs := make([]error, 0, len(readers))
-		for i, reader := range readers {
-			if err := reader.Close(); err != nil {
-				errs[i] = err
-			}
-		}
-		for _, err := range errs {
-			if err != nil {
-				return fmt.Errorf("failed to close reader: %w", err)
-			}
+		if err := util.CloseAll(readers...); err != nil {
+			return fmt.Errorf("failed to close all readers: %w", err)
 		}
 		return nil
 	}

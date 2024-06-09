@@ -48,6 +48,16 @@ func TestStorageProviders(t *testing.T) {
 			t.Run("put", func(t *testing.T) {
 				require.NoError(t, c.store.Put(ctx, "test", bytes.NewReader([]byte("hello"))))
 			})
+
+			t.Run("get", func(t *testing.T) {
+				require.NoError(t, c.store.Put(ctx, "item", bytes.NewReader([]byte("hello"))))
+				r, err := c.store.Get(ctx, "item")
+				require.NoError(t, err)
+				defer r.Close()
+				data, err := io.ReadAll(r)
+				require.NoError(t, err)
+				require.Equal(t, []byte("hello"), data)
+			})
 			t.Run("get range", func(t *testing.T) {
 				require.NoError(t, c.store.Put(ctx, "test2", bytes.NewReader([]byte("hello"))))
 				r, err := c.store.GetRange(ctx, "test2", 1, 4)

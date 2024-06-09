@@ -170,12 +170,8 @@ type record struct {
 
 func initialize(
 	writer io.Writer,
-	onInit func() error,
 	initialized *bool,
 ) (*mcap.Writer, error) {
-	if err := onInit(); err != nil {
-		return nil, err
-	}
 	w, err := NewWriter(writer)
 	if err != nil {
 		return nil, err
@@ -187,13 +183,12 @@ func initialize(
 	return w, nil
 }
 
-var ErrNoOutput = errors.New("no output")
-
+// SerializeIterator writes messages from a message iterator into a writer,
+// formatted as MCAP. The closeEmpty flag determines whether the writer should
+// be closed with an empty file if no messages are written.
 func SerializeIterator(
 	writer io.Writer,
 	iterator MessageIterator,
-	onInit func() error,
-	closeEmpty bool,
 	msgCallback func(*mcap.Schema, *mcap.Channel, *mcap.Message) error,
 ) error {
 	var w *mcap.Writer
@@ -203,26 +198,23 @@ func SerializeIterator(
 	for {
 		s, c, m, err := iterator.Next(nil) // todo: reuse buffer
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				if !initialized && closeEmpty {
-					w, err = initialize(writer, onInit, &initialized)
-					if err != nil {
+			switch {
+			case errors.Is(err, io.EOF):
+				if !initialized {
+					if w, err = initialize(writer, &initialized); err != nil {
 						return err
 					}
 				}
-
-				// If we haven't initialized, there is nothing to close. No data
-				// was written.
-				if !initialized {
-					return ErrNoOutput
+				if err := w.Close(); err != nil {
+					return fmt.Errorf("failed to close writer: %w", err)
 				}
-
-				return w.Close()
+				return nil
+			default:
+				return fmt.Errorf("failed to get next message: %w", err)
 			}
-			return fmt.Errorf("failed to get next message: %w", err)
 		}
 		if !initialized {
-			w, err = initialize(writer, onInit, &initialized)
+			w, err = initialize(writer, &initialized)
 			if err != nil {
 				return err
 			}
