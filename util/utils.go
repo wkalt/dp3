@@ -169,17 +169,22 @@ func RunPipe(
 	rf func(ctx context.Context, r io.Reader) error,
 ) error {
 	r, w := io.Pipe()
+	done := make(chan struct{}, 1)
 	go func() {
 		if err := rf(ctx, r); err != nil {
 			w.CloseWithError(err)
 		}
+		done <- struct{}{}
 	}()
-	if err := wf(ctx, w); err != nil {
+	err := wf(ctx, w)
+	if err != nil {
 		return err
 	}
 	if err := w.Close(); err != nil {
+		<-done
 		return fmt.Errorf("failed to close pipe writer: %w", err)
 	}
+	<-done
 	return nil
 }
 

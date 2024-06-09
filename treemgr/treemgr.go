@@ -496,12 +496,11 @@ func (tm *TreeManager) GetStatisticsLatest(
 
 // ForceFlush forces a synchronous flush of WAL data to the tree. Used in tests only.
 func (tm *TreeManager) ForceFlush(ctx context.Context) error {
-	c, err := tm.wal.ForceMerge(ctx)
+	_, err := tm.wal.ForceMerge(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to force merge: %w", err)
 	}
-	err = tm.drainWAL(ctx, c)
-	if err != nil {
+	if err = tm.drainWAL(ctx); err != nil {
 		return fmt.Errorf("failed to drain WAL: %w", err)
 	}
 	return nil
@@ -608,9 +607,8 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 	return nil
 }
 
-func (tm *TreeManager) drainWAL(ctx context.Context, n int) error {
-	c := 0
-	for c < n {
+func (tm *TreeManager) drainWAL(ctx context.Context) error {
+	for len(tm.wal.Stats().PendingMerges) > 0 {
 		select {
 		case <-ctx.Done():
 			return nil
@@ -618,6 +616,7 @@ func (tm *TreeManager) drainWAL(ctx context.Context, n int) error {
 			if !ok {
 				return nil
 			}
+			// synchronous
 			if err := tm.mergeBatch(ctx, batch); err != nil {
 				return fmt.Errorf("failed to merge batch %s (%s): %w", batch.ID, batch.Topic, err)
 			}
@@ -625,7 +624,6 @@ func (tm *TreeManager) drainWAL(ctx context.Context, n int) error {
 				return fmt.Errorf("failed to commit batch success: %w", err)
 			}
 		}
-		c++
 	}
 	return nil
 }

@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -191,6 +192,28 @@ func TestFilter(t *testing.T) {
 	for _, c := range cases {
 		require.Equal(t, c.expected, util.Filter(isEven, c.input), c.assertion)
 	}
+}
+
+func TestRunPipeSynchrony(t *testing.T) {
+	wfunc := func(ctx context.Context, w io.Writer) error {
+		if _, err := w.Write([]byte("hello")); err != nil {
+			return fmt.Errorf("failed to write: %w", err)
+		}
+		return nil
+	}
+	var value string
+	buf := make([]byte, 5)
+	rfunc := func(ctx context.Context, r io.Reader) error {
+		if _, err := io.ReadFull(r, buf); err != nil {
+			return fmt.Errorf("failed to read: %w", err)
+		}
+		time.Sleep(50 * time.Millisecond)
+		value = string(buf)
+		return nil
+	}
+	ctx := context.Background()
+	require.NoError(t, util.RunPipe(ctx, wfunc, rfunc))
+	assert.Equal(t, "hello", value)
 }
 
 func TestRunPipe(t *testing.T) {
