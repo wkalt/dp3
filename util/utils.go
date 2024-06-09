@@ -10,7 +10,10 @@ import (
 	"os"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
+
+	"github.com/wkalt/dp3/util/log"
 )
 
 /*
@@ -166,20 +169,76 @@ func RunPipe(
 	rf func(ctx context.Context, r io.Reader) error,
 ) error {
 	r, w := io.Pipe()
-	errs := make(chan error, 1)
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 	go func() {
-		errs <- rf(ctx, r)
+		if err := rf(ctx, r); err != nil {
+			w.CloseWithError(err)
+		}
 	}()
 	if err := wf(ctx, w); err != nil {
 		return err
 	}
 	if err := w.Close(); err != nil {
-		return fmt.Errorf("failed to close writer: %w", err)
+		return fmt.Errorf("failed to close pipe writer: %w", err)
 	}
-	if err := <-errs; err != nil {
-		return err
+	return nil
+}
+
+// MaybeWarn logs a warning if f returns an error. It is intended to wrap
+// deferred Close calls in situations where an error is not critical and would
+// not alter program execution. Most often this is the case for readers but not
+// writers.
+func MaybeWarn(ctx context.Context, f func() error) {
+	if err := f(); err != nil {
+		log.Warnf(ctx, "warning: %v", err)
+	}
+}
+
+// CloseAll closes all closers and returns a wrapped error of the first error
+// encountered, annotating the result with any additional errors.
+func CloseAll[T io.Closer](closers ...T) error {
+	errs := make([]error, len(closers))
+	for i, c := range closers {
+		if err := c.Close(); err != nil {
+			errs[i] = err
+		}
+	}
+	errored := Filter(func(e error) bool { return e != nil }, errs)
+	if len(errored) > 0 {
+		rest := When(
+			len(errored) > 1,
+			fmt.Sprintf(" (other errors: %s)", strings.Join(
+				Map(func(e error) string { return e.Error() }, errored), ", ")),
+			"",
+		)
+		return fmt.Errorf("failed to close resource: %w%s", errored[0], rest)
+	}
+	return nil
+}
+
+// ContextCloser is an interface for objects that can be closed with a context.
+type ContextCloser interface {
+	Close(ctx context.Context) error
+}
+
+// CloseAllContext closes all closers with a context and returns a wrapped error
+// of the first error encountered, annotating the result with any additional
+// errors.
+func CloseAllContext[T ContextCloser](ctx context.Context, closers ...T) error {
+	errs := make([]error, len(closers))
+	for i, c := range closers {
+		if err := c.Close(ctx); err != nil {
+			errs[i] = err
+		}
+	}
+	errored := Filter(func(e error) bool { return e != nil }, errs)
+	if len(errored) > 0 {
+		rest := When(
+			len(errored) > 1,
+			fmt.Sprintf(" (other errors: %s)", strings.Join(
+				Map(func(e error) string { return e.Error() }, errored), ", ")),
+			"",
+		)
+		return fmt.Errorf("failed to close resource: %w%s", errored[0], rest)
 	}
 	return nil
 }

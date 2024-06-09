@@ -15,6 +15,7 @@ func TestReadSeekCloserAt(t *testing.T) {
 	t.Run("read", func(t *testing.T) {
 		rsc, err := util.NewReadSeekCloserAt(r, 2, 11)
 		require.NoError(t, err)
+		defer require.NoError(t, rsc.Close())
 
 		buf := make([]byte, 5)
 		n, err := rsc.Read(buf)
@@ -30,6 +31,7 @@ func TestReadSeekCloserAt(t *testing.T) {
 	t.Run("seek", func(t *testing.T) {
 		rsc, err := util.NewReadSeekCloserAt(r, 2, 11)
 		require.NoError(t, err)
+		defer require.NoError(t, rsc.Close())
 
 		t.Run("seek start", func(t *testing.T) {
 			_, err = rsc.Seek(2, io.SeekStart)

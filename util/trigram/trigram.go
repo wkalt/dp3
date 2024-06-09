@@ -55,7 +55,7 @@ func (s Signature) Contains(other Signature) bool {
 }
 
 func (s Signature) Add(other Signature) {
-	s.Bitset.Union(other.Bitset)
+	s.Bitset.Add(other.Bitset)
 }
 
 func ComputeTrigrams(text string) []string {

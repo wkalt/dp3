@@ -14,6 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
+	"github.com/wkalt/dp3/schemastore"
 	"github.com/wkalt/dp3/treemgr"
 )
 
@@ -707,6 +708,162 @@ func TestReceive(t *testing.T) {
 					str := tmgr.PrintTable(ctx, "db", "my-device", topic)
 					assertEqualTrees(t, c.output[i], str)
 				})
+			}
+		})
+	}
+}
+
+func TestTopics(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		assertion string
+		input     [][]int64
+		expected  []string
+	}{
+		{
+			"no topics",
+			[][]int64{},
+			[]string{},
+		},
+		{
+			"single topic",
+			[][]int64{{10e9}},
+			[]string{"topic-0"},
+		},
+		{
+			"multiple topics",
+			[][]int64{{10e9}, {100e9}, {1000e9}},
+			[]string{"topic-0", "topic-1", "topic-2"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			mcap.WriteFile(t, buf, c.input...)
+			tmgr, finish := treemgr.TestTreeManager(ctx, t)
+			defer finish()
+			require.NoError(t, tmgr.Receive(ctx, "db", "my-device", buf))
+			require.NoError(t, tmgr.ForceFlush(ctx))
+			topics, err := tmgr.Topics(ctx, "db")
+			require.NoError(t, err)
+			require.Equal(t, c.expected, topics)
+		})
+	}
+}
+
+func TestDatabases(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		assertion string
+		databases []string
+		expected  []string
+	}{
+		{
+			"no databases",
+			[]string{},
+			[]string{},
+		},
+		{
+			"single database",
+			[]string{"db-0"},
+			[]string{"db-0"},
+		},
+		{
+			"multiple databases",
+			[]string{"db-0", "db-1", "db-2"},
+			[]string{"db-0", "db-1", "db-2"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			tmgr, finish := treemgr.TestTreeManager(ctx, t)
+			defer finish()
+			for _, db := range c.databases {
+				buf := &bytes.Buffer{}
+				mcap.WriteFile(t, buf, []int64{10e9})
+				require.NoError(t, tmgr.Receive(ctx, db, "my-device", buf))
+			}
+			databases, err := tmgr.Databases(ctx)
+			require.NoError(t, err)
+			require.Equal(t, c.expected, databases)
+		})
+	}
+}
+
+func TestProducers(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		assertion string
+		producers []string
+		expected  []string
+	}{
+		{
+			"no producers",
+			[]string{},
+			[]string{},
+		},
+		{
+			"single producer",
+			[]string{"producer-0"},
+			[]string{"producer-0"},
+		},
+		{
+			"multiple producers",
+			[]string{"producer-0", "producer-1", "producer-2"},
+			[]string{"producer-0", "producer-1", "producer-2"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			tmgr, finish := treemgr.TestTreeManager(ctx, t)
+			defer finish()
+			for _, producer := range c.producers {
+				buf := &bytes.Buffer{}
+				mcap.WriteFile(t, buf, []int64{10e9})
+				require.NoError(t, tmgr.Receive(ctx, "db", producer, buf))
+				require.NoError(t, tmgr.ForceFlush(ctx))
+			}
+			producers, err := tmgr.Producers(ctx, "db")
+			require.NoError(t, err)
+			require.Equal(t, c.expected, producers)
+		})
+	}
+}
+
+func TestGetSchema(t *testing.T) {
+	ctx := context.Background()
+	cases := []struct {
+		assertion     string
+		hash          string
+		expectedName  string
+		expectedError error
+	}{
+		{
+			"no match",
+			"hash-0",
+			"",
+			schemastore.ErrSchemaNotFound,
+		},
+		{
+			"matching schema",
+			"1ba234e59378bc656d587c45c4191bfc24c2c657e871f148faa552350738c470",
+			"test",
+			nil,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			mcap.WriteFile(t, buf, [][]int64{{10e9}}...)
+			tmgr, finish := treemgr.TestTreeManager(ctx, t)
+			defer finish()
+			require.NoError(t, tmgr.Receive(ctx, "db", "my-device", buf))
+			require.NoError(t, tmgr.ForceFlush(ctx))
+			schema, err := tmgr.GetSchema(ctx, "db", c.hash)
+			if c.expectedError != nil {
+				require.ErrorIs(t, err, c.expectedError)
+			} else {
+				require.Equal(t, c.expectedName, schema.Name)
 			}
 		})
 	}

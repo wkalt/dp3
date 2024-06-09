@@ -46,46 +46,6 @@ func Merge(
 	return nodeID, nil
 }
 
-func oneLeafMerge(
-	ctx context.Context,
-	cw *util.CountingWriter,
-	version uint64,
-	ancestorNodeID *nodestore.NodeID,
-	ancestorVersion *uint64,
-	input util.Pair[TreeReader, nodestore.NodeID],
-) (nodestore.NodeID, error) {
-	node, rsc, err := input.First.GetLeafNode(ctx, input.Second)
-	if err != nil {
-		return nodestore.NodeID{}, fmt.Errorf("failed to get leaf: %w", err)
-	}
-	defer rsc.Close()
-	newLeaf := nodestore.NewLeafNode(nil, ancestorNodeID, ancestorVersion)
-	if node.AncestorDeleted() {
-		if ancestorNodeID == nil {
-			return nodestore.NodeID{}, errElideNode
-		}
-		newLeaf.DeleteRange(node.AncestorDeleteStart(), node.AncestorDeleteEnd())
-	}
-	offset := uint64(cw.Count())
-	var length uint64
-
-	// fake leaf node to write the header
-	n, err := cw.Write(newLeaf.ToBytes())
-	length += uint64(n)
-	if err != nil {
-		return nodestore.NodeID{}, fmt.Errorf("failed to write leaf header to object: %w", err)
-	}
-
-	// copy the actual data
-	m, err := io.Copy(cw, rsc)
-	length += uint64(m)
-	if err != nil {
-		return nodestore.NodeID{}, fmt.Errorf("failed to copy leaf data to object: %w", err)
-	}
-	nodeID := nodestore.NewNodeID(version, offset, length)
-	return nodeID, nil
-}
-
 func getIterator(
 	ctx context.Context,
 	input util.Pair[TreeReader, nodestore.NodeID],
@@ -108,19 +68,21 @@ func getIterator(
 	closer := func() error {
 		reader.Close()
 		if err := r.Close(); err != nil {
-			return err
+			return fmt.Errorf("failed to close leaf reader: %w", err)
 		}
 		return nil
 	}
 	return header, iterator, closer, nil
 }
 
-func onMessageCallback(schemaStats map[string]*nodestore.Statistics) func(
-	*fmcap.Schema, *fmcap.Channel, *fmcap.Message,
-) error {
+func onMessageCallback() (
+	map[string]*nodestore.Statistics,
+	func(*fmcap.Schema, *fmcap.Channel, *fmcap.Message) error,
+) {
+	schemaStats := make(map[string]*nodestore.Statistics)
 	parsers := make(map[uint16]*schema.Parser)
 	schemaHashes := make(map[uint16]string)
-	return func(s *fmcap.Schema, c *fmcap.Channel, m *fmcap.Message) error {
+	return schemaStats, func(s *fmcap.Schema, c *fmcap.Channel, m *fmcap.Message) error {
 		parser, ok := parsers[s.ID]
 		if !ok {
 			parts := strings.SplitN(s.Name, "/", 2)
@@ -158,6 +120,22 @@ func onMessageCallback(schemaStats map[string]*nodestore.Statistics) func(
 	}
 }
 
+func buildFilterIterator(
+	ctx context.Context,
+	dest *util.Pair[TreeReader, nodestore.NodeID],
+) (mcap.MessageIterator, func(), error) {
+	if dest == nil {
+		return nil, func() {}, nil
+	}
+	tr := dest.First
+	destLeafID := dest.Second
+	destiterator, finish, err := BuildLeafIterator(ctx, tr, destLeafID, false)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to build destination iterator: %w", err)
+	}
+	return destiterator, func() { util.MaybeWarn(ctx, finish) }, nil
+}
+
 func leafMerge(
 	ctx context.Context,
 	cw *util.CountingWriter,
@@ -170,43 +148,29 @@ func leafMerge(
 	stats map[string]*nodestore.Statistics,
 	err error,
 ) {
+	if len(inputs) == 0 {
+		return nodeID, nil, errors.New("no leaves to merge")
+	}
 	var ancestorNodeID *nodestore.NodeID
 	var ancestorVersion *uint64
 	if dest != nil {
 		ancestorNodeID = &dest.Second
 		ancestorVersion = destVersion
 	}
-
-	if len(inputs) == 0 {
-		return nodeID, nil, errors.New("no leaves to merge")
-	}
-
 	header := nodestore.NewLeafNode([]byte{}, ancestorNodeID, ancestorVersion)
-
-	onInit := func() error {
-		return nil
+	mask, finish, err := buildFilterIterator(ctx, dest)
+	if err != nil {
+		return nodestore.NodeID{}, nil, err
 	}
+	defer finish()
 
-	var mask mcap.MessageIterator
-	if dest != nil {
-		tr := dest.First
-		destLeafID := dest.Second
-		destiterator, finish, err := BuildLeafIterator(ctx, tr, destLeafID, false)
-		if err != nil {
-			return nodestore.NodeID{}, nil, fmt.Errorf("failed to build destination iterator: %w", err)
-		}
-		defer finish()
-		mask = destiterator
-	}
-
-	// build a list of message iterators
 	iterators := make([]mcap.MessageIterator, len(inputs))
 	for i, input := range inputs {
 		inputHeader, iterator, finish, err := getIterator(ctx, input)
 		if err != nil {
 			return nodestore.NodeID{}, nil, err
 		}
-		defer finish()
+		defer util.MaybeWarn(ctx, finish)
 		iterators[i] = iterator
 		if inputHeader.AncestorDeleted() {
 			if ancestorNodeID == nil {
@@ -216,29 +180,17 @@ func leafMerge(
 		}
 	}
 
-	schemaStats := make(map[string]*nodestore.Statistics)
-	callback := onMessageCallback(schemaStats)
+	schemaStats, callback := onMessageCallback()
 
-	// offset of the node start
 	offset := uint64(cw.Count())
-
 	if err := header.Write(cw); err != nil {
 		return nodestore.NodeID{}, nil, fmt.Errorf("failed to write leaf header: %w", err)
 	}
 
-	// merge iterators into output body
-	err = mcap.NFilterMerge(cw, onInit, callback, true, mask, iterators...)
-	if err != nil {
-		// No output means the data fully duplicated what was existing. Don't
-		// serialize any node, and instead just return the existing destination
-		// ID -- wrong: it could also be a delete
-		if errors.Is(err, mcap.ErrNoOutput) && dest != nil {
-			return dest.Second, schemaStats, nil
-		}
+	if err = mcap.NFilterMerge(cw, callback, mask, iterators...); err != nil {
 		return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge leaf iterators: %w", err)
 	}
 
-	// compute the new node ID
 	length := uint64(cw.Count()) - offset
 	nodeID = nodestore.NewNodeID(version, offset, length)
 	return nodeID, schemaStats, nil
@@ -261,6 +213,21 @@ func toNode[T *nodestore.InnerNode | *nodestore.LeafNode](
 	return value, nil
 }
 
+func getInnerNodes(
+	ctx context.Context,
+	inputs []util.Pair[TreeReader, nodestore.NodeID],
+) ([]*nodestore.InnerNode, error) {
+	nodes := make([]*nodestore.InnerNode, 0, len(inputs))
+	for _, input := range inputs {
+		node, err := toNode[*nodestore.InnerNode](ctx, input)
+		if err != nil {
+			return nil, err
+		}
+		nodes = append(nodes, node)
+	}
+	return nodes, nil
+}
+
 // merge inner nodes constructs a new inner node with "merges" in the location
 // of any "conflicts" among the children of the inputs.
 func mergeInnerNode( // nolint: funlen
@@ -273,23 +240,19 @@ func mergeInnerNode( // nolint: funlen
 	if len(inputs) == 0 {
 		return nodeID, nil, errors.New("no children to merge")
 	}
-	nodes := make([]*nodestore.InnerNode, 0, len(inputs))
-	for _, input := range inputs {
-		node, err := toNode[*nodestore.InnerNode](ctx, input)
-		if err != nil {
-			return nodestore.NodeID{}, nil, err
-		}
-		nodes = append(nodes, node)
+	innerNodes, err := getInnerNodes(ctx, inputs)
+	if err != nil {
+		return nodeID, nil, err
 	}
 
-	// reference node to set dimensions of the output
-	node := nodes[0]
+	// reference head to set dimensions of the output
+	head := innerNodes[0]
 
 	// Create a new inner node with same dimensions as the reference. In the
 	// location of each conflict, compute a node ID via a recursive merge and
 	// form a child structure from the aggregated statistics of the conflicted
 	// children.
-	newNode := nodestore.NewInnerNode(node.Height, node.Start, node.End, len(node.Children))
+	newNode := nodestore.NewInnerNode(head.Height, head.Start, head.End, len(head.Children))
 
 	// default the children of the new node, to those of the destination node,
 	// if one exists.
@@ -302,135 +265,77 @@ func mergeInnerNode( // nolint: funlen
 		newNode.Children = destNode.Children
 	}
 
-	singleton := len(inputs) == 1
+	isSingleton := len(inputs) == 1
 
 	// gather child indexes where conflicts occur
 	conflicts := []int{}
-	for i, child := range node.Children {
+	for i, child := range head.Children {
 		// For a singleton node, all children must be treated as conflicts.
-		if child != nil && singleton {
+		if child != nil && isSingleton {
 			conflicts = append(conflicts, i)
 			continue
 		}
-
-		if slices.IndexFunc(nodes[1:], func(sibling *nodestore.InnerNode) bool {
-			cousin := sibling.Children[i]
-			return child == nil && cousin != nil ||
-				child != nil && cousin == nil ||
-				child != nil && cousin != nil
-		}) > -1 {
+		if slices.IndexFunc(innerNodes[1:], isConflicted(child, i)) > -1 {
 			conflicts = append(conflicts, i)
 			continue
 		}
 	}
 
-	aggregateStats := make(map[string]*nodestore.Statistics)
+	outputStats := make(map[string]*nodestore.Statistics)
 
 	// build a merged child in the location of each conflict.
 	for _, conflict := range conflicts {
 		// sort the nodes by the version at the conflict location. This is used
 		// for the tombstone handling below, to blank statistics/history when a
 		// tombstone is encountered.
-		sort.Slice(inputs, func(i, j int) bool {
-			if nodes[i].Children[conflict] == nil || nodes[j].Children[conflict] == nil {
-				return false
-			}
-			return nodes[i].Children[conflict].Version < nodes[j].Children[conflict].Version
-		})
-		sort.Slice(nodes, func(i, j int) bool {
-			if nodes[i].Children[conflict] == nil || nodes[j].Children[conflict] == nil {
-				return false
-			}
-			return nodes[i].Children[conflict].Version < nodes[j].Children[conflict].Version
-		})
+		sort.Slice(inputs, order(innerNodes, conflict))
+		sort.Slice(innerNodes, order(innerNodes, conflict))
 
 		var destChild *util.Pair[TreeReader, nodestore.NodeID]
 		var destVersion *uint64
 		statistics := map[string]*nodestore.Statistics{}
-		if destNode != nil {
-			if destNode.Children[conflict] != nil {
-				destChild = util.Pointer(util.NewPair(dest.First, destNode.Children[conflict].ID))
-				destVersion = &destNode.Children[conflict].Version
-				statistics = nodestore.CloneStatsMap(destNode.Children[conflict].Statistics)
-			}
+		if destNode != nil && destNode.Children[conflict] != nil {
+			destChild = util.Pointer(util.NewPair(dest.First, destNode.Children[conflict].ID))
+			destVersion = &destNode.Children[conflict].Version
+			statistics = nodestore.CloneStatsMap(destNode.Children[conflict].Statistics)
 		}
 
-		conflictedPairs := []util.Pair[TreeReader, nodestore.NodeID]{}
-		maxVersion := uint64(0)
-
-		for i, pair := range inputs {
-			node := nodes[i]
-			child := node.Children[conflict]
-			if child == nil {
-				continue
-			}
-			if child.Version > maxVersion {
-				maxVersion = child.Version
-			}
-
-			// If this child is a tombstone, clear the statistics and history
-			// and keep going forward. This could represent a delete followed by
-			// inserts.
-			if child.IsTombstone() {
-				conflictedPairs = conflictedPairs[:0]
-				clear(statistics)
-				continue
-			}
-			conflictedPairs = append(
-				conflictedPairs,
-				util.NewPair(pair.First, child.ID),
-			)
-		}
+		_, conflictedPairs := buildConflictedPairs(
+			conflict, inputs, innerNodes, statistics)
 
 		if len(conflictedPairs) > 0 {
-			// incorporates statistics from the destination
-			var mergedID nodestore.NodeID
-			var mergedStats map[string]*nodestore.Statistics
-			if newNode.Height > 1 {
-				mergedID, mergedStats, err = mergeInnerNode(ctx, cw, version, destChild, conflictedPairs)
-				if err != nil {
-					if errors.Is(err, errElideNode) {
-						continue
-					}
-					return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge nodes: %w", err)
-				}
-			} else {
-				mergedID, mergedStats, err = leafMerge(
-					ctx, cw, version, destVersion, destChild, conflictedPairs,
-				)
-				if err != nil {
-					if errors.Is(err, errElideNode) {
-						continue
-					}
-					return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge nodes: %w", err)
-				}
-				if destNode != nil && destNode.Children[conflict] != nil {
-					mergedStats, err = nodestore.MergeStatsMaps(mergedStats, destNode.Children[conflict].Statistics)
-					if err != nil {
-						return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge stats: %w", err)
-					}
-				}
+			var destConflict *nodestore.Child
+			if destChild != nil {
+				destConflict = destNode.Children[conflict]
 			}
-
+			mergedID, mergedStats, err := mergeConflictedPairs(
+				ctx, newNode, cw, version, destVersion, destChild, destConflict, conflictedPairs,
+			)
+			if err != nil {
+				if errors.Is(err, errElideNode) {
+					continue
+				}
+				return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge nodes: %w", err)
+			}
 			newNode.Children[conflict] = &nodestore.Child{
 				ID:         mergedID,
 				Version:    version,
 				Statistics: mergedStats,
 			}
-		} else {
-			// If the final input was a tombstone, we need to blank any
-			// inherited from the destination. However, we still include the
-			// statistics. This is inaccurate behavior that we may want to
-			// revise at some point, but revising it requires retraversal of
-			// underlying data.
-			if newNode.Children[conflict] != nil {
-				stats := newNode.Children[conflict].Statistics
-				aggregateStats, err = nodestore.MergeStatsMaps(aggregateStats, stats)
-				if err != nil {
-					return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge stats: %w", err)
-				}
-				newNode.Children[conflict] = nil
+			continue
+		}
+		// If the final input was a tombstone, we need to blank any
+		// inherited from the destination. However, we still include the
+		// statistics. This is inaccurate behavior that we may want to
+		// revise at some point, but revising it requires retraversal of
+		// underlying data.
+		if newNode.Children[conflict] != nil {
+			stats := newNode.Children[conflict].Statistics
+			outputStats, err = nodestore.MergeStatsMaps(outputStats, stats)
+			if err != nil {
+				return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge stats: %w", err)
 			}
+			newNode.Children[conflict] = nil
 		}
 	}
 
@@ -438,7 +343,7 @@ func mergeInnerNode( // nolint: funlen
 		if child == nil {
 			continue
 		}
-		aggregateStats, err = nodestore.MergeStatsMaps(aggregateStats, child.Statistics)
+		outputStats, err = nodestore.MergeStatsMaps(outputStats, child.Statistics)
 		if err != nil {
 			return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge stats: %w", err)
 		}
@@ -452,5 +357,85 @@ func mergeInnerNode( // nolint: funlen
 		return nodestore.NodeID{}, nil, fmt.Errorf("failed to serialize inner node: %w", err)
 	}
 
-	return nodestore.NewNodeID(version, offset, uint64(len(data))), aggregateStats, nil
+	return nodestore.NewNodeID(version, offset, uint64(len(data))), outputStats, nil
+}
+
+func mergeConflictedPairs(
+	ctx context.Context,
+	newNode *nodestore.InnerNode,
+	cw *util.CountingWriter,
+	version uint64,
+	destVersion *uint64,
+	dest *util.Pair[TreeReader, nodestore.NodeID],
+	destChild *nodestore.Child,
+	conflictedPairs []util.Pair[TreeReader, nodestore.NodeID],
+) (nodestore.NodeID, map[string]*nodestore.Statistics, error) {
+	var mergedStats map[string]*nodestore.Statistics
+	if newNode.Height > 1 {
+		return mergeInnerNode(ctx, cw, version, dest, conflictedPairs)
+	}
+	mergedID, mergedStats, err := leafMerge(
+		ctx, cw, version, destVersion, dest, conflictedPairs,
+	)
+	if err != nil {
+		return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge nodes: %w", err)
+	}
+	if destChild != nil {
+		mergedStats, err = nodestore.MergeStatsMaps(mergedStats, destChild.Statistics)
+		if err != nil {
+			return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge stats: %w", err)
+		}
+	}
+
+	return mergedID, mergedStats, nil
+}
+
+func buildConflictedPairs(
+	conflict int,
+	inputs []util.Pair[TreeReader, nodestore.NodeID],
+	nodes []*nodestore.InnerNode,
+	statistics map[string]*nodestore.Statistics,
+) (uint64, []util.Pair[TreeReader, nodestore.NodeID]) {
+	conflictedPairs := []util.Pair[TreeReader, nodestore.NodeID]{}
+	var maxVersion uint64
+	for i, pair := range inputs {
+		node := nodes[i]
+		child := node.Children[conflict]
+		if child == nil {
+			continue
+		}
+		maxVersion = max(maxVersion, child.Version)
+
+		// If this child is a tombstone, clear the statistics and history
+		// and keep going forward. This could represent a delete followed by
+		// inserts.
+		if child.IsTombstone() {
+			conflictedPairs = conflictedPairs[:0]
+			clear(statistics)
+			continue
+		}
+		conflictedPairs = append(
+			conflictedPairs,
+			util.NewPair(pair.First, child.ID),
+		)
+	}
+	return maxVersion, conflictedPairs
+}
+
+func isConflicted(child *nodestore.Child, i int) func(*nodestore.InnerNode) bool {
+	return func(sibling *nodestore.InnerNode) bool {
+		cousin := sibling.Children[i]
+		return child == nil && cousin != nil ||
+			child != nil && cousin == nil ||
+			child != nil && cousin != nil
+	}
+}
+
+func order(nodes []*nodestore.InnerNode, conflict int) func(i, j int) bool {
+	return func(i, j int) bool {
+		if nodes[i].Children[conflict] == nil || nodes[j].Children[conflict] == nil {
+			return false
+		}
+		return nodes[i].Children[conflict].Version < nodes[j].Children[conflict].Version
+	}
 }

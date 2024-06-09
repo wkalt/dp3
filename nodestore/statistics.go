@@ -420,7 +420,9 @@ func MergeStatsMaps(a map[string]*Statistics, b map[string]*Statistics) (map[str
 	for k, v := range b {
 		if _, ok := a[k]; ok {
 			left := a[k].Clone()
-			left.Add(v)
+			if err := left.Add(v); err != nil {
+				return nil, fmt.Errorf("failed to add statistics: %w", err)
+			}
 			m[k] = left
 		} else {
 			m[k] = v.Clone()

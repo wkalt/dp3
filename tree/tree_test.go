@@ -305,6 +305,7 @@ func removeSpace(s string) string {
 	return s
 }
 
+// nolint: dupl
 func TestStatRange(t *testing.T) {
 	ctx := context.Background()
 	testhash := "1ba234e59378bc656d587c45c4191bfc24c2c657e871f148faa552350738c470"

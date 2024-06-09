@@ -1,6 +1,10 @@
 package util_test
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
 	"os"
 	"testing"
 
@@ -170,5 +174,110 @@ func TestEnsureDirectoryExists(t *testing.T) {
 		require.NoError(t, util.EnsureDirectoryExists(tmpdir+subdir))
 		_, err = os.Stat(tmpdir + subdir)
 		require.NoError(t, err)
+	})
+}
+
+func TestFilter(t *testing.T) {
+	isEven := func(a int) bool { return a%2 == 0 }
+	cases := []struct {
+		assertion string
+		input     []int
+		expected  []int
+	}{
+		{"empty", []int{}, []int{}},
+		{"single", []int{1}, []int{}},
+		{"multiple", []int{1, 2, 3, 4, 5}, []int{2, 4}},
+	}
+	for _, c := range cases {
+		require.Equal(t, c.expected, util.Filter(isEven, c.input), c.assertion)
+	}
+}
+
+func TestRunPipe(t *testing.T) {
+	t.Run("write and read", func(t *testing.T) {
+		wfunc := func(ctx context.Context, w io.Writer) error {
+			if _, err := w.Write([]byte("hello")); err != nil {
+				return fmt.Errorf("failed to write: %w", err)
+			}
+			return nil
+		}
+		buf := make([]byte, 5)
+		rfunc := func(ctx context.Context, r io.Reader) error {
+			if _, err := io.ReadFull(r, buf); err != nil {
+				return fmt.Errorf("failed to read: %w", err)
+			}
+			return nil
+		}
+
+		ctx := context.Background()
+		require.NoError(t, util.RunPipe(ctx, wfunc, rfunc))
+		assert.Equal(t, "hello", string(buf))
+	})
+	t.Run("write error", func(t *testing.T) {
+		wfunc := func(ctx context.Context, w io.Writer) error {
+			return io.ErrClosedPipe
+		}
+		rfunc := func(ctx context.Context, r io.Reader) error {
+			return nil
+		}
+		ctx := context.Background()
+		require.ErrorIs(t, util.RunPipe(ctx, wfunc, rfunc), io.ErrClosedPipe)
+	})
+	t.Run("read error", func(t *testing.T) {
+		wfunc := func(ctx context.Context, w io.Writer) error {
+			if _, err := w.Write([]byte("hello")); err != nil {
+				return fmt.Errorf("failed to write: %w", err)
+			}
+			return nil
+		}
+		rfunc := func(ctx context.Context, r io.Reader) error {
+			return io.ErrClosedPipe
+		}
+		ctx := context.Background()
+		require.ErrorIs(t, util.RunPipe(ctx, wfunc, rfunc), io.ErrClosedPipe)
+	})
+}
+
+type closer struct {
+	closeFunc func() error
+}
+
+func (c *closer) Close() error {
+	return c.closeFunc()
+}
+
+func TestCloseAll(t *testing.T) {
+	t.Run("no errors", func(t *testing.T) {
+		c1 := closer{func() error { return nil }}
+		c2 := closer{func() error { return nil }}
+		require.NoError(t, util.CloseAll(&c1, &c2))
+	})
+	t.Run("error", func(t *testing.T) {
+		c1 := closer{func() error { return nil }}
+		c2 := closer{func() error { return errors.New("failed to close") }}
+		require.Error(t, util.CloseAll(&c1, &c2))
+	})
+}
+
+type contextCloser struct {
+	closeFunc func(ctx context.Context) error
+}
+
+func (c *contextCloser) Close(ctx context.Context) error {
+	return c.closeFunc(ctx)
+}
+
+func TestCloseAllContext(t *testing.T) {
+	t.Run("no errors", func(t *testing.T) {
+		c1 := contextCloser{func(context.Context) error { return nil }}
+		c2 := contextCloser{func(context.Context) error { return nil }}
+		ctx := context.Background()
+		require.NoError(t, util.CloseAllContext(ctx, &c1, &c2))
+	})
+	t.Run("error", func(t *testing.T) {
+		c1 := contextCloser{func(context.Context) error { return nil }}
+		c2 := contextCloser{func(context.Context) error { return errors.New("failed to close") }}
+		ctx := context.Background()
+		require.Error(t, util.CloseAllContext(ctx, &c1, &c2))
 	})
 }

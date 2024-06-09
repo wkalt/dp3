@@ -1,6 +1,8 @@
 package util_test
 
 import (
+	"bytes"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -83,4 +85,43 @@ func TestReadPrefixedString(t *testing.T) {
 	n := util.ReadPrefixedString([]byte{0x04, 0x00, 0x00, 0x00, 't', 'e', 's', 't'}, &s)
 	require.Equal(t, 8, n)
 	require.Equal(t, "test", s)
+}
+
+func TestDecodeU32(t *testing.T) {
+	t.Run("successful decode", func(t *testing.T) {
+		x := uint32(500e6)
+		dst := make([]byte, 4)
+		_ = util.U32(dst, x)
+		n, err := util.DecodeU32(bytes.NewReader(dst))
+		require.NoError(t, err)
+		require.Equal(t, x, n)
+	})
+	t.Run("short buffer", func(t *testing.T) {
+		dst := make([]byte, 3)
+		_, err := util.DecodeU32(bytes.NewReader(dst))
+		require.Error(t, err)
+	})
+}
+
+func TestDecodePrefixedString(t *testing.T) {
+	t.Run("successful decode", func(t *testing.T) {
+		s := "hello"
+		dst := make([]byte, 4+len(s))
+		_ = util.WritePrefixedString(dst, s)
+		output, err := util.DecodePrefixedString(bytes.NewReader(dst))
+		require.NoError(t, err)
+		require.Equal(t, s, output)
+	})
+	t.Run("short buffer", func(t *testing.T) {
+		dst := make([]byte, 3)
+		_, err := util.DecodePrefixedString(bytes.NewReader(dst))
+		require.Error(t, err)
+	})
+	t.Run("incorrect length", func(t *testing.T) {
+		s := "world"
+		dst := make([]byte, 4+len(s))
+		_ = util.WritePrefixedString(dst, s)
+		_, err := util.DecodePrefixedString(bytes.NewReader(dst[:len(dst)-1]))
+		require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+	})
 }

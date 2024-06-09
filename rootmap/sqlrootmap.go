@@ -440,7 +440,7 @@ func (rm *sqlRootmap) Databases(ctx context.Context) ([]string, error) {
 		return nil, fmt.Errorf("failed to read from tables: %w", err)
 	}
 	defer rows.Close()
-	var databases []string
+	databases := []string{}
 	for rows.Next() {
 		var database string
 		if err := rows.Scan(&database); err != nil {
@@ -464,7 +464,7 @@ func (rm *sqlRootmap) Producers(
 		return nil, fmt.Errorf("failed to read from tables: %w", err)
 	}
 	defer rows.Close()
-	var producers []string
+	producers := []string{}
 	for rows.Next() {
 		var producer string
 		if err := rows.Scan(&producer); err != nil {
@@ -487,7 +487,7 @@ func (rm *sqlRootmap) Topics(ctx context.Context, database string) ([]string, er
 		return nil, fmt.Errorf("failed to read from tables: %w", err)
 	}
 	defer rows.Close()
-	var topics []string
+	topics := []string{}
 	for rows.Next() {
 		var topic string
 		if err := rows.Scan(&topic); err != nil {

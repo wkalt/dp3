@@ -1,9 +1,10 @@
-package mcap
+package mcap_test
 
 import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/wkalt/dp3/mcap"
 )
 
 func TestMergeFilterIterator(t *testing.T) {
@@ -80,16 +81,16 @@ func TestMergeFilterIterator(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
-			var filter MessageIterator
+			var filter mcap.MessageIterator
 			if len(c.filter) > 0 {
-				filter = NewMockIterator("topic", c.filter)
+				filter = mcap.NewMockIterator("topic", c.filter)
 			}
 
-			var inputs []MessageIterator
+			var inputs []mcap.MessageIterator
 			for _, input := range c.inputs {
-				inputs = append(inputs, NewMockIterator("topic", input))
+				inputs = append(inputs, mcap.NewMockIterator("topic", input))
 			}
-			iter, err := NewNmergeFilterIterator(filter, inputs...)
+			iter, err := mcap.NewNmergeFilterIterator(filter, inputs...)
 			require.NoError(t, err)
 
 			var actual [][]int
