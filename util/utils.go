@@ -176,15 +176,15 @@ func RunPipe(
 		}
 		done <- struct{}{}
 	}()
-	err := wf(ctx, w)
-	if err != nil {
+	if err := wf(ctx, w); err != nil {
+		<-done
 		return err
 	}
-	if err := w.Close(); err != nil {
-		<-done
+	err := w.Close()
+	<-done
+	if err != nil {
 		return fmt.Errorf("failed to close pipe writer: %w", err)
 	}
-	<-done
 	return nil
 }
 
