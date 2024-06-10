@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/util"
 )
 
@@ -100,16 +99,6 @@ func (n *LeafNode) FromBytes(data []byte) error {
 	offset += util.ReadU64(data[offset:], &n.ancestorDeleteEnd)
 	n.data = data[offset:]
 	return nil
-}
-
-// Merge merges the given data with the node's data and returns a new leaf node.
-func (n *LeafNode) Merge(data []byte) (*LeafNode, error) {
-	buf := &bytes.Buffer{}
-	err := mcap.Merge(buf, bytes.NewReader(n.data), bytes.NewReader(data))
-	if err != nil {
-		return nil, fmt.Errorf("failed to merge leaf node: %w", err)
-	}
-	return NewLeafNode(buf.Bytes(), &n.ancestor, &n.ancestorVersion), nil
 }
 
 // Data returns the data of the node.

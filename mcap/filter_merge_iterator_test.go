@@ -90,7 +90,7 @@ func TestMergeFilterIterator(t *testing.T) {
 			for _, input := range c.inputs {
 				inputs = append(inputs, mcap.NewMockIterator("topic", input))
 			}
-			iter, err := mcap.NewNmergeFilterIterator(filter, inputs...)
+			iter, err := mcap.NewFilterMergeIterator(filter, inputs...)
 			require.NoError(t, err)
 
 			var actual [][]int

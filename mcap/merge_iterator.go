@@ -40,12 +40,7 @@ func (mi *mergeIterator) remap(
 			newSchema = mi.schemas[mapped]
 		} else {
 			schemaID := mi.nextSchemaID
-			newSchema = &mcap.Schema{
-				ID:       schemaID,
-				Name:     schema.Name,
-				Encoding: schema.Encoding,
-				Data:     schema.Data,
-			}
+			newSchema = NewSchema(schemaID, schema.Name, schema.Encoding, schema.Data)
 			mi.schemas[schemaKey] = schema
 			mi.schemaHashes[schemaHash] = schemaKey
 			mi.nextSchemaID++

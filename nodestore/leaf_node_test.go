@@ -44,25 +44,6 @@ func TestLeafNode(t *testing.T) {
 		data := append([]byte{1}, buf.Bytes()...)
 		require.Error(t, node.FromBytes(data))
 	})
-	t.Run("merging leaf nodes", func(t *testing.T) {
-		buf1 := &bytes.Buffer{}
-		mcap.WriteFile(t, buf1, []int64{1, 2, 10})
-		node1 := nodestore.NewLeafNode(buf1.Bytes(), nil, nil)
-		buf2 := &bytes.Buffer{}
-		mcap.WriteFile(t, buf2, []int64{4, 5, 6})
-		node2, err := node1.Merge(buf2.Bytes())
-		require.NoError(t, err)
-		assert.Equal(t, []uint64{1, 2, 4, 5, 6, 10}, mcap.ReadFile(t, node2.Data()))
-	})
-	t.Run("merging garbage", func(t *testing.T) {
-		buf1 := &bytes.Buffer{}
-		mcap.WriteFile(t, buf1, []int64{1, 2, 10})
-		node1 := nodestore.NewLeafNode(buf1.Bytes(), nil, nil)
-		buf2 := &bytes.Buffer{}
-		mcap.WriteFile(t, buf2, []int64{4, 5, 6})
-		_, err := node1.Merge([]byte{0, 1, 2, 3, 4})
-		require.Error(t, err)
-	})
 	t.Run("type", func(t *testing.T) {
 		node := nodestore.NewLeafNode([]byte{}, nil, nil)
 		assert.Equal(t, nodestore.Leaf, node.Type())

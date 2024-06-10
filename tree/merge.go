@@ -187,7 +187,7 @@ func leafMerge(
 		return nodestore.NodeID{}, nil, fmt.Errorf("failed to write leaf header: %w", err)
 	}
 
-	if err = mcap.NFilterMerge(cw, callback, mask, iterators...); err != nil {
+	if err = mcap.FilterMerge(cw, callback, mask, iterators...); err != nil {
 		return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge leaf iterators: %w", err)
 	}
 

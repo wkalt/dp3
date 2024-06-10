@@ -56,3 +56,30 @@ func WriteEmptyFile(w io.Writer) error {
 	}
 	return nil
 }
+
+// NewSchema returns a new mcap schema.
+func NewSchema(id uint16, name string, encoding string, data []byte) *mcap.Schema {
+	return &mcap.Schema{
+		ID:       id,
+		Name:     name,
+		Encoding: encoding,
+		Data:     data,
+	}
+}
+
+// NewChannel returns a new mcap channel.
+func NewChannel(
+	id uint16,
+	schemaID uint16,
+	topic string,
+	messageEncoding string,
+	metadata map[string]string,
+) *mcap.Channel {
+	return &mcap.Channel{
+		ID:              id,
+		SchemaID:        schemaID,
+		Topic:           topic,
+		MessageEncoding: messageEncoding,
+		Metadata:        metadata,
+	}
+}

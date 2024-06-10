@@ -33,15 +33,8 @@ func (mi *mockIterator) Next([]byte) (
 
 func NewMockIterator(topic string, times [][]int) MessageIterator {
 	return &mockIterator{
-		schema: &mcap.Schema{
-			ID:   1,
-			Name: topic + "_schema",
-		},
-		channel: &mcap.Channel{
-			ID:       0,
-			SchemaID: 1,
-			Topic:    topic,
-		},
-		times: times,
+		schema:  NewSchema(1, topic+"_schema", "", nil),
+		channel: NewChannel(0, 1, topic, "", nil),
+		times:   times,
 	}
 }

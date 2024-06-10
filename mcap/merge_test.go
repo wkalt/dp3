@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"testing"
 
@@ -22,8 +21,6 @@ func TestMerge(t *testing.T) {
 
 	mcap.WriteFile(t, buf1, []int64{0, 1, 20, 30})
 	mcap.WriteFile(t, buf2, []int64{10, 11, 22, 35})
-
-	require.NoError(t, os.WriteFile("a.mcap", buf1.Bytes(), 0600))
 
 	buf3 := &bytes.Buffer{}
 	require.NoError(t, mcap.Merge(buf3, buf1, buf2))

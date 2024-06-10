@@ -68,18 +68,12 @@ func TestMCAPToJSON(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, writer.WriteHeader(&fmcap.Header{}))
-	require.NoError(t, writer.WriteSchema(&fmcap.Schema{
-		ID:       1,
-		Name:     "test/test",
-		Encoding: "ros1msg",
-		Data:     []byte(msgdef),
-	}))
-	require.NoError(t, writer.WriteChannel(&fmcap.Channel{
-		ID:              0,
-		SchemaID:        1,
-		Topic:           "/foo",
-		MessageEncoding: "ros1msg",
-	}))
+	require.NoError(t, writer.WriteSchema(
+		mcap.NewSchema(1, "test/test", "ros1msg", []byte(msgdef)),
+	))
+	require.NoError(t, writer.WriteChannel(
+		mcap.NewChannel(0, 1, "/foo", "ros1msg", nil),
+	))
 	require.NoError(t, writer.WriteMessage(&fmcap.Message{
 		ChannelID: 0,
 		Data:      data,

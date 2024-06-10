@@ -88,11 +88,8 @@ func WriteFile(t *testing.T, w io.Writer, timestampsets ...[]int64) {
 		`),
 	}))
 	for i := range timestampsets {
-		require.NoError(t, writer.WriteChannel(&mcap.Channel{
-			ID:       uint16(i),
-			SchemaID: 1,
-			Topic:    fmt.Sprintf("topic-%d", i),
-		}))
+		channel := NewChannel(uint16(i), 1, fmt.Sprintf("topic-%d", i), "ros1msg", nil)
+		require.NoError(t, writer.WriteChannel(channel))
 	}
 	for chanID, timestamps := range timestampsets {
 		for _, ts := range timestamps {
