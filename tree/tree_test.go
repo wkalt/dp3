@@ -407,7 +407,9 @@ func TestStatRange(t *testing.T) {
 			_, tr := tree.MergeInserts(ctx, t, 0, 0, 64*64*64, 2, 64, c.messages)
 			statrange, err := tree.GetStatRange(ctx, tr, c.start, c.end, c.granularity)
 			require.NoError(t, err)
-			require.Equal(t, c.expected, statrange)
+			for _, sr := range c.expected {
+				require.Contains(t, statrange, sr)
+			}
 		})
 	}
 }

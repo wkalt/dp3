@@ -50,15 +50,17 @@ func newChild(t *testing.T, configs ...statconfig) *nodestore.Child {
 			})
 		switch fieldmin := fieldmin.(type) {
 		case int:
-			statistics.NumStats[idx] = &nodestore.NumericalSummary{
-				Min: float64(fieldmin),
-				Max: float64(fieldmax.(int)),
-			}
+			summary, err := nodestore.NewNumericalSummary()
+			require.NoError(t, err)
+			require.NoError(t, summary.Observe(float64(fieldmin)))
+			require.NoError(t, summary.Observe(float64(fieldmax.(int))))
+			statistics.NumStats[idx] = summary
 		case float64:
-			statistics.NumStats[idx] = &nodestore.NumericalSummary{
-				Min: fieldmin,
-				Max: fieldmax.(float64),
-			}
+			summary, err := nodestore.NewNumericalSummary()
+			require.NoError(t, err)
+			require.NoError(t, summary.Observe(fieldmin))
+			require.NoError(t, summary.Observe(fieldmax.(float64)))
+			statistics.NumStats[idx] = summary
 		case string:
 			signature := trigram.NewSignature(12)
 			signature.AddString(fieldmin)

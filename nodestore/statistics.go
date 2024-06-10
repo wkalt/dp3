@@ -1,9 +1,12 @@
 package nodestore
 
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 
+	"github.com/DataDog/sketches-go/ddsketch"
+	"github.com/DataDog/sketches-go/ddsketch/store"
 	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/schema"
@@ -33,71 +36,134 @@ const (
 	Text  StatType = "text"
 )
 
-// NumericalSummary is a statistical summary of a field.
-type NumericalSummary struct {
-	Min   float64 `json:"min"`
-	Max   float64 `json:"max"`
-	Mean  float64 `json:"mean"`
-	Sum   float64 `json:"sum"`
-	Count float64 `json:"count"`
+type dsketch struct {
+	*ddsketch.DDSketch
 }
 
-func (n *NumericalSummary) Merge(other *NumericalSummary) {
+func (d dsketch) MarshalJSON() ([]byte, error) {
+	buf := []byte{}
+	d.Encode(&buf, false)
+	data, err := json.Marshal(buf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal buffer: %w", err)
+	}
+	return data, nil
+}
+
+func (d *dsketch) UnmarshalJSON(data []byte) error {
+	var buf []byte
+	if err := json.Unmarshal(data, &buf); err != nil {
+		return fmt.Errorf("failed to unmarshal buffer: %w", err)
+	}
+	sketch, err := ddsketch.DecodeDDSketch(buf, store.BufferedPaginatedStoreConstructor, nil)
+	if err != nil {
+		return fmt.Errorf("failed to decode ddsketch: %w", err)
+	}
+	d.DDSketch = sketch
+	return nil
+}
+
+// NumericalSummary is a statistical summary of a field.
+type NumericalSummary struct {
+	Min      float64 `json:"min"`
+	Max      float64 `json:"max"`
+	Mean     float64 `json:"mean"`
+	Sum      float64 `json:"sum"`
+	Count    float64 `json:"count"`
+	DDSketch dsketch `json:"ddsketch"`
+}
+
+func (n *NumericalSummary) Observe(v float64) error {
+	// skip NaN and inf values. We may need to revisit this with something
+	// smarter.
+	if math.IsNaN(v) || math.IsInf(v, 0) {
+		return nil
+	}
+	if v < n.Min {
+		n.Min = v
+	}
+	if v > n.Max {
+		n.Max = v
+	}
+	n.Count++
+	n.Sum += v
+	n.Mean = n.Sum / n.Count
+	if err := n.DDSketch.Add(v); err != nil {
+		return fmt.Errorf("failed to add value to ddsketch: %w", err)
+	}
+	return nil
+}
+
+func NewNumericalSummary() (*NumericalSummary, error) {
+	sketch, err := ddsketch.NewDefaultDDSketch(0.01)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create ddsketch: %w", err)
+	}
+	return &NumericalSummary{
+		Min:      math.MaxFloat64,
+		Max:      -math.MaxFloat64,
+		Mean:     0,
+		Sum:      0,
+		Count:    0,
+		DDSketch: dsketch{sketch},
+	}, nil
+}
+
+func (n *NumericalSummary) Merge(other *NumericalSummary) error {
 	n.Min = min(n.Min, other.Min)
 	n.Max = max(n.Max, other.Max)
 	n.Sum += other.Sum
 	n.Count += other.Count
 	n.Mean = n.Sum / n.Count
+	if err := n.DDSketch.MergeWith(other.DDSketch.DDSketch); err != nil {
+		return fmt.Errorf("failed to merge ddsketch: %w", err)
+	}
+	return nil
 }
 
-func (n *NumericalSummary) ranges(field string, start, end uint64, schemaHash string) []StatRange {
-	return []StatRange{
-		{
-			Start:      start,
-			End:        end,
-			Type:       Float,
-			Name:       "mean",
-			SchemaHash: schemaHash,
-			Field:      field,
-			Value:      n.Mean,
-		},
-		{
-			Start:      start,
-			End:        end,
-			Type:       Float,
-			Name:       "min",
-			SchemaHash: schemaHash,
-			Field:      field,
-			Value:      n.Min,
-		},
-		{
-			Start:      start,
-			End:        end,
-			Type:       Float,
-			Name:       "max",
-			SchemaHash: schemaHash,
-			Field:      field,
-			Value:      n.Max,
-		},
-		{
-			Start:      start,
-			End:        end,
-			Type:       Float,
-			Name:       "sum",
-			SchemaHash: schemaHash,
-			Field:      field,
-			Value:      n.Sum,
-		},
-		{
-			Start:      start,
-			End:        end,
-			Type:       Float,
-			Name:       "count",
-			SchemaHash: schemaHash,
-			Field:      field,
-			Value:      n.Count,
-		},
+func newStatRange(
+	start, end uint64,
+	typ StatType,
+	field, name, schemaHash string,
+	value any,
+) StatRange {
+	return StatRange{
+		Start:      start,
+		End:        end,
+		Type:       typ,
+		Field:      field,
+		Name:       name,
+		SchemaHash: schemaHash,
+		Value:      value,
 	}
+}
+
+func (n *NumericalSummary) ranges(
+	field string,
+	start,
+	end uint64,
+	schemaHash string,
+) ([]StatRange, error) {
+	qs := []float64{
+		0.25, 0.5, 0.75, 0.9, 0.95, 0.99,
+	}
+	quantiles, err := n.DDSketch.GetValuesAtQuantiles(qs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get quantiles: %w", err)
+	}
+	return []StatRange{
+		newStatRange(start, end, Float, field, "P25", schemaHash, quantiles[0]),
+		newStatRange(start, end, Float, field, "P50", schemaHash, quantiles[1]),
+		newStatRange(start, end, Float, field, "P75", schemaHash, quantiles[2]),
+		newStatRange(start, end, Float, field, "P90", schemaHash, quantiles[3]),
+		newStatRange(start, end, Float, field, "P95", schemaHash, quantiles[4]),
+		newStatRange(start, end, Float, field, "P99", schemaHash, quantiles[5]),
+		newStatRange(start, end, Float, field, "mean", schemaHash, n.Mean),
+		newStatRange(start, end, Float, field, "min", schemaHash, n.Min),
+		newStatRange(start, end, Float, field, "max", schemaHash, n.Max),
+		newStatRange(start, end, Float, field, "sum", schemaHash, n.Sum),
+		newStatRange(start, end, Float, field, "count", schemaHash, n.Count),
+	}, nil
 }
 
 // TextSummary is a statistical summary of a text field.
@@ -184,11 +250,15 @@ type Statistics struct {
 
 // Ranges converts a statistics object into an array of StatRange objects,
 // suitable for returning to a user.
-func (s *Statistics) Ranges(start, end uint64, schemaHash string) []StatRange {
+func (s *Statistics) Ranges(start, end uint64, schemaHash string) ([]StatRange, error) {
 	ranges := make([]StatRange, 0, len(s.NumStats)+len(s.TextStats))
 	for i, field := range s.Fields {
 		if numstat, ok := s.NumStats[i]; ok {
-			ranges = append(ranges, numstat.ranges(field.Name, start, end, schemaHash)...)
+			numranges, err := numstat.ranges(field.Name, start, end, schemaHash)
+			if err != nil {
+				return nil, err
+			}
+			ranges = append(ranges, numranges...)
 			continue
 		}
 		if textstat, ok := s.TextStats[i]; ok {
@@ -196,70 +266,27 @@ func (s *Statistics) Ranges(start, end uint64, schemaHash string) []StatRange {
 		}
 	}
 	ranges = append(ranges, []StatRange{
-		{
-			Start:      start,
-			End:        end,
-			Type:       Int,
-			Field:      "",
-			SchemaHash: schemaHash,
-			Name:       "messageCount",
-			Value:      s.MessageCount,
-		},
-		{
-			Start:      start,
-			End:        end,
-			Type:       Int,
-			Field:      "",
-			SchemaHash: schemaHash,
-			Name:       "bytesUncompressed",
-			Value:      s.BytesUncompressed,
-		},
-		{
-			Start:      start,
-			End:        end,
-			Type:       Int,
-			Field:      "",
-			SchemaHash: schemaHash,
-			Name:       "minObservedTime",
-			Value:      s.MinObservedTime,
-		},
-		{
-			Start:      start,
-			End:        end,
-			Type:       Int,
-			Field:      "",
-			SchemaHash: schemaHash,
-			Name:       "maxObservedTime",
-			Value:      s.MaxObservedTime,
-		},
+		newStatRange(start, end, Int, "", "messageCount", schemaHash, s.MessageCount),
+		newStatRange(start, end, Int, "", "bytesUncompressed", schemaHash, s.BytesUncompressed),
+		newStatRange(start, end, Int, "", "minObservedTime", schemaHash, s.MinObservedTime),
+		newStatRange(start, end, Int, "", "maxObservedTime", schemaHash, s.MaxObservedTime),
 	}...)
-	return ranges
+	return ranges, nil
 }
 
-func (s *Statistics) observeNumeric(idx int, v float64) {
-	// if we get a NaN or an inf, skip it but still create a summary.
-	if math.IsNaN(v) || math.IsInf(v, 0) {
-		if _, ok := s.NumStats[idx]; !ok {
-			s.NumStats[idx] = &NumericalSummary{}
-		}
-		return
-	}
-
+func (s *Statistics) observeNumeric(idx int, v float64) (err error) {
 	summary, ok := s.NumStats[idx]
 	if !ok {
-		summary = &NumericalSummary{Min: v, Max: v, Mean: v, Sum: v, Count: 1}
+		summary, err = NewNumericalSummary()
+		if err != nil {
+			return err
+		}
 		s.NumStats[idx] = summary
-	} else {
-		if v < summary.Min {
-			summary.Min = v
-		}
-		if v > summary.Max {
-			summary.Max = v
-		}
-		summary.Count++
-		summary.Sum += v
-		summary.Mean = summary.Sum / summary.Count
 	}
+	if err := summary.Observe(v); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (s *Statistics) observeText(idx int, v string) {
@@ -319,7 +346,9 @@ func (s *Statistics) ObserveMessage(message *fmcap.Message, values []any) error 
 			if err != nil {
 				return fmt.Errorf("failed to convert value to float: %w", err)
 			}
-			s.observeNumeric(i, v)
+			if err := s.observeNumeric(i, v); err != nil {
+				return fmt.Errorf("failed to observe numeric value: %w", err)
+			}
 		case schema.STRING:
 			v, ok := value.(string)
 			if !ok {

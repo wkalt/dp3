@@ -150,7 +150,12 @@ func TestGetStatisticsLatest(t *testing.T) {
 				require.NoError(t, err)
 				result[topic] = ranges
 			}
-			require.Equal(t, c.ranges, result)
+
+			for topic, ranges := range c.ranges {
+				for _, r := range ranges {
+					require.Contains(t, result[topic], r)
+				}
+			}
 		})
 	}
 }

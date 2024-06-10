@@ -13,7 +13,7 @@ import (
 )
 
 func TestObserve(t *testing.T) {
-	t.Run("edge case floats do not disrupt stats", func(t *testing.T) {
+	t.Run("inf and nan floats do not affect stats", func(t *testing.T) {
 		cases := []struct {
 			assertion string
 			value     float64
@@ -29,11 +29,12 @@ func TestObserve(t *testing.T) {
 					Data: testutils.F64b(c.value),
 				}
 				require.NoError(t, s.ObserveMessage(msg, []any{c.value}))
-				require.Equal(t, 1, int(s.MessageCount))
-				require.Zero(t, s.NumStats[0].Mean)
-				require.Zero(t, s.NumStats[0].Sum)
-				require.Zero(t, s.NumStats[0].Min)
-				require.Zero(t, s.NumStats[0].Max)
+				require.NoError(t, s.ObserveMessage(msg, []any{100.0}))
+				require.Equal(t, 2, int(s.MessageCount))
+				require.InEpsilon(t, 100.0, s.NumStats[0].Mean, 0.001)
+				require.InEpsilon(t, 100.0, s.NumStats[0].Sum, 0.001)
+				require.InEpsilon(t, 100.0, s.NumStats[0].Min, 0.001)
+				require.InEpsilon(t, 100.0, s.NumStats[0].Max, 0.001)
 			})
 		}
 	})

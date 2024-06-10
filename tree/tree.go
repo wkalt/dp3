@@ -229,7 +229,11 @@ func GetStatRange(
 				inRange := child != nil && start <= childEnd && end > childStart
 				if inRange && granularEnough {
 					for schemaHash, statistics := range child.Statistics {
-						ranges = append(ranges, statistics.Ranges(childStart, childEnd, schemaHash)...)
+						statranges, err := statistics.Ranges(childStart, childEnd, schemaHash)
+						if err != nil {
+							return nil, fmt.Errorf("failed to get statistics ranges: %w", err)
+						}
+						ranges = append(ranges, statranges...)
 					}
 					continue
 				}

@@ -257,6 +257,7 @@ require (
 )
 
 require (
+	github.com/DataDog/sketches-go v1.4.5
 	github.com/bmatcuk/doublestar/v4 v4.6.1
 	github.com/chzyer/readline v1.5.1
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect

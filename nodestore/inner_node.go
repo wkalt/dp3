@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/wkalt/dp3/util"
@@ -49,15 +48,18 @@ type Child struct {
 var ErrNoStatsFound = errors.New("no statistics found")
 
 func (c *Child) GetNumStat(field string) (*NumericalSummary, error) {
-	s := &NumericalSummary{
-		Min: math.MaxFloat64,
+	s, err := NewNumericalSummary()
+	if err != nil {
+		return nil, err
 	}
 	var found bool
 	for _, stats := range c.Statistics {
 		for i, f := range stats.Fields {
 			if f.Name == field {
 				if numStats, ok := stats.NumStats[i]; ok {
-					s.Merge(numStats)
+					if err := s.Merge(numStats); err != nil {
+						return nil, err
+					}
 					found = true
 				}
 			}
