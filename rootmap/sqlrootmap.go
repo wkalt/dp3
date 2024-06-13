@@ -33,11 +33,9 @@ type sqlRootmap struct {
 func (rm *sqlRootmap) initialize(ctx context.Context) error {
 	rm.mtx.Lock()
 	defer rm.mtx.Unlock()
-
 	if err := Migrate(rm.db); err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
-
 	if _, err := rm.db.ExecContext(ctx, `
 	PRAGMA foreign_keys = ON;
 	`); err != nil {

@@ -120,7 +120,7 @@ func TestQueryExecution(t *testing.T) {
 				parser := ql.NewParser()
 				ast, err := parser.ParseString("", c.query)
 				require.NoError(t, err)
-				qp, err := plan.CompileQuery("db", *ast)
+				qp, err := plan.CompileQuery("db", *ast.Query)
 				require.NoError(t, err)
 
 				buf := &bytes.Buffer{}
@@ -165,7 +165,7 @@ func TestQueryExecution(t *testing.T) {
 				query := "from device t0 where t0.s " + query + ";"
 				ast, err := parser.ParseString("", query)
 				require.NoError(t, err)
-				qp, err := plan.CompileQuery("db", *ast)
+				qp, err := plan.CompileQuery("db", *ast.Query)
 				require.NoError(t, err)
 				actual, err := executor.CompilePlan(ctx, qp, tmgr.NewTreeIterator)
 				require.NoError(t, err)
@@ -220,7 +220,7 @@ func TestQueryExecution(t *testing.T) {
 					}
 					ast, err := parser.ParseString("", query)
 					require.NoError(t, err)
-					qp, err := plan.CompileQuery("db", *ast)
+					qp, err := plan.CompileQuery("db", *ast.Query)
 					require.NoError(t, err)
 					actual, err := executor.CompilePlan(ctx, qp, tmgr.NewTreeIterator)
 					require.NoError(t, err)
@@ -304,7 +304,7 @@ func TestCompilePlan(t *testing.T) {
 			ast, err := parser.ParseString("", c.query)
 			require.NoError(t, err)
 
-			qp, err := plan.CompileQuery("db", *ast)
+			qp, err := plan.CompileQuery("db", *ast.Query)
 			require.NoError(t, err)
 
 			actual, err := executor.CompilePlan(ctx, qp, tmgr.NewTreeIterator)

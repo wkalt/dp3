@@ -471,6 +471,94 @@ func TestBetween(t *testing.T) {
 	}
 }
 
+func TestStatement(t *testing.T) {
+	parser := participle.MustBuild[ql.Statement](ql.Options...)
+	cases := []struct {
+		assertion string
+		input     string
+		expected  ql.Statement
+	}{
+		{
+			"explain",
+			"explain from my-robot a;",
+			ql.Statement{
+				Query: util.Pointer(newQuery(true, nil, newSelect("a", "", nil, nil), nil, false, nil)),
+			},
+		},
+		{
+			"read query",
+			"from my-robot a;",
+			ql.Statement{
+				Query: util.Pointer(newQuery(false, nil, newSelect("a", "", nil, nil), nil, false, nil)),
+			},
+		},
+		{
+			"truncate",
+			"truncate my-robot /topic now;",
+			ql.Statement{
+				Truncate: &ql.Truncate{
+					Producer: "my-robot",
+					Topic:    "/topic",
+					Now:      true,
+				},
+			},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			ast, err := parser.ParseString("", c.input)
+			require.NoError(t, err)
+			require.Equal(t, c.expected, *ast)
+		})
+	}
+}
+
+func TestTruncate(t *testing.T) {
+	parser := participle.MustBuild[ql.Truncate](ql.Options...)
+	cases := []struct {
+		assertion string
+		input     string
+		expected  *ql.Truncate
+	}{
+		{
+			"truncate now",
+			"truncate foo /topic now",
+			&ql.Truncate{
+				Producer: "foo",
+				Topic:    "/topic",
+				Now:      true,
+			},
+		},
+		{
+			"truncate at time",
+			"truncate foo /topic 10",
+			&ql.Truncate{
+				Producer: "foo",
+				Topic:    "/topic",
+				Now:      false,
+				Time:     ql.Timestamp{Nanoseconds: util.Pointer(int64(10))},
+			},
+		},
+		{
+			"truncate at iso date",
+			"truncate foo /topic '2021-01-01'",
+			&ql.Truncate{
+				Producer: "foo",
+				Topic:    "/topic",
+				Now:      false,
+				Time:     ql.Timestamp{Datestring: util.Pointer("2021-01-01")},
+			},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			ast, err := parser.ParseString("", c.input)
+			require.NoError(t, err)
+			require.Equal(t, c.expected, ast)
+		})
+	}
+}
+
 func TestQuery(t *testing.T) {
 	parser := participle.MustBuild[ql.Query](ql.Options...)
 	cases := []struct {
@@ -480,27 +568,27 @@ func TestQuery(t *testing.T) {
 	}{
 		{
 			"simple",
-			"explain from my-robot a;",
+			"explain from my-robot a",
 			newQuery(true, nil, newSelect("a", "", nil, nil), nil, false, nil),
 		},
 		{
 			"simple",
-			"from my-robot a;",
+			"from my-robot a",
 			newQuery(false, nil, newSelect("a", "", nil, nil), nil, false, nil),
 		},
 		{
 			"with between",
-			`from my-robot between 'a' and 'b' a;`,
+			`from my-robot between 'a' and 'b' a`,
 			newQuery(false, newBetween("a", "b"), newSelect("a", "", nil, nil), nil, false, nil),
 		},
 		{
 			"with descending",
-			"from my-robot a desc;",
+			"from my-robot a desc",
 			newQuery(false, nil, newSelect("a", "", nil, nil), nil, true, nil),
 		},
 		{
 			"with where",
-			"from my-robot a where a = 10;",
+			"from my-robot a where a = 10",
 			newQuery(
 				false,
 				nil,
@@ -514,7 +602,7 @@ func TestQuery(t *testing.T) {
 		},
 		{
 			"with where and paging",
-			"from my-robot a where a = 10 limit 10 offset 10;",
+			"from my-robot a where a = 10 limit 10 offset 10",
 			newQuery(
 				false,
 				nil,
@@ -529,7 +617,7 @@ func TestQuery(t *testing.T) {
 		},
 		{
 			"with where and descending",
-			"from my-robot a where a = 10 desc;",
+			"from my-robot a where a = 10 desc",
 			newQuery(
 				false,
 				nil,
@@ -544,7 +632,7 @@ func TestQuery(t *testing.T) {
 		},
 		{
 			"with where, descending, and paging",
-			"from my-robot a where a = 10 desc limit 10 offset 10;",
+			"from my-robot a where a = 10 desc limit 10 offset 10",
 			newQuery(
 				false,
 				nil,
@@ -559,7 +647,7 @@ func TestQuery(t *testing.T) {
 		},
 		{
 			"with multiple where",
-			"from my-robot a where a = 10 and b = 20;",
+			"from my-robot a where a = 10 and b = 20",
 			newQuery(
 				false,
 				nil,
@@ -573,7 +661,7 @@ func TestQuery(t *testing.T) {
 		},
 		{
 			"merge join with where clauses",
-			"from my-robot a, b where a = 10 and b = 20;",
+			"from my-robot a, b where a = 10 and b = 20",
 			newQuery(
 				false,
 				nil,
@@ -588,7 +676,7 @@ func TestQuery(t *testing.T) {
 		},
 		{
 			"basic as-of join",
-			"from my-robot a precedes b by less than 10 seconds;",
+			"from my-robot a precedes b by less than 10 seconds",
 			newQuery(
 				false,
 				nil,
@@ -602,7 +690,7 @@ func TestQuery(t *testing.T) {
 		},
 		{
 			"as-of join without constraint",
-			"from my-robot a precedes b;",
+			"from my-robot a precedes b",
 			newQuery(
 				false,
 				nil,
@@ -614,7 +702,7 @@ func TestQuery(t *testing.T) {
 		},
 		{
 			"as-of join without constraint with limit and offset",
-			"from my-robot a precedes b limit 10 offset 10;",
+			"from my-robot a precedes b limit 10 offset 10",
 			newQuery(
 				false,
 				nil,
@@ -626,7 +714,7 @@ func TestQuery(t *testing.T) {
 		},
 		{
 			"limit/offset reversed",
-			"from my-robot a precedes b offset 10 limit 10;",
+			"from my-robot a precedes b offset 10 limit 10",
 			newQuery(
 				false,
 				nil,
@@ -640,7 +728,7 @@ func TestQuery(t *testing.T) {
 			"newlines elided",
 			`from my-robot a, b
 			where a.foo = 10 and b.bar = 20
-			limit 10 offset 10;`,
+			limit 10 offset 10`,
 			newQuery(
 				false,
 				nil,

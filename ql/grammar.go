@@ -1,6 +1,7 @@
 package ql
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -34,6 +35,19 @@ var (
 	}
 )
 
+type Statement struct {
+	Truncate   *Truncate `(@@`
+	Query      *Query    `| @@)`
+	Terminator string    `";"`
+}
+
+type Truncate struct {
+	Producer string    `"truncate" @Word`
+	Topic    string    `@Word`
+	Now      bool      `(@"now"`
+	Time     Timestamp `| @@)`
+}
+
 // Query represents a query in the dp3 query language.
 type Query struct {
 	Explain      bool         `@"explain"?`
@@ -43,7 +57,6 @@ type Query struct {
 	Where        *Expression  `("where" @@)*`
 	Descending   bool         `@"desc"?`
 	PagingClause []PagingTerm `@@*`
-	Terminator   string       `";"`
 }
 
 type Term struct {
@@ -96,6 +109,9 @@ type Timestamp struct {
 
 // Nanos returns the timestamp in nanoseconds.
 func (t Timestamp) Nanos() (int64, error) {
+	if t.Nanoseconds == nil && t.Datestring == nil {
+		return 0, errors.New("timestamp is nil")
+	}
 	if t.Nanoseconds != nil {
 		return *t.Nanoseconds, nil
 	}
@@ -162,6 +178,6 @@ type PagingTerm struct {
 }
 
 // NewParser returns a new query parser.
-func NewParser() *participle.Parser[Query] {
-	return participle.MustBuild[Query](Options...)
+func NewParser() *participle.Parser[Statement] {
+	return participle.MustBuild[Statement](Options...)
 }

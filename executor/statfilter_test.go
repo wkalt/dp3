@@ -86,7 +86,7 @@ func extractWhere(t *testing.T, query string) *plan.Node {
 	parser := ql.NewParser()
 	ast, err := parser.ParseString("", query)
 	require.NoError(t, err)
-	qp, err := plan.CompileQuery("db", *ast)
+	qp, err := plan.CompileQuery("db", *ast.Query)
 	require.NoError(t, err)
 
 	var where *plan.Node

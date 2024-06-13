@@ -261,11 +261,6 @@ func run() error {
 				printError(err)
 			}
 			continue
-		case strings.HasPrefix(line, ".truncate"):
-			if err := handleTruncate(database, chomped); err != nil {
-				printError(err)
-			}
-			continue
 		case strings.HasPrefix(line, "."):
 			printError(errors.New("unrecognized command: " + line))
 			continue
@@ -332,52 +327,6 @@ func doDelete(database, producer, topic string, start, end int64) error {
 	resp, err := http.Post(serverURL+"/delete", "application/json", buf)
 	if err != nil {
 		return fmt.Errorf("error calling delete: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		response := &httputil.ErrorResponse{}
-		if err := json.NewDecoder(resp.Body).Decode(response); err != nil {
-			return fmt.Errorf("error decoding response: %w", err)
-		}
-		return cutil.NewAPIError(response.Error, response.Detail)
-	}
-	return nil
-}
-
-func handleTruncate(database string, line string) error {
-	parts := strings.Split(line, " ")[1:]
-	if len(parts) < 3 {
-		return errors.New("not enough arguments")
-	}
-	producer := parts[0]
-	topic := parts[1]
-
-	if parts[2] == "now" {
-		return doTruncate(database, producer, topic, time.Now().UnixNano())
-	}
-	if n, err := strconv.ParseInt(parts[2], 10, 64); err == nil {
-		return doTruncate(database, producer, topic, n)
-	}
-	timestamp, err := iso8601.Parse([]byte(parts[2]))
-	if err != nil {
-		return fmt.Errorf("failed to parse timestamp: %w", err)
-	}
-	return doTruncate(database, producer, topic, timestamp.UnixNano())
-}
-
-func doTruncate(database, producer, topic string, timestamp int64) error {
-	req := &routes.TruncateRequest{
-		Database:  database,
-		Producer:  producer,
-		Topic:     topic,
-		Timestamp: timestamp,
-	}
-	buf := &bytes.Buffer{}
-	if err := json.NewEncoder(buf).Encode(req); err != nil {
-		return fmt.Errorf("error encoding request: %w", err)
-	}
-	resp, err := http.Post(serverURL+"/truncate", "application/json", buf)
-	if err != nil {
-		return fmt.Errorf("error calling truncate: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		response := &httputil.ErrorResponse{}
@@ -695,7 +644,6 @@ supported dot commands are:
   .statrange to run a statrange query
   .import to import data to the database
   .delete to delete data from the database
-  .truncate to truncate data from the database
   .tables to inspect tables available in the database
 
 Available help topics are:
@@ -703,7 +651,6 @@ Available help topics are:
   statrange: Explain the .statrange command.
   import: Explain the .import command.
   delete: Explain the .delete command.
-  truncate: Explain the .truncate command.
   tables: Explain the .tables command.
 
 Any input aside from "help" that does not start with a dot is interpreted as
@@ -772,17 +719,6 @@ Imports are staged through a write ahead log prior to landing in final
 storage.  After the import completes it will take a few seconds for the
 final WAL writes to get to storage. If a shutdown occurs during this time
 the data will be picked up again on startup.`,
-
-	// truncate
-	"truncate": `The .truncate command is used to truncate data from dp3. The syntax
-is:
-  .truncate producer topic timestamp
-
-where timestamp is an ISO-8601 timestamp or "now". The command will return
-immediately (on flush of the truncation to the WAL). There will be a delay of
-a few seconds before the WAL is flushed to storage and the effects of the
-truncate are visible.
-  `,
 
 	// delete
 	"delete": `The .delete command is used to delete data from dp3. The syntax

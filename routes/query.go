@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/wkalt/dp3/executor"
@@ -86,7 +87,7 @@ func streamQueryResults(
 }
 
 // newQueryHandler creates a new query handler.
-func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
+func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc { //nolint:funlen
 	parser := ql.NewParser()
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
@@ -110,7 +111,28 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 			httputil.BadRequest(ctx, w, "error parsing query: %s", err)
 			return
 		}
-		qp, err := plan.CompileQuery(database, *ast)
+
+		if ast.Truncate != nil { //nolint: nestif
+			producer := ast.Truncate.Producer
+			topic := ast.Truncate.Topic
+			timestamp := time.Now().UnixNano()
+			if !ast.Truncate.Now {
+				if timestamp, err = ast.Truncate.Time.Nanos(); err != nil {
+					httputil.BadRequest(ctx, w, "error parsing timestamp: %s", err)
+					return
+				}
+			}
+			if err := tmgr.Truncate(ctx, database, producer, topic, timestamp); err != nil {
+				httputil.InternalServerError(ctx, w, "error truncating: %s", err)
+				return
+			}
+			if err := mcap.WriteEmptyFile(w); err != nil {
+				httputil.InternalServerError(ctx, w, "error writing empty response: %s", err)
+			}
+			return
+		}
+
+		qp, err := plan.CompileQuery(database, *ast.Query)
 		if err != nil {
 			if errors.Is(err, plan.BadPlanError{}) {
 				httputil.BadRequest(ctx, w, "%w", err)
@@ -122,7 +144,7 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc {
 		ctx = util.WithContext(ctx, "query")
 		json := r.Header.Get("Accept") == "application/json"
 		if err := streamQueryResults(ctx, w, qp, tmgr.NewTreeIterator,
-			ast.Explain || req.Explain,
+			ast.Query.Explain || req.Explain,
 			req.Limit,
 			req.Offset,
 			req.StampsOnly,
