@@ -216,6 +216,7 @@ require (
 	github.com/unrolled/secure v1.14.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/vbauerster/mpb/v8 v8.7.2 // indirect
+	github.com/wkalt/migrate v0.0.0-20240613031459-65aa49660c06 // indirect
 	github.com/xdg/scram v1.0.5 // indirect
 	github.com/xdg/stringprep v1.0.3 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect

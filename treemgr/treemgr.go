@@ -21,6 +21,7 @@ import (
 	"github.com/wkalt/dp3/tree"
 	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/log"
+	"github.com/wkalt/dp3/versionstore"
 	"github.com/wkalt/dp3/wal"
 	"golang.org/x/sync/errgroup"
 )
@@ -40,6 +41,7 @@ var ErrNotImplemented = errors.New("not implemented")
 type TreeManager struct {
 	ns      *nodestore.Nodestore
 	ss      *schemastore.SchemaStore
+	vs      *versionstore.VersionStore
 	rootmap rootmap.Rootmap
 	merges  <-chan *wal.Batch
 
@@ -78,6 +80,7 @@ func NewTreeManager(
 	ctx context.Context,
 	ns *nodestore.Nodestore,
 	ss *schemastore.SchemaStore,
+	vs *versionstore.VersionStore,
 	rm rootmap.Rootmap,
 	opts ...Option,
 ) (*TreeManager, error) {
@@ -101,6 +104,7 @@ func NewTreeManager(
 	tm := &TreeManager{
 		ns:          ns,
 		ss:          ss,
+		vs:          vs,
 		wal:         wmgr,
 		merges:      merges,
 		rootmap:     rm,
@@ -167,7 +171,7 @@ func (tm *TreeManager) DeleteMessages(
 	if err != nil {
 		return fmt.Errorf("failed to get root: %w", err)
 	}
-	version, err := tm.rootmap.NextVersion(ctx)
+	version, err := tm.vs.NextVersion(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get next version: %w", err)
 	}
@@ -537,7 +541,7 @@ func (tm *TreeManager) newRoot(
 	}
 	root := nodestore.NewInnerNode(height, start, start+coverage, bfactor)
 	data := root.ToBytes()
-	version, err := tm.rootmap.NextVersion(ctx)
+	version, err := tm.vs.NextVersion(ctx)
 	if err != nil {
 		return nodestore.NodeID{}, 0, fmt.Errorf("failed to get next version: %w", err)
 	}
@@ -571,7 +575,7 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 		}
 		readers = append(readers, reader)
 	}
-	version, err := tm.rootmap.NextVersion(ctx)
+	version, err := tm.vs.NextVersion(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get next version: %w", err)
 	}
@@ -840,7 +844,7 @@ func (tm *TreeManager) insert(
 	if err != nil {
 		return fmt.Errorf("failed to get root ID: %w", err)
 	}
-	version, err := tm.rootmap.NextVersion(ctx)
+	version, err := tm.vs.NextVersion(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get next version: %w", err)
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/wkalt/dp3/schemastore"
 	"github.com/wkalt/dp3/storage"
 	"github.com/wkalt/dp3/util"
+	"github.com/wkalt/dp3/versionstore"
 )
 
 func TestTreeManager(ctx context.Context, tb testing.TB) (*TreeManager, func()) {
@@ -23,6 +24,7 @@ func TestTreeManager(ctx context.Context, tb testing.TB) (*TreeManager, func()) 
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1000)
 	ns := nodestore.NewNodestore(store, cache)
 	ss := schemastore.NewSchemaStore(store, "schemas", 1000)
+	vs := versionstore.NewVersionStore(ctx, db, 1000)
 
 	rm, err := rootmap.NewSQLRootmap(ctx, db, rootmap.WithReservationSize(1e9))
 	require.NoError(tb, err)
@@ -33,6 +35,7 @@ func TestTreeManager(ctx context.Context, tb testing.TB) (*TreeManager, func()) 
 		ctx,
 		ns,
 		ss,
+		vs,
 		rm,
 		WithWALBufferSize(100),
 		WithSyncWorkers(0), // control syncing manually

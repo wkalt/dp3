@@ -1,4 +1,4 @@
-package rootmap
+package versionstore
 
 import (
 	"context"
@@ -19,34 +19,35 @@ only database that has been used or tested is SQLite.
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type sqlVersionStore struct {
+type VersionStore struct {
 	reservationSize int
 	max             uint64
+	db              *sql.DB
 	initialized     bool
 	mtx             sync.Mutex
 	c               uint64
 }
 
-func (vs *sqlVersionStore) initializeVersionStore(ctx context.Context, db *sql.DB) error {
-	_, err := db.ExecContext(ctx, "create table if not exists versions(counter bigint not null)")
-	if err != nil {
+func (vs *VersionStore) initialize(ctx context.Context) error {
+	if _, err := vs.db.ExecContext(ctx,
+		"create table if not exists versions (counter bigint not null)"); err != nil {
 		return fmt.Errorf("failed to create versions table: %w", err)
 	}
-	if err = vs.reserveVersionStore(ctx, db, vs.reservationSize); err != nil {
+	if err := vs.reserve(ctx, vs.reservationSize); err != nil {
 		return fmt.Errorf("failed to reserve versions: %w", err)
 	}
 	vs.initialized = true
 	return nil
 }
 
-func (vs *sqlVersionStore) reserveVersionStore(ctx context.Context, db *sql.DB, n int) error {
+func (vs *VersionStore) reserve(ctx context.Context, n int) error {
 	var newMax uint64
-	err := db.QueryRowContext(ctx, "update versions set counter = counter + $1 returning counter", n).Scan(&newMax)
+	err := vs.db.QueryRowContext(ctx, "update versions set counter = counter + $1 returning counter", n).Scan(&newMax)
 	if err != nil {
 		if !errors.Is(err, sql.ErrNoRows) {
 			return fmt.Errorf("failed to update version counter: %w", err)
 		}
-		err = db.QueryRowContext(ctx, "insert into versions (counter) values ($1) returning counter", n).Scan(&newMax)
+		err = vs.db.QueryRowContext(ctx, "insert into versions (counter) values ($1) returning counter", n).Scan(&newMax)
 		if err != nil {
 			return fmt.Errorf("failed to initialize versions table: %w", err)
 		}
@@ -56,9 +57,9 @@ func (vs *sqlVersionStore) reserveVersionStore(ctx context.Context, db *sql.DB, 
 	return nil
 }
 
-func (vs *sqlVersionStore) NextVersion(ctx context.Context, db *sql.DB) (uint64, error) {
+func (vs *VersionStore) NextVersion(ctx context.Context) (uint64, error) {
 	if !vs.initialized {
-		if err := vs.initializeVersionStore(ctx, db); err != nil {
+		if err := vs.initialize(ctx); err != nil {
 			return 0, fmt.Errorf("failed to initialize version store: %w", err)
 		}
 	}
@@ -66,17 +67,18 @@ func (vs *sqlVersionStore) NextVersion(ctx context.Context, db *sql.DB) (uint64,
 	vs.c++
 	vs.mtx.Unlock()
 	if vs.c > vs.max {
-		if err := vs.reserveVersionStore(ctx, db, vs.reservationSize); err != nil {
+		if err := vs.reserve(ctx, vs.reservationSize); err != nil {
 			return 0, err
 		}
-		return vs.NextVersion(ctx, db)
+		return vs.NextVersion(ctx)
 	}
 	return vs.c, nil
 }
 
-func NewSQLVersionStore(ctx context.Context, reservationSize int) *sqlVersionStore {
-	return &sqlVersionStore{
+func NewVersionStore(ctx context.Context, db *sql.DB, reservationSize int) *VersionStore {
+	return &VersionStore{
 		reservationSize: reservationSize,
 		mtx:             sync.Mutex{},
+		db:              db,
 	}
 }

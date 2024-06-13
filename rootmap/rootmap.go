@@ -32,9 +32,6 @@ type RootListing struct {
 }
 
 type Rootmap interface {
-	NextVersion(
-		ctx context.Context,
-	) (uint64, error)
 	Put(
 		ctx context.Context,
 		database string,

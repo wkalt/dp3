@@ -21,6 +21,7 @@ import (
 	"github.com/wkalt/dp3/treemgr"
 	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/log"
+	"github.com/wkalt/dp3/versionstore"
 	"github.com/wkalt/dp3/wal"
 )
 
@@ -64,6 +65,7 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 	if err != nil {
 		return fmt.Errorf("failed to open rootmap: %w", err)
 	}
+	vs := versionstore.NewVersionStore(ctx, db, 1e9)
 	walopts := []wal.Option{
 		wal.WithInactiveBatchMergeInterval(2 * time.Second),
 		wal.WithGCInterval(10 * time.Second),
@@ -77,6 +79,7 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 		ctx,
 		ns,
 		ss,
+		vs,
 		rm,
 		treemgr.WithSyncWorkers(opts.SyncWorkers),
 		treemgr.WithWALOpts(walopts...),
