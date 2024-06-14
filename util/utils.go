@@ -169,23 +169,35 @@ func RunPipe(
 	rf func(ctx context.Context, r io.Reader) error,
 ) error {
 	r, w := io.Pipe()
-	done := make(chan struct{}, 1)
+	readerrs := make(chan error, 1)
+	// spawn a goroutine to run the reader function over the input.
 	go func() {
-		if err := rf(ctx, r); err != nil {
+		err := rf(ctx, r)
+		if err != nil {
 			w.CloseWithError(err)
+			readerrs <- err
+		} else {
+			readerrs <- r.Close()
 		}
-		done <- struct{}{}
 	}()
+	// if the writer encounters an error, close the reader and return.
 	if err := wf(ctx, w); err != nil {
-		<-done
+		r.Close()
 		return err
 	}
-	err := w.Close()
-	<-done
-	if err != nil {
+	if err := w.Close(); err != nil {
 		return fmt.Errorf("failed to close pipe writer: %w", err)
 	}
-	return nil
+	// once the writer is done, the reader must be allowed to catch up.
+	select {
+	case err := <-readerrs:
+		if err != nil {
+			return fmt.Errorf("error closing pipe reader: %w", err)
+		}
+		return nil
+	case <-ctx.Done():
+		return fmt.Errorf("context error: %w", ctx.Err())
+	}
 }
 
 // MaybeWarn logs a warning if f returns an error. It is intended to wrap

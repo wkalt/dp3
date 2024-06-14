@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -207,7 +206,6 @@ func TestRunPipeSynchrony(t *testing.T) {
 		if _, err := io.ReadFull(r, buf); err != nil {
 			return fmt.Errorf("failed to read: %w", err)
 		}
-		time.Sleep(50 * time.Millisecond)
 		value = string(buf)
 		return nil
 	}
@@ -216,7 +214,27 @@ func TestRunPipeSynchrony(t *testing.T) {
 	assert.Equal(t, "hello", value)
 }
 
+func TestPipeCompletedWritesCloseReads(t *testing.T) {
+	wfunc := func(ctx context.Context, w io.Writer) error {
+		if _, err := w.Write([]byte("hello")); err != nil {
+			return fmt.Errorf("failed to write: %w", err)
+		}
+		return nil
+	}
+	var value string
+	rfunc := func(ctx context.Context, r io.Reader) error {
+		data, err := io.ReadAll(r)
+		require.NoError(t, err)
+		value = string(data)
+		return nil
+	}
+	ctx := context.Background()
+	require.NoError(t, util.RunPipe(ctx, wfunc, rfunc))
+	assert.Equal(t, "hello", value)
+}
+
 func TestRunPipe(t *testing.T) {
+	ctx := context.Background()
 	t.Run("write and read", func(t *testing.T) {
 		wfunc := func(ctx context.Context, w io.Writer) error {
 			if _, err := w.Write([]byte("hello")); err != nil {
@@ -231,8 +249,6 @@ func TestRunPipe(t *testing.T) {
 			}
 			return nil
 		}
-
-		ctx := context.Background()
 		require.NoError(t, util.RunPipe(ctx, wfunc, rfunc))
 		assert.Equal(t, "hello", string(buf))
 	})
@@ -243,7 +259,16 @@ func TestRunPipe(t *testing.T) {
 		rfunc := func(ctx context.Context, r io.Reader) error {
 			return nil
 		}
-		ctx := context.Background()
+		require.ErrorIs(t, util.RunPipe(ctx, wfunc, rfunc), io.ErrClosedPipe)
+	})
+	t.Run("write error read blocked", func(t *testing.T) {
+		wfunc := func(ctx context.Context, w io.Writer) error {
+			return io.ErrClosedPipe
+		}
+		rfunc := func(ctx context.Context, r io.Reader) error {
+			_, err := io.ReadAll(r)
+			return fmt.Errorf("failed to read data: %w", err)
+		}
 		require.ErrorIs(t, util.RunPipe(ctx, wfunc, rfunc), io.ErrClosedPipe)
 	})
 	t.Run("read error", func(t *testing.T) {
@@ -256,7 +281,6 @@ func TestRunPipe(t *testing.T) {
 		rfunc := func(ctx context.Context, r io.Reader) error {
 			return io.ErrClosedPipe
 		}
-		ctx := context.Background()
 		require.ErrorIs(t, util.RunPipe(ctx, wfunc, rfunc), io.ErrClosedPipe)
 	})
 }
