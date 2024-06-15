@@ -232,6 +232,32 @@ func TestAdd(t *testing.T) {
 				MessageCount: 4,
 			},
 		},
+		{
+			"adding empty numeric fields does not produce NaNs",
+			[]*nodestore.Statistics{
+				{
+					Fields: []util.Named[schema.PrimitiveType]{util.NewNamed("test", schema.FLOAT64)},
+					NumStats: map[int]*nodestore.NumericalSummary{
+						0: {},
+					},
+					MessageCount: 1,
+				},
+				{
+					Fields: []util.Named[schema.PrimitiveType]{util.NewNamed("test", schema.FLOAT64)},
+					NumStats: map[int]*nodestore.NumericalSummary{
+						0: {},
+					},
+					MessageCount: 1,
+				},
+			},
+			&nodestore.Statistics{
+				Fields: []util.Named[schema.PrimitiveType]{util.NewNamed("test", schema.FLOAT64)},
+				NumStats: map[int]*nodestore.NumericalSummary{
+					0: {},
+				},
+				MessageCount: 2,
+			},
+		},
 	}
 
 	for _, c := range cases {

@@ -72,9 +72,11 @@ func (d *DirectoryStore) Put(_ context.Context, id string, r io.Reader) error {
 	}
 	defer f.Close()
 	if _, err := io.Copy(f, r); err != nil {
+		os.Remove(tmpfile)
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 	if err := f.Close(); err != nil {
+		os.Remove(tmpfile)
 		return fmt.Errorf("failed to close file: %w", err)
 	}
 	if err := os.Rename(tmpfile, path); err != nil {

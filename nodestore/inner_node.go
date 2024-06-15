@@ -135,7 +135,10 @@ func (n *InnerNode) Size() uint64 {
 
 // ToBytes serializes the node to a byte array.
 func (n *InnerNode) ToBytes() []byte {
-	bytes, _ := json.Marshal(n) // nolint swallowing the error; once we have a compact format there won't be errors.
+	bytes, err := json.Marshal(n)
+	if err != nil { // remove when we compact the format and support NaN
+		panic("JSON serialization error: " + err.Error())
+	}
 	buf := make([]byte, len(bytes)+1)
 	buf[0] = n.version
 	copy(buf[1:], bytes)

@@ -454,6 +454,13 @@ func TestMerge(t *testing.T) {
 			"[0-4096 [64-128:3 (1b count=1) [leaf 1 msg]]]",
 		},
 		{
+			"merge multiple height-1 inner nodes into empty tree",
+			1,
+			[][]int64{},
+			[][]int64{{33}, {120}},
+			"[0-4096 [0-64:3 (1b count=1) [leaf 1 msg]] [64-128:3 (1b count=1) [leaf 1 msg]]]",
+		},
+		{
 			"merge into populated tree, nonoverlapping",
 			1,
 			[][]int64{{33}},

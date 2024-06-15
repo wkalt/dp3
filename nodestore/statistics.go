@@ -425,10 +425,13 @@ func (s *Statistics) Add(other *Statistics) error {
 	}
 	for i := range s.Fields {
 		if numstat, ok := s.NumStats[i]; ok {
+			numstat.Count += other.NumStats[i].Count
+			if numstat.Count == 0 {
+				continue // or NaNs will result. Remove when we support NaN statistics.
+			}
 			numstat.Min = min(numstat.Min, other.NumStats[i].Min)
 			numstat.Max = max(numstat.Max, other.NumStats[i].Max)
 			numstat.Sum += other.NumStats[i].Sum
-			numstat.Count += other.NumStats[i].Count
 			numstat.Mean = numstat.Sum / numstat.Count
 		}
 		if textstat, ok := s.TextStats[i]; ok {

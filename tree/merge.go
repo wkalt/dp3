@@ -218,10 +218,10 @@ func getInnerNodes(
 	inputs []util.Pair[TreeReader, nodestore.NodeID],
 ) ([]*nodestore.InnerNode, error) {
 	nodes := make([]*nodestore.InnerNode, 0, len(inputs))
-	for _, input := range inputs {
+	for i, input := range inputs {
 		node, err := toNode[*nodestore.InnerNode](ctx, input)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to parse node %d: %w", i, err)
 		}
 		nodes = append(nodes, node)
 	}
