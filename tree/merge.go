@@ -38,7 +38,7 @@ func Merge(
 
 	nodeID, _, err := mergeInnerNode(ctx, cw, version, destPair, inputPairs)
 	if err != nil {
-		return nodeID, fmt.Errorf("failed to merge roots: %w", err)
+		return nodeID, fmt.Errorf("failed to partial trees roots: %w", err)
 	}
 	if _, err = w.Write(nodeID[:]); err != nil {
 		return nodeID, fmt.Errorf("failed to write root node ID to object end: %w", err)
@@ -282,14 +282,15 @@ func mergeInnerNode( // nolint: funlen
 	}
 
 	outputStats := make(map[string]*nodestore.Statistics)
+	tmp := slices.Clone(innerNodes)
 
 	// build a merged child in the location of each conflict.
 	for _, conflict := range conflicts {
 		// sort the nodes by the version at the conflict location. This is used
 		// for the tombstone handling below, to blank statistics/history when a
 		// tombstone is encountered.
-		sort.Slice(inputs, order(innerNodes, conflict))
-		sort.Slice(innerNodes, order(innerNodes, conflict))
+		sort.Slice(inputs, order(tmp, conflict))
+		sort.Slice(innerNodes, order(tmp, conflict))
 
 		var destChild *util.Pair[TreeReader, nodestore.NodeID]
 		var destVersion *uint64

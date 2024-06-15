@@ -421,6 +421,8 @@ func TestMergingOutOfVersionOrder(t *testing.T) {
 	mcap.WriteFile(t, buf1, []int64{100})
 	buf2 := &bytes.Buffer{}
 	mcap.WriteFile(t, buf2, []int64{100})
+	buf3 := &bytes.Buffer{}
+	mcap.WriteFile(t, buf3, []int64{100})
 
 	root1 := nodestore.NewInnerNode(1, 0, 4096, 64)
 	tw1, err := tree.NewInsert(ctx, root1, 1, 100, buf1.Bytes())
@@ -430,10 +432,14 @@ func TestMergingOutOfVersionOrder(t *testing.T) {
 	tw2, err := tree.NewInsert(ctx, root2, 2, 100, buf2.Bytes())
 	require.NoError(t, err)
 
+	root3 := nodestore.NewInnerNode(1, 0, 4096, 64)
+	tw3, err := tree.NewInsert(ctx, root3, 3, 100, buf3.Bytes())
+	require.NoError(t, err)
+
 	dest1 := tree.NewMemTree(nodestore.RandomNodeID(), root1)
 
 	buf := &bytes.Buffer{}
-	_, err = tree.Merge(ctx, buf, 3, dest1, tw2, tw1)
+	_, err = tree.Merge(ctx, buf, 3, dest1, tw2, tw3, tw1)
 	require.NoError(t, err)
 }
 

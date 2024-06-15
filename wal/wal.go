@@ -82,6 +82,10 @@ type Batch struct {
 	OnDone     func() error
 }
 
+func (b Batch) String() string {
+	return fmt.Sprintf("%s/%s/%s/%s", b.Database, b.Producer, b.Topic, b.ID)
+}
+
 func (b *Batch) Finish() error {
 	return b.OnDone()
 }

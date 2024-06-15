@@ -80,6 +80,7 @@ func (w *Writer) WriteMergeComplete(rec MergeCompleteRecord) (Address, int, erro
 func (w *Writer) WriteMergeRequest(rec MergeRequestRecord) (Address, int, error) {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
+
 	length := 4 + len(rec.Database) +
 		4 + len(rec.Producer) +
 		4 + len(rec.Topic) +
@@ -118,7 +119,7 @@ func (w *Writer) size() int64 {
 	return w.offset
 }
 
-// writeRecord writes a record to the WAL.
+// writeRecord writes a record to the WAL. Must be called under a mutex.
 func (w *Writer) writeRecord(rectype RecordType, header []byte, data []byte) (addr Address, n int, err error) {
 	buf := make([]byte, 1+8+len(header)+len(data)+4)
 	offset := 0

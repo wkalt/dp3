@@ -57,15 +57,27 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
+	defer db.Close()
 	if err = db.Ping(); err != nil {
 		return fmt.Errorf("failed to ping database at %s: %w", dbpath, err)
 	}
+
 	ns := nodestore.NewNodestore(store, cache)
 	rm, err := rootmap.NewSQLRootmap(ctx, db, rootmap.WithReservationSize(1e9))
 	if err != nil {
 		return fmt.Errorf("failed to open rootmap: %w", err)
 	}
-	vs := versionstore.NewVersionStore(ctx, db, 1e9)
+
+	versiondb, err := sql.Open("sqlite3", "versions.db")
+	if err != nil {
+		return fmt.Errorf("failed to open version database: %w", err)
+	}
+	defer versiondb.Close()
+	if err = versiondb.Ping(); err != nil {
+		return fmt.Errorf("failed to ping database at %s: %w", dbpath, err)
+	}
+	vs := versionstore.NewVersionStore(ctx, versiondb, 1e9)
+
 	walopts := []wal.Option{
 		wal.WithInactiveBatchMergeInterval(2 * time.Second),
 		wal.WithGCInterval(10 * time.Second),

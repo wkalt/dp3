@@ -15,6 +15,13 @@ import (
 	"golang.org/x/exp/maps"
 )
 
+// Problem: versionstore and rootmap use same sqlite db. They do not synchronize
+// between themselves, so they can lock each other despite existence of mutexes.
+// options:
+// * separate sqlite databases
+// * switch to postgres
+// * combine the rootmap and the version store
+
 /*
 SQLRootmap is a rootmap implementation backed by a sql.DB. The only database
 that has been used or tested is SQLite.
@@ -31,8 +38,6 @@ type sqlRootmap struct {
 }
 
 func (rm *sqlRootmap) initialize(ctx context.Context) error {
-	rm.mtx.Lock()
-	defer rm.mtx.Unlock()
 	if err := Migrate(rm.db); err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
@@ -63,6 +68,8 @@ func (rm *sqlRootmap) putTableID(database, producer, topic string, tableID int64
 }
 
 func (rm *sqlRootmap) initializeTableCache() error {
+	rm.mtx.Lock()
+	defer rm.mtx.Unlock()
 	tempTables := make(map[table]int64)
 	tx, err := rm.db.Begin()
 	if err != nil {
@@ -174,28 +181,29 @@ func (rm *sqlRootmap) Put(
 ) error {
 	rm.mtx.Lock()
 	defer rm.mtx.Unlock()
-	err := rm.withTransaction(func(tx *sql.Tx) error {
-		var tableID int64
-		err := tx.QueryRowContext(ctx, `
+	for {
+		err := rm.withTransaction(func(tx *sql.Tx) error {
+			var tableID int64
+			err := tx.QueryRowContext(ctx, `
 		select id from tables where producer = ? and topic = ? and database = ? 
 		`, producer, topic, database).Scan(&tableID)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return fmt.Errorf("failed to read from tables: %w", err)
-		}
-		if errors.Is(err, sql.ErrNoRows) {
-			err := tx.QueryRowContext(ctx, `
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return fmt.Errorf("failed to read from tables: %w", err)
+			}
+			if errors.Is(err, sql.ErrNoRows) {
+				err := tx.QueryRowContext(ctx, `
 			insert into tables (database, producer, topic) values (?, ?, ?)
 			returning id
 			`, database, producer, topic).Scan(&tableID)
-			if err != nil {
-				return fmt.Errorf("failed to insert into tables: %w", err)
+				if err != nil {
+					return fmt.Errorf("failed to insert into tables: %w", err)
+				}
+				rm.putTableID(database, producer, topic, tableID)
 			}
-			rm.putTableID(database, producer, topic, tableID)
-		}
 
-		timestamp := time.Now().UTC().Format(time.RFC3339Nano)
+			timestamp := time.Now().UTC().Format(time.RFC3339Nano)
 
-		_, err = tx.ExecContext(ctx, `
+			_, err = tx.ExecContext(ctx, `
 		insert into rootmap (
 			table_id,
 			version,
@@ -203,21 +211,26 @@ func (rm *sqlRootmap) Put(
 			timestamp,
 			node_id
 		) values (?, ?, ?, ?, ?)`,
-			tableID, version, prefix, timestamp, hex.EncodeToString(nodeID[:]),
-		)
-		if err != nil {
-			var err sqlite3.Error
-			if errors.As(err, &sqlite3.Error{Code: sqlite3.ErrConstraint}) {
-				return ErrRootAlreadyExists
+				tableID, version, prefix, timestamp, hex.EncodeToString(nodeID[:]),
+			)
+			if err != nil {
+				var err sqlite3.Error
+				if errors.As(err, &sqlite3.Error{Code: sqlite3.ErrConstraint}) {
+					return ErrRootAlreadyExists
+				}
+				return fmt.Errorf("failed to store to rootmap: %w", err)
 			}
-			return fmt.Errorf("failed to store to rootmap: %w", err)
+			return nil
+		})
+		if err != nil {
+			var sqliteErr sqlite3.Error
+			if errors.As(err, &sqliteErr) && sqliteErr.Code == sqlite3.ErrLocked {
+				continue
+			}
+			return err
 		}
 		return nil
-	})
-	if err != nil {
-		return err
 	}
-	return nil
 }
 
 func (rm *sqlRootmap) GetHistorical(
@@ -495,8 +508,7 @@ func NewSQLRootmap(ctx context.Context, db *sql.DB, opts ...Option) (Rootmap, er
 		tables:    make(map[table]int64),
 		tablesMtx: &sync.RWMutex{},
 	}
-	err := rm.initialize(ctx)
-	if err != nil {
+	if err := rm.initialize(ctx); err != nil {
 		return nil, err
 	}
 	return rm, nil

@@ -590,7 +590,7 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 		},
 		func(ctx context.Context, r io.Reader) error {
 			if err := tm.ns.Put(ctx, prefix, version, r); err != nil {
-				return fmt.Errorf("failed to put root: %w", err)
+				return fmt.Errorf("failed to write node to storage: %w", err)
 			}
 			return nil
 		},
@@ -622,7 +622,7 @@ func (tm *TreeManager) drainWAL(ctx context.Context) error {
 			}
 			// synchronous
 			if err := tm.mergeBatch(ctx, batch); err != nil {
-				return fmt.Errorf("failed to merge batch %s (%s): %w", batch.ID, batch.Topic, err)
+				return fmt.Errorf("failed to merge batch %s: %w", batch, err)
 			}
 			if err := batch.Finish(); err != nil {
 				return fmt.Errorf("failed to commit batch success: %w", err)
@@ -670,7 +670,7 @@ func (tm *TreeManager) spawnWALConsumers(ctx context.Context) {
 				start := time.Now()
 				if err := tm.mergeBatch(ctx, batch); err != nil {
 					// todo - retry strategy?
-					log.Errorf(ctx, "failed to merge batch %s: %v", batch.ID, err)
+					log.Errorf(ctx, "failed to merge batch %s: %v", batch, err)
 					continue
 				}
 

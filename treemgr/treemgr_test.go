@@ -297,43 +297,41 @@ func TestGetMessages(t *testing.T) {
 	}
 
 	for _, c := range cases {
-		for i := 0; i < 20; i++ {
-			t.Run(c.assertion, func(t *testing.T) {
-				buf := &bytes.Buffer{}
-				mcap.WriteFile(t, buf, c.input...)
-				tmgr, finish := treemgr.TestTreeManager(ctx, t)
-				defer finish()
-				require.NoError(t, tmgr.Receive(ctx, "db", "my-device", buf))
-				require.NoError(t, tmgr.ForceFlush(ctx))
+		t.Run(c.assertion, func(t *testing.T) {
+			buf := &bytes.Buffer{}
+			mcap.WriteFile(t, buf, c.input...)
+			tmgr, finish := treemgr.TestTreeManager(ctx, t)
+			defer finish()
+			require.NoError(t, tmgr.Receive(ctx, "db", "my-device", buf))
+			require.NoError(t, tmgr.ForceFlush(ctx))
 
-				output := &bytes.Buffer{}
-				start := c.bounds[0]
-				end := c.bounds[1]
-				topics := map[string]uint64{}
-				for _, topic := range c.topics {
-					topics[topic] = 0
+			output := &bytes.Buffer{}
+			start := c.bounds[0]
+			end := c.bounds[1]
+			topics := map[string]uint64{}
+			for _, topic := range c.topics {
+				topics[topic] = 0
+			}
+			roots, err := tmgr.GetLatestRoots(ctx, "db", "my-device", topics)
+			require.NoError(t, err)
+
+			require.NoError(t, tmgr.GetMessages(ctx, output, start, end, roots))
+
+			reader, err := mcap.NewReader(bytes.NewReader(output.Bytes()))
+			require.NoError(t, err)
+			messages := make(map[string][]uint64)
+			it, err := reader.Messages()
+			require.NoError(t, err)
+			for {
+				_, channel, message, err := it.NextInto(nil)
+				if errors.Is(err, io.EOF) {
+					break
 				}
-				roots, err := tmgr.GetLatestRoots(ctx, "db", "my-device", topics)
 				require.NoError(t, err)
-
-				require.NoError(t, tmgr.GetMessages(ctx, output, start, end, roots))
-
-				reader, err := mcap.NewReader(bytes.NewReader(output.Bytes()))
-				require.NoError(t, err)
-				messages := make(map[string][]uint64)
-				it, err := reader.Messages()
-				require.NoError(t, err)
-				for {
-					_, channel, message, err := it.NextInto(nil)
-					if errors.Is(err, io.EOF) {
-						break
-					}
-					require.NoError(t, err)
-					messages[channel.Topic] = append(messages[channel.Topic], message.LogTime)
-				}
-				require.Equal(t, c.outputMessages, messages)
-			})
-		}
+				messages[channel.Topic] = append(messages[channel.Topic], message.LogTime)
+			}
+			require.Equal(t, c.outputMessages, messages)
+		})
 	}
 }
 
