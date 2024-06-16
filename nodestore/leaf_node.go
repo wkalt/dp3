@@ -30,6 +30,7 @@ type LeafNode struct {
 	ancestorDeleteEnd   uint64
 
 	messageKeys []MessageKey
+	datalen     uint64
 	data        []byte
 }
 
@@ -37,7 +38,7 @@ const leafHeaderLength = 1 + 24 + 8 + 8 + 8
 
 func (n *LeafNode) EncodeTo(w io.Writer) error {
 	keydata := serializeKeys(n.messageKeys)
-	buf := make([]byte, leafHeaderLength+len(n.data)+8+len(keydata))
+	buf := make([]byte, leafHeaderLength+len(n.data)+8+len(keydata)+8)
 	offset := util.U8(buf, n.leafNodeVersion+128)
 	offset += copy(buf[offset:], n.ancestor[:])
 	offset += util.U64(buf[offset:], n.ancestorVersion)
@@ -45,6 +46,8 @@ func (n *LeafNode) EncodeTo(w io.Writer) error {
 	offset += util.U64(buf[offset:], n.ancestorDeleteEnd)
 	offset += util.U64(buf[offset:], uint64(len(keydata)))
 	offset += copy(buf[offset:], keydata)
+
+	offset += util.U64(buf[offset:], n.datalen)
 
 	_, err := w.Write(buf[:offset])
 	if err != nil {
@@ -60,7 +63,7 @@ func (n *LeafNode) EncodeTo(w io.Writer) error {
 
 // ToBytes serializes the node to a byte slice.
 func (n *LeafNode) ToBytes() []byte {
-	buf := make([]byte, leafHeaderLength+8+12*len(n.messageKeys)+len(n.data))
+	buf := make([]byte, leafHeaderLength+8+12*len(n.messageKeys)+8+len(n.data))
 	offset := util.U8(buf, n.leafNodeVersion+128)
 	offset += copy(buf[offset:], n.ancestor[:])
 	offset += util.U64(buf[offset:], n.ancestorVersion)
@@ -70,7 +73,7 @@ func (n *LeafNode) ToBytes() []byte {
 	keydata := serializeKeys(n.messageKeys)
 	offset += util.U64(buf[offset:], uint64(len(keydata)))
 	offset += copy(buf[offset:], keydata)
-
+	offset += util.U64(buf[offset:], n.datalen)
 	copy(buf[offset:], n.data)
 	return buf
 }
@@ -125,18 +128,19 @@ func ReadLeafHeader(r io.Reader, node *LeafNode) (int, error) {
 		return 0, fmt.Errorf("failed to read key data length: %w", err)
 	}
 	offset += 8
-	keydata := make([]byte, keydataLen)
+	keydata := make([]byte, keydataLen+8) // 8 bytes to get data length in same read
 	_, err = io.ReadFull(r, keydata)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read key data: %w", err)
 	}
 	offset += int(keydataLen)
 
-	keys, err := deserializeKeys(keydata)
+	keys, err := deserializeKeys(keydata[:keydataLen])
 	if err != nil {
 		return 0, fmt.Errorf("failed to deserialize message keys: %w", err)
 	}
 	node.messageKeys = keys
+	offset += util.ReadU64(keydata[keydataLen:], &node.datalen)
 	return offset, nil
 }
 
@@ -213,6 +217,7 @@ func NewLeafNode(
 		ancestor:        ancID,
 		ancestorVersion: ancVersion,
 		messageKeys:     messageKeys,
+		datalen:         uint64(len(data)),
 		data:            data,
 	}
 }
