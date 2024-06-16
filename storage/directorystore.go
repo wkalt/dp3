@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -91,17 +90,7 @@ func (d *DirectoryStore) GetRange(_ context.Context, id string, offset int, leng
 	if err != nil {
 		return nil, ErrObjectNotFound
 	}
-	defer f.Close()
-	_, err = f.Seek(int64(offset), io.SeekStart)
-	if err != nil {
-		return nil, fmt.Errorf("seek failure: %w", err)
-	}
-	buf := make([]byte, length)
-	_, err = io.ReadFull(f, buf)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file: %w", err)
-	}
-	return util.NewReadSeekNopCloser(bytes.NewReader(buf)), nil
+	return util.NewReadSeekCloserAt(f, offset, length)
 }
 
 // Delete removes an object from the directory.
