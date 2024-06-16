@@ -19,13 +19,13 @@ func TestTreeErrors(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("root is nil", func(t *testing.T) {
-		_, err := tree.NewInsert(ctx, nil, 0, 0, []byte{0x01})
+		_, err := tree.NewInsert(ctx, nil, 0, 0, nil, []byte{0x01})
 		require.Error(t, err)
 	})
 
 	t.Run("out of bounds insert", func(t *testing.T) {
 		root := nodestore.NewInnerNode(1, 0, 4096, 64)
-		_, err := tree.NewInsert(ctx, root, 0, 10000*1e9, []byte{0x01})
+		_, err := tree.NewInsert(ctx, root, 0, 10000*1e9, nil, []byte{0x01})
 		require.ErrorIs(t, err, tree.OutOfBoundsError{})
 	})
 
@@ -82,7 +82,7 @@ func TestMergeErrors(t *testing.T) {
 
 		// merge with a correct tree
 		root2 := nodestore.NewInnerNode(2, 0, 64*64*64, 64)
-		tw2, err := tree.NewInsert(ctx, root2, 0, 63*1e9, []byte{0x01})
+		tw2, err := tree.NewInsert(ctx, root2, 0, 63*1e9, nil, []byte{0x01})
 		require.NoError(t, err)
 
 		root3 := nodestore.NewInnerNode(2, 0, 64*64*64, 64)
@@ -95,7 +95,7 @@ func TestMergeErrors(t *testing.T) {
 
 	t.Run("root does not exist", func(t *testing.T) {
 		root := nodestore.NewInnerNode(1, 0, 4096, 64)
-		tw, err := tree.NewInsert(ctx, root, 0, 1000*1e9, []byte{0x01})
+		tw, err := tree.NewInsert(ctx, root, 0, 1000*1e9, nil, []byte{0x01})
 		require.NoError(t, err)
 		tw.SetRoot(nodestore.RandomNodeID())
 
@@ -425,15 +425,15 @@ func TestMergingOutOfVersionOrder(t *testing.T) {
 	mcap.WriteFile(t, buf3, []int64{100})
 
 	root1 := nodestore.NewInnerNode(1, 0, 4096, 64)
-	tw1, err := tree.NewInsert(ctx, root1, 1, 100, buf1.Bytes())
+	tw1, err := tree.NewInsert(ctx, root1, 1, 100, nil, buf1.Bytes())
 	require.NoError(t, err)
 
 	root2 := nodestore.NewInnerNode(1, 0, 4096, 64)
-	tw2, err := tree.NewInsert(ctx, root2, 2, 100, buf2.Bytes())
+	tw2, err := tree.NewInsert(ctx, root2, 2, 100, nil, buf2.Bytes())
 	require.NoError(t, err)
 
 	root3 := nodestore.NewInnerNode(1, 0, 4096, 64)
-	tw3, err := tree.NewInsert(ctx, root3, 3, 100, buf3.Bytes())
+	tw3, err := tree.NewInsert(ctx, root3, 3, 100, nil, buf3.Bytes())
 	require.NoError(t, err)
 
 	dest1 := tree.NewMemTree(nodestore.RandomNodeID(), root1)

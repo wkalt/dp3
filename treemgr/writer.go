@@ -177,6 +177,7 @@ func (w *writer) flush(ctx context.Context) error {
 		w.producer,
 		w.topic,
 		w.lower*1e9,
+		w.messageKeys,
 		w.buf.Bytes(),
 	); err != nil {
 		return fmt.Errorf("failed to insert %d bytes data for table %s/%s at time %d: %w",

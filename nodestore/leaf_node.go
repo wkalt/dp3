@@ -35,7 +35,7 @@ type LeafNode struct {
 
 const leafHeaderLength = 1 + 24 + 8 + 8 + 8
 
-func (n *LeafNode) Write(w io.Writer) error {
+func (n *LeafNode) EncodeTo(w io.Writer) error {
 	keydata := serializeKeys(n.messageKeys)
 	buf := make([]byte, leafHeaderLength+len(n.data)+8+len(keydata))
 	offset := util.U8(buf, n.leafNodeVersion+128)
@@ -90,11 +90,18 @@ func (n *LeafNode) AncestorDeleteStart() uint64 {
 	return n.ancestorDeleteStart
 }
 
+// MessageKeys returns the message keys of the node.
+func (n *LeafNode) MessageKeys() []MessageKey {
+	return n.messageKeys
+}
+
 // AncestorDeleteEnd returns the end of the ancestor deletion range.
 func (n *LeafNode) AncestorDeleteEnd() uint64 {
 	return n.ancestorDeleteEnd
 }
 
+// ReadLeafHeader reads the header of a leaf node from a reader, populating the
+// node with the data read and returning the length of the header.
 func ReadLeafHeader(r io.Reader, node *LeafNode) (int, error) {
 	header := make([]byte, leafHeaderLength)
 	_, err := io.ReadFull(r, header)
@@ -156,6 +163,11 @@ func (n *LeafNode) Type() NodeType {
 // Ancestor returns the ID of the ancestor node.
 func (n *LeafNode) Ancestor() NodeID {
 	return n.ancestor
+}
+
+// SetMessageKeys sets the message keys of the node.
+func (n *LeafNode) SetMessageKeys(keys []MessageKey) {
+	n.messageKeys = keys
 }
 
 // HasAncestor returns true if the node has an ancestor.

@@ -838,6 +838,7 @@ func (tm *TreeManager) insert(
 	producer string,
 	topic string,
 	time uint64,
+	messageKeys []nodestore.MessageKey,
 	data []byte,
 ) error {
 	prefix, rootID, _, _, err := tm.rootmap.GetLatest(ctx, database, producer, topic)
@@ -856,11 +857,14 @@ func (tm *TreeManager) insert(
 	if !ok {
 		return fmt.Errorf("unexpected node type: %w", tree.NewUnexpectedNodeError(nodestore.Inner, currentRoot))
 	}
-	mt, err := tree.NewInsert(ctx, currentRootNode, version, time, data)
+	mt, err := tree.NewInsert(ctx, currentRootNode, version, time, messageKeys, data)
 	if err != nil {
 		return fmt.Errorf("insertion failure: %w", err)
 	}
-	serialized, err := mt.ToBytes(ctx, 0) // zero is a temporary oid
+	// serialize the nodes with a temporary object ID of zero. When they are
+	// merged into the tree this will be replaced with the new version of the
+	// merge.
+	serialized, err := mt.ToBytes(ctx, 0)
 	if err != nil {
 		return fmt.Errorf("failed to serialize tree: %w", err)
 	}

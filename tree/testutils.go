@@ -52,7 +52,7 @@ func MergeInserts(
 		root := nodestore.NewInnerNode(height, start, end, bfactor)
 		buf := &bytes.Buffer{}
 		mcap.WriteFile(t, buf, batch)
-		tmp, err := NewInsert(ctx, root, version, uint64(batch[0]*1e9), buf.Bytes())
+		tmp, err := NewInsert(ctx, root, version, uint64(batch[0]*1e9), nil, buf.Bytes())
 		require.NoError(t, err)
 
 		repr, err := Print(ctx, tmp)

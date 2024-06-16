@@ -157,6 +157,7 @@ func mergeLeaves(
 		ancestorNodeID = &dest.Second
 		ancestorVersion = destVersion
 	}
+
 	header := nodestore.NewLeafNode(nil, []byte{}, ancestorNodeID, ancestorVersion)
 	mask, finish, err := buildFilterIterator(ctx, dest)
 	if err != nil {
@@ -165,6 +166,7 @@ func mergeLeaves(
 	defer finish()
 
 	iterators := make([]mcap.MessageIterator, len(inputs))
+	keys := []nodestore.MessageKey{}
 	for i, input := range inputs {
 		inputHeader, iterator, finish, err := getIterator(ctx, input)
 		if err != nil {
@@ -178,19 +180,17 @@ func mergeLeaves(
 			}
 			header.DeleteRange(inputHeader.AncestorDeleteStart(), inputHeader.AncestorDeleteEnd())
 		}
+		keys = append(keys, inputHeader.MessageKeys()...)
 	}
-
+	header.SetMessageKeys(keys)
 	schemaStats, callback := onMessageCallback()
-
 	offset := uint64(cw.Count())
-	if err := header.Write(cw); err != nil {
+	if err := header.EncodeTo(cw); err != nil {
 		return nodestore.NodeID{}, nil, fmt.Errorf("failed to write leaf header: %w", err)
 	}
-
 	if err = mcap.FilterMerge(cw, callback, mask, iterators...); err != nil {
 		return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge leaf iterators: %w", err)
 	}
-
 	length := uint64(cw.Count()) - offset
 	nodeID = nodestore.NewNodeID(version, offset, length)
 	return nodeID, schemaStats, nil

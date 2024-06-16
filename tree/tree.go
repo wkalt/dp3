@@ -55,6 +55,7 @@ func NewInsert(
 	root *nodestore.InnerNode,
 	version uint64,
 	timestamp uint64,
+	messageKeys []nodestore.MessageKey,
 	data []byte,
 ) (*MemTree, error) {
 	if root == nil {
@@ -98,7 +99,7 @@ func NewInsert(
 	// now at the parent of the leaf
 	nodeID := ids[len(ids)-1]
 	bucket := bucket(timestamp, current)
-	node := nodestore.NewLeafNode(nil, data, nil, nil)
+	node := nodestore.NewLeafNode(messageKeys, data, nil, nil)
 	if err := tw.Put(ctx, nodeID, node); err != nil {
 		return nil, fmt.Errorf("failed to store leaf node: %w", err)
 	}
