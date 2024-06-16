@@ -20,7 +20,6 @@ func leafNodeBytes(buf []byte) []byte {
 		testutils.U64b(0),
 		testutils.U64b(0),
 		testutils.U64b(0),
-		testutils.U64b(uint64(len(buf))),
 		buf,
 	)
 }

@@ -333,7 +333,7 @@ func (tm *TreeManager) GetStatistics(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest root: %w", err)
 	}
-	tr := tree.NewBYOTreeReader(prefix, rootID, tm.ns.Get)
+	tr := tree.NewBYOTreeReader(prefix, rootID, tm.ns.Get, tm.ns.GetLeafNode)
 	ranges, err := tree.GetStatRange(ctx, tr, start, end, granularity)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stat range: %w", err)
@@ -375,7 +375,7 @@ func (tm *TreeManager) SummarizeChildren(
 	for _, root := range roots {
 		if err := tree.IterateChildren(
 			ctx,
-			tree.NewBYOTreeReader(root.Prefix, root.NodeID, tm.ns.Get),
+			tree.NewBYOTreeReader(root.Prefix, root.NodeID, tm.ns.Get, tm.ns.GetLeafNode),
 			uint64(start.UnixNano()),
 			uint64(end.UnixNano()),
 			bucketWidthSecs,
@@ -490,7 +490,7 @@ func (tm *TreeManager) GetStatisticsLatest(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest root: %w", err)
 	}
-	tr := tree.NewBYOTreeReader(prefix, rootID, tm.ns.Get)
+	tr := tree.NewBYOTreeReader(prefix, rootID, tm.ns.Get, tm.ns.GetLeafNode)
 	ranges, err := tree.GetStatRange(ctx, tr, start, end, granularity)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stat range: %w", err)
@@ -516,7 +516,7 @@ func (tm *TreeManager) PrintTable(ctx context.Context, database string, producer
 	if err != nil {
 		return fmt.Sprintf("failed to get latest root: %v", err)
 	}
-	tr := tree.NewBYOTreeReader(prefix, root, tm.ns.Get)
+	tr := tree.NewBYOTreeReader(prefix, root, tm.ns.Get, tm.ns.GetLeafNode)
 	s, err := tree.Print(ctx, tr)
 	if err != nil {
 		return fmt.Sprintf("failed to print tree: %v", err)
@@ -565,7 +565,7 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 	if err != nil && !errors.Is(err, rootmap.TableNotFoundError{}) {
 		return fmt.Errorf("failed to get root: %w", err)
 	}
-	basereader := tree.NewBYOTreeReader(prefix, existingRootID, tm.ns.Get)
+	basereader := tree.NewBYOTreeReader(prefix, existingRootID, tm.ns.Get, tm.ns.GetLeafNode)
 
 	readers := make([]tree.TreeReader, 0, len(batch.Addrs))
 	for _, addr := range batch.Addrs {
@@ -721,7 +721,7 @@ func (tm *TreeManager) NewTreeIterator(
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest root: %w", err)
 	}
-	tr := tree.NewBYOTreeReader(prefix, rootID, tm.ns.Get)
+	tr := tree.NewBYOTreeReader(prefix, rootID, tm.ns.Get, tm.ns.GetLeafNode)
 	return tree.NewTreeIterator(ctx, tr, descending, start, end, truncationVersion, childFilter), nil
 }
 
@@ -751,7 +751,7 @@ func (tm *TreeManager) loadIterators(
 	mtx := &sync.Mutex{}
 	for i, root := range roots {
 		g.Go(func() error {
-			tr := tree.NewBYOTreeReader(root.Prefix, root.NodeID, tm.ns.Get)
+			tr := tree.NewBYOTreeReader(root.Prefix, root.NodeID, tm.ns.Get, tm.ns.GetLeafNode)
 			it := tree.NewTreeIterator(ctx, tr, false, start, end, root.MinVersion, nil)
 			schema, channel, message, err := it.Next(ctx)
 			if err != nil {

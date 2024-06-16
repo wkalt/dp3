@@ -95,24 +95,31 @@ func (n *Nodestore) Get(ctx context.Context, prefix string, id NodeID) (Node, er
 func (n *Nodestore) GetLeafNode(ctx context.Context, prefix string, id NodeID) (
 	node *LeafNode, reader io.ReadSeekCloser, err error,
 ) {
-	reader, err = n.store.GetRange(ctx, prefix+"/"+id.Object(), int(id.Offset()), int(id.Length()))
+	offset := int(id.Offset())
+	length := int(id.Length())
+	reader, err = n.store.GetRange(ctx, prefix+"/"+id.Object(), offset, length)
 	if err != nil {
 		if errors.Is(err, storage.ErrObjectNotFound) {
 			return nil, nil, NodeNotFoundError{prefix, id}
 		}
 		return nil, nil, fmt.Errorf("failed to get node %s: %w", id, err)
 	}
-	buf := make([]byte, leafHeaderLength)
-	if _, err := io.ReadFull(reader, buf); err != nil {
-		return nil, nil, fmt.Errorf("failed to read leaf node: %w", err)
+	var header LeafNode
+	headerlen, err := ReadLeafHeader(reader, &header)
+	if err != nil {
+		if closeErr := reader.Close(); closeErr != nil {
+			return nil, nil, fmt.Errorf("failed to close reader: %w", closeErr)
+		}
+		return nil, nil, fmt.Errorf("failed to read leaf header: %w", err)
 	}
-
-	// read only the header, leaving the data unread.
-	node = &LeafNode{}
-	if err := node.FromBytes(buf); err != nil {
-		return nil, nil, fmt.Errorf("failed to parse leaf node header: %w", err)
+	rsc, err := util.NewReadSeekCloserAt(reader, headerlen, length-headerlen)
+	if err != nil {
+		if closeErr := reader.Close(); closeErr != nil {
+			return nil, nil, fmt.Errorf("failed to close reader: %w", closeErr)
+		}
+		return nil, nil, fmt.Errorf("failed to create read seek closer: %w", err)
 	}
-	return node, reader, nil
+	return &header, rsc, nil
 }
 
 func isLeaf(data []byte) bool {
