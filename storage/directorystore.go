@@ -90,7 +90,12 @@ func (d *DirectoryStore) GetRange(_ context.Context, id string, offset int, leng
 	if err != nil {
 		return nil, ErrObjectNotFound
 	}
-	return util.NewReadSeekCloserAt(f, offset, length)
+	rsc, err := util.NewReadSeekCloserAt(f, offset, length)
+	if err != nil {
+		f.Close()
+		return nil, fmt.Errorf("failed to create read seek closer: %w", err)
+	}
+	return rsc, nil
 }
 
 // Delete removes an object from the directory.

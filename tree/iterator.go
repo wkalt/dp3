@@ -84,9 +84,6 @@ func (ti *Iterator) More() bool {
 }
 
 func (ti *Iterator) closeActiveReaders() error {
-	for _, reader := range ti.readclosers {
-		reader.Close()
-	}
 	errs := make([]error, 0, len(ti.readclosers))
 	for _, closer := range ti.readclosers {
 		if err := closer.Close(); err != nil {

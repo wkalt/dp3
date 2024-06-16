@@ -40,22 +40,29 @@ I believe this all means that as long as you avoid computing start/end bounds of
 children that do not exist, your code is safe from overflows.
 */
 
-// //////////////////////////////////////////////////////////////////////////////
+////////////////////////////////////////////////////////////////////////////////
 
-// NewInsert writes the provided slice of data into a new (empty) tree writer, into
-// the leaf of the tree that spans the requested timestamp. Assuming no error,
-// after insert has returned, the tree writer will reflect a partial tree from
-// root to leaf. The partial trees that result from insert are serialized to the
-// WAL, and later merged into the main tree in batches by the tree manager.
-//
-// Note that the root is merely used as a template for determining the structure
-// of the partial tree.
+// NewInsert inserts the provided "data", which is expected to be
+// MCAP-serialized content, into an in-memory tree.
+//   - root: a template inner node from which to clone the root of the new tree.
+//     Used only for dimensions (does not clone children)
+//   - version: the version of the data being inserted. This is a monotonically
+//     increasing counter derived from the version store.
+//   - timestamp: the timestamp of the data being inserted, which can be
+//     computed from known leaf widths and tree heights. The submitted data must
+//     span at most one leaf node, so the node can be identified with one
+//     timestamp, and any timestamp falling on the target leaf is sufficient.
+//   - messageKeys: the message keys for the data being inserted, which include
+//     timestamps and sequence numbers.
+//   - statistics: the statistics for the data being inserted
+//   - data: the MCAP-serialized data to be inserted.
 func NewInsert(
 	ctx context.Context,
 	root *nodestore.InnerNode,
 	version uint64,
 	timestamp uint64,
 	messageKeys []nodestore.MessageKey,
+	statistics map[string]*nodestore.Statistics,
 	data []byte,
 ) (*MemTree, error) {
 	if root == nil {
@@ -93,17 +100,17 @@ func NewInsert(
 		if err := tw.Put(ctx, ids[i], node); err != nil {
 			return nil, fmt.Errorf("failed to store inner node: %w", err)
 		}
-		current.PlaceChild(bucket, ids[i], version, nil)
+		current.PlaceChild(bucket, ids[i], version, statistics)
 		current = node
 	}
-	// now at the parent of the leaf
 	nodeID := ids[len(ids)-1]
 	bucket := bucket(timestamp, current)
+
 	node := nodestore.NewLeafNode(messageKeys, data, nil, nil)
 	if err := tw.Put(ctx, nodeID, node); err != nil {
 		return nil, fmt.Errorf("failed to store leaf node: %w", err)
 	}
-	current.PlaceChild(bucket, nodeID, version, nil)
+	current.PlaceChild(bucket, nodeID, version, statistics)
 	tw.SetRoot(rootID)
 	return tw, nil
 }

@@ -9,6 +9,7 @@ import (
 	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/mcap"
 	"github.com/wkalt/dp3/nodestore"
+	"github.com/wkalt/dp3/util"
 	"github.com/wkalt/dp3/util/log"
 	"github.com/wkalt/dp3/util/ros1msg"
 	"github.com/wkalt/dp3/util/schema"
@@ -54,7 +55,9 @@ type writer struct {
 
 	dims *treeDimensions
 
-	messageKeys []nodestore.MessageKey
+	messageKeys  []nodestore.MessageKey
+	schemaStats  map[uint16]*nodestore.Statistics
+	schemaHashes map[uint16]string
 }
 
 func newWriter(
@@ -80,11 +83,13 @@ func newWriter(
 		w:           nil,
 		dims:        dims,
 
-		database:    database,
-		producer:    producer,
-		topic:       topic,
-		parsers:     map[uint16]*schema.Parser{},
-		messageKeys: []nodestore.MessageKey{},
+		database:     database,
+		producer:     producer,
+		topic:        topic,
+		messageKeys:  []nodestore.MessageKey{},
+		schemaStats:  map[uint16]*nodestore.Statistics{},
+		schemaHashes: map[uint16]string{},
+		parsers:      map[uint16]*schema.Parser{},
 	}, nil
 }
 
@@ -157,6 +162,8 @@ func (w *writer) initialize(ts uint64) (err error) {
 			return fmt.Errorf("failed to create parser: %w", err)
 		}
 		w.parsers[existingSchema.ID] = parser
+		w.schemaStats[existingSchema.ID] = nodestore.NewStatistics(fields)
+		w.schemaHashes[existingSchema.ID] = util.CryptographicHash(existingSchema.Data)
 	}
 	for _, channel := range w.channels {
 		if err := w.w.WriteChannel(channel); err != nil {
@@ -167,9 +174,38 @@ func (w *writer) initialize(ts uint64) (err error) {
 	return nil
 }
 
+func (w *writer) updateStatistics(message *fmcap.Message) error {
+	channel := w.channels[message.ChannelID]
+	schemaID := channel.SchemaID
+	statistics, ok := w.schemaStats[schemaID]
+	if !ok {
+		return fmt.Errorf("missing statistics for schema ID %d", schemaID)
+	}
+	parser, ok := w.parsers[schemaID]
+	if !ok {
+		return fmt.Errorf("missing parser for schema ID %d", schemaID)
+	}
+	_, values, err := parser.Parse(message.Data)
+	if err != nil {
+		return fmt.Errorf("failed to parse message data: %w", err)
+	}
+	if err := statistics.ObserveMessage(message, values); err != nil {
+		return fmt.Errorf("failed to observe message: %w", err)
+	}
+	return nil
+}
+
 func (w *writer) flush(ctx context.Context) error {
 	if err := w.w.Close(); err != nil {
 		return fmt.Errorf("failed to close mcap writer: %w", err)
+	}
+	statistics := make(map[string]*nodestore.Statistics)
+	for schemaID, stats := range w.schemaStats {
+		schemaHash, ok := w.schemaHashes[schemaID]
+		if !ok {
+			return fmt.Errorf("missing schema hash for schema ID %d", schemaID)
+		}
+		statistics[schemaHash] = stats
 	}
 	if err := w.tmgr.insert(
 		ctx,
@@ -178,12 +214,14 @@ func (w *writer) flush(ctx context.Context) error {
 		w.topic,
 		w.lower*1e9,
 		w.messageKeys,
+		statistics,
 		w.buf.Bytes(),
 	); err != nil {
 		return fmt.Errorf("failed to insert %d bytes data for table %s/%s at time %d: %w",
 			w.buf.Len(), w.producer, w.topic, w.lower, err)
 	}
 	w.buf.Reset()
+
 	w.initialized = false
 	w.messageKeys = w.messageKeys[:0]
 	log.Debugw(ctx, "flushed writer",
@@ -223,6 +261,9 @@ func (w *writer) Write(
 		w.messageKeys,
 		nodestore.NewMessageKey(message.LogTime, message.Sequence),
 	)
+	if err := w.updateStatistics(message); err != nil {
+		return fmt.Errorf("failed to update statistics: %w", err)
+	}
 	return nil
 }
 

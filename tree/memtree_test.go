@@ -54,8 +54,8 @@ func TestMemtreeSerialization(t *testing.T) {
 			trees := make([]tree.TreeReader, len(c.timestamps))
 			for i, ts := range c.timestamps {
 				data := &bytes.Buffer{}
-				mcap.WriteFile(t, data, []int64{ts})
-				mt, err := tree.NewInsert(ctx, root, version, uint64(ts), nil, data.Bytes())
+				stats := mcap.WriteFile(t, data, []int64{ts})
+				mt, err := tree.NewInsert(ctx, root, version, uint64(ts), nil, stats, data.Bytes())
 				require.NoError(t, err)
 				version++
 				trees[i] = mt

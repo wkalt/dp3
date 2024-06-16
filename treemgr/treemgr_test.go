@@ -852,7 +852,7 @@ func TestGetSchema(t *testing.T) {
 		{
 			"matching schema",
 			"1ba234e59378bc656d587c45c4191bfc24c2c657e871f148faa552350738c470",
-			"test",
+			"package/test",
 			nil,
 		},
 	}

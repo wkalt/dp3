@@ -301,9 +301,12 @@ func mergeInnerNode( // nolint: funlen
 			statistics = nodestore.CloneStatsMap(destNode.Children[conflict].Statistics)
 		}
 
-		_, conflictedPairs := buildConflictedPairs(
+		_, conflictedNodes, conflictedPairs := buildConflictedPairs(
 			conflict, inputs, innerNodes, statistics)
-
+		// If we are in the fast path we have no destination and only one
+		// input, and require no merging of leaves. In this case we copy
+		// leaf bytes directly and do not compute statistics at merge time.
+		fastpath := len(conflictedNodes) == 1 && destChild == nil
 		if len(conflictedPairs) > 0 {
 			var destConflict *nodestore.Child
 			if destChild != nil {
@@ -319,9 +322,13 @@ func mergeInnerNode( // nolint: funlen
 				return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge nodes: %w", err)
 			}
 			newNode.Children[conflict] = &nodestore.Child{
-				ID:         mergedID,
-				Version:    version,
-				Statistics: mergedStats,
+				ID:      mergedID,
+				Version: version,
+				Statistics: util.When(
+					fastpath,
+					nodestore.CloneStatsMap(conflictedNodes[0].Children[conflict].Statistics),
+					mergedStats,
+				),
 			}
 			continue
 		}
@@ -361,6 +368,30 @@ func mergeInnerNode( // nolint: funlen
 	return nodestore.NewNodeID(version, offset, uint64(len(data))), outputStats, nil
 }
 
+func mergeOneLeaf(
+	ctx context.Context,
+	cw *util.CountingWriter,
+	version uint64,
+	pair util.Pair[TreeReader, nodestore.NodeID],
+) (nodestore.NodeID, error) {
+	tr := pair.First
+	nodeID := pair.Second
+	header, r, err := tr.GetLeafNode(ctx, nodeID)
+	if err != nil {
+		return nodestore.NodeID{}, fmt.Errorf("failed to get leaf: %w", err)
+	}
+	defer r.Close()
+	offset := uint64(cw.Count())
+	if err := header.EncodeTo(cw); err != nil {
+		return nodestore.NodeID{}, fmt.Errorf("failed to write leaf header: %w", err)
+	}
+	if _, err := io.Copy(cw, r); err != nil {
+		return nodestore.NodeID{}, fmt.Errorf("failed to copy leaf data: %w", err)
+	}
+	length := uint64(cw.Count()) - offset
+	return nodestore.NewNodeID(version, offset, length), nil
+}
+
 func mergeConflictedPairs(
 	ctx context.Context,
 	newNode *nodestore.InnerNode,
@@ -375,6 +406,15 @@ func mergeConflictedPairs(
 	if newNode.Height > 1 {
 		return mergeInnerNode(ctx, cw, version, dest, conflictedPairs)
 	}
+
+	if destChild == nil && len(conflictedPairs) == 1 {
+		nodeID, err := mergeOneLeaf(ctx, cw, version, conflictedPairs[0])
+		if err != nil {
+			return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge single node: %w", err)
+		}
+		return nodeID, nil, nil
+	}
+
 	mergedID, mergedStats, err := mergeLeaves(
 		ctx, cw, version, destVersion, dest, conflictedPairs,
 	)
@@ -396,8 +436,9 @@ func buildConflictedPairs(
 	inputs []util.Pair[TreeReader, nodestore.NodeID],
 	nodes []*nodestore.InnerNode,
 	statistics map[string]*nodestore.Statistics,
-) (uint64, []util.Pair[TreeReader, nodestore.NodeID]) {
+) (uint64, []*nodestore.InnerNode, []util.Pair[TreeReader, nodestore.NodeID]) {
 	conflictedPairs := []util.Pair[TreeReader, nodestore.NodeID]{}
+	conflictedNodes := []*nodestore.InnerNode{}
 	var maxVersion uint64
 	for i, pair := range inputs {
 		node := nodes[i]
@@ -419,8 +460,9 @@ func buildConflictedPairs(
 			conflictedPairs,
 			util.NewPair(pair.First, child.ID),
 		)
+		conflictedNodes = append(conflictedNodes, node)
 	}
-	return maxVersion, conflictedPairs
+	return maxVersion, conflictedNodes, conflictedPairs
 }
 
 func isConflicted(child *nodestore.Child, i int) func(*nodestore.InnerNode) bool {

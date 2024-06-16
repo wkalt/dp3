@@ -8,6 +8,10 @@ import (
 
 	"github.com/foxglove/mcap/go/mcap"
 	"github.com/stretchr/testify/require"
+	"github.com/wkalt/dp3/nodestore"
+	"github.com/wkalt/dp3/util"
+	"github.com/wkalt/dp3/util/ros1msg"
+	"github.com/wkalt/dp3/util/schema"
 	"github.com/wkalt/dp3/util/testutils"
 )
 
@@ -72,33 +76,55 @@ func WriteFileExtended(t *testing.T, w io.Writer, fieldCount int, timestampsets 
 	require.NoError(t, writer.Close())
 }
 
-func WriteFile(t *testing.T, w io.Writer, timestampsets ...[]int64) {
+func WriteFile(t *testing.T, w io.Writer, timestampsets ...[]int64) map[string]*nodestore.Statistics {
 	t.Helper()
 	writer, err := NewWriter(w)
 	require.NoError(t, err)
 	require.NoError(t, writer.WriteHeader(&mcap.Header{}))
-
-	require.NoError(t, writer.WriteSchema(&mcap.Schema{
-		ID:       1,
-		Name:     "test",
-		Encoding: "ros1msg",
-		Data: []byte(`
+	schemaData := []byte(`
 		string data
 		int16 count
-		`),
+		`)
+	require.NoError(t, writer.WriteSchema(&mcap.Schema{
+		ID:       1,
+		Name:     "package/test",
+		Encoding: "ros1msg",
+		Data:     schemaData,
 	}))
 	for i := range timestampsets {
 		channel := NewChannel(uint16(i), 1, fmt.Sprintf("topic-%d", i), "ros1msg", nil)
 		require.NoError(t, writer.WriteChannel(channel))
 	}
+
+	msgdef, err := ros1msg.ParseROS1MessageDefinition("package", "test", schemaData)
+	require.NoError(t, err)
+	fields := schema.AnalyzeSchema(*msgdef)
+	schemaHash := util.CryptographicHash(schemaData)
+	colnames := make([]string, len(fields))
+	for i, field := range fields {
+		colnames[i] = field.Name
+	}
+	parser, err := schema.NewParser(msgdef, colnames, ros1msg.NewDecoder(nil))
+	require.NoError(t, err)
+	stats := nodestore.NewStatistics(fields)
+
 	for chanID, timestamps := range timestampsets {
 		for _, ts := range timestamps {
-			require.NoError(t, writer.WriteMessage(&mcap.Message{
+			msg := &mcap.Message{
 				ChannelID: uint16(chanID),
 				LogTime:   uint64(ts),
 				Data:      testutils.Flatten(testutils.U32b(5), []byte("hello"), testutils.U16b(2024)),
-			}))
+			}
+			require.NoError(t, writer.WriteMessage(msg))
+
+			_, values, err := parser.Parse(msg.Data)
+			require.NoError(t, err)
+			require.NoError(t, stats.ObserveMessage(msg, values))
 		}
 	}
 	require.NoError(t, writer.Close())
+
+	return map[string]*nodestore.Statistics{
+		schemaHash: stats,
+	}
 }

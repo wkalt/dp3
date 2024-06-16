@@ -51,8 +51,8 @@ func MergeInserts(
 	for _, batch := range times {
 		root := nodestore.NewInnerNode(height, start, end, bfactor)
 		buf := &bytes.Buffer{}
-		mcap.WriteFile(t, buf, batch)
-		tmp, err := NewInsert(ctx, root, version, uint64(batch[0]*1e9), nil, buf.Bytes())
+		stats := mcap.WriteFile(t, buf, batch)
+		tmp, err := NewInsert(ctx, root, version, uint64(batch[0]*1e9), nil, stats, buf.Bytes())
 		require.NoError(t, err)
 
 		repr, err := Print(ctx, tmp)
