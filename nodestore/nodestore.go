@@ -121,7 +121,7 @@ func isLeaf(data []byte) bool {
 
 func BytesToNode(value []byte) (Node, error) {
 	if isLeaf(value) {
-		node := NewLeafNode(nil, nil, nil)
+		node := NewLeafNode(nil, nil, nil, nil)
 		if err := node.FromBytes(value); err != nil {
 			return nil, fmt.Errorf("failed to parse leaf node: %w", err)
 		}

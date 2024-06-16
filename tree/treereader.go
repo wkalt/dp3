@@ -22,7 +22,6 @@ either from memory, from WAL, or from the nodestore.
 type TreeReader interface {
 	Root() nodestore.NodeID
 	Get(ctx context.Context, id nodestore.NodeID) (nodestore.Node, error)
-	// todo: remove this in favor of a closure on leaf nodes.
 	GetLeafNode(ctx context.Context, id nodestore.NodeID) (*nodestore.LeafNode, io.ReadSeekCloser, error)
 }
 

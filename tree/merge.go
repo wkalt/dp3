@@ -136,7 +136,7 @@ func buildFilterIterator(
 	return destiterator, func() { util.MaybeWarn(ctx, finish) }, nil
 }
 
-func leafMerge(
+func mergeLeaves(
 	ctx context.Context,
 	cw *util.CountingWriter,
 	version uint64,
@@ -157,7 +157,7 @@ func leafMerge(
 		ancestorNodeID = &dest.Second
 		ancestorVersion = destVersion
 	}
-	header := nodestore.NewLeafNode([]byte{}, ancestorNodeID, ancestorVersion)
+	header := nodestore.NewLeafNode(nil, []byte{}, ancestorNodeID, ancestorVersion)
 	mask, finish, err := buildFilterIterator(ctx, dest)
 	if err != nil {
 		return nodestore.NodeID{}, nil, err
@@ -375,7 +375,7 @@ func mergeConflictedPairs(
 	if newNode.Height > 1 {
 		return mergeInnerNode(ctx, cw, version, dest, conflictedPairs)
 	}
-	mergedID, mergedStats, err := leafMerge(
+	mergedID, mergedStats, err := mergeLeaves(
 		ctx, cw, version, destVersion, dest, conflictedPairs,
 	)
 	if err != nil {

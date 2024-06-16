@@ -8,6 +8,7 @@ import (
 
 	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/mcap"
+	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/util/log"
 	"github.com/wkalt/dp3/util/ros1msg"
 	"github.com/wkalt/dp3/util/schema"
@@ -52,6 +53,8 @@ type writer struct {
 	w   *fmcap.Writer
 
 	dims *treeDimensions
+
+	messageKeys []nodestore.MessageKey
 }
 
 func newWriter(
@@ -77,10 +80,11 @@ func newWriter(
 		w:           nil,
 		dims:        dims,
 
-		database: database,
-		producer: producer,
-		topic:    topic,
-		parsers:  map[uint16]*schema.Parser{},
+		database:    database,
+		producer:    producer,
+		topic:       topic,
+		parsers:     map[uint16]*schema.Parser{},
+		messageKeys: []nodestore.MessageKey{},
 	}, nil
 }
 
@@ -180,6 +184,7 @@ func (w *writer) flush(ctx context.Context) error {
 	}
 	w.buf.Reset()
 	w.initialized = false
+	w.messageKeys = w.messageKeys[:0]
 	log.Debugw(ctx, "flushed writer",
 		"producer", w.producer,
 		"topic", w.topic,
@@ -213,6 +218,10 @@ func (w *writer) Write(
 	if err := w.writeMessage(ctx, message); err != nil {
 		return fmt.Errorf("failed to write message: %w", err)
 	}
+	w.messageKeys = append(
+		w.messageKeys,
+		nodestore.NewMessageKey(message.LogTime, message.Sequence),
+	)
 	return nil
 }
 

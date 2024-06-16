@@ -29,22 +29,28 @@ type LeafNode struct {
 	ancestorDeleteStart uint64
 	ancestorDeleteEnd   uint64
 
-	data []byte
+	messageKeys []MessageKey
+	data        []byte
 }
 
 const leafHeaderLength = 1 + 24 + 8 + 8 + 8
 
 func (n *LeafNode) Write(w io.Writer) error {
-	buf := make([]byte, leafHeaderLength+len(n.data))
+	keydata := serializeKeys(n.messageKeys)
+	buf := make([]byte, leafHeaderLength+len(n.data)+8+len(keydata))
 	offset := util.U8(buf, n.leafNodeVersion+128)
 	offset += copy(buf[offset:], n.ancestor[:])
 	offset += util.U64(buf[offset:], n.ancestorVersion)
 	offset += util.U64(buf[offset:], n.ancestorDeleteStart)
 	offset += util.U64(buf[offset:], n.ancestorDeleteEnd)
+	offset += util.U64(buf[offset:], uint64(len(keydata)))
+	offset += copy(buf[offset:], keydata)
+
 	_, err := w.Write(buf[:offset])
 	if err != nil {
 		return fmt.Errorf("failed to write leaf node header: %w", err)
 	}
+
 	_, err = io.Copy(w, n.Data())
 	if err != nil {
 		return fmt.Errorf("failed to write leaf node data: %w", err)
@@ -54,12 +60,17 @@ func (n *LeafNode) Write(w io.Writer) error {
 
 // ToBytes serializes the node to a byte slice.
 func (n *LeafNode) ToBytes() []byte {
-	buf := make([]byte, leafHeaderLength+len(n.data))
+	buf := make([]byte, leafHeaderLength+8+12*len(n.messageKeys)+len(n.data))
 	offset := util.U8(buf, n.leafNodeVersion+128)
 	offset += copy(buf[offset:], n.ancestor[:])
 	offset += util.U64(buf[offset:], n.ancestorVersion)
 	offset += util.U64(buf[offset:], n.ancestorDeleteStart)
 	offset += util.U64(buf[offset:], n.ancestorDeleteEnd)
+
+	keydata := serializeKeys(n.messageKeys)
+	offset += util.U64(buf[offset:], uint64(len(keydata)))
+	offset += copy(buf[offset:], keydata)
+
 	copy(buf[offset:], n.data)
 	return buf
 }
@@ -84,20 +95,51 @@ func (n *LeafNode) AncestorDeleteEnd() uint64 {
 	return n.ancestorDeleteEnd
 }
 
+func ReadLeafHeader(r io.Reader, node *LeafNode) (int, error) {
+	header := make([]byte, leafHeaderLength)
+	_, err := io.ReadFull(r, header)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read leaf node header: %w", err)
+	}
+	var offset int
+	var version uint8
+	offset += util.ReadU8(header, &version)
+	if version < 128 {
+		return 0, errors.New("not a leaf node")
+	}
+	node.leafNodeVersion = version - 128
+	offset += copy(node.ancestor[:], header[offset:])
+	offset += util.ReadU64(header[offset:], &node.ancestorVersion)
+	offset += util.ReadU64(header[offset:], &node.ancestorDeleteStart)
+	offset += util.ReadU64(header[offset:], &node.ancestorDeleteEnd)
+
+	keydataLen, err := util.DecodeU64(r)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read key data length: %w", err)
+	}
+	offset += 8
+	keydata := make([]byte, keydataLen)
+	_, err = io.ReadFull(r, keydata)
+	if err != nil {
+		return 0, fmt.Errorf("failed to read key data: %w", err)
+	}
+	offset += int(keydataLen)
+
+	keys, err := deserializeKeys(keydata)
+	if err != nil {
+		return 0, fmt.Errorf("failed to deserialize message keys: %w", err)
+	}
+	node.messageKeys = keys
+	return offset, nil
+}
+
 // FromBytes deserializes the node from a byte slice.
 func (n *LeafNode) FromBytes(data []byte) error {
-	var version uint8
-	offset := util.ReadU8(data, &version)
-	if version < 128 {
-		return errors.New("not a leaf node")
+	hlen, err := ReadLeafHeader(bytes.NewReader(data), n)
+	if err != nil {
+		return fmt.Errorf("failed to read leaf node header: %w", err)
 	}
-	n.leafNodeVersion = version - 128
-
-	offset += copy(n.ancestor[:], data[offset:])
-	offset += util.ReadU64(data[offset:], &n.ancestorVersion)
-	offset += util.ReadU64(data[offset:], &n.ancestorDeleteStart)
-	offset += util.ReadU64(data[offset:], &n.ancestorDeleteEnd)
-	n.data = data[offset:]
+	n.data = data[hlen:]
 	return nil
 }
 
@@ -133,9 +175,17 @@ func (n *LeafNode) DeleteRange(start, end uint64) {
 }
 
 // NewLeafNode creates a new leaf node with the given data.
-func NewLeafNode(data []byte, ancestor *NodeID, ancestorVersion *uint64) *LeafNode {
+func NewLeafNode(
+	messageKeys []MessageKey,
+	data []byte,
+	ancestor *NodeID,
+	ancestorVersion *uint64,
+) *LeafNode {
 	if data == nil {
 		data = []byte{}
+	}
+	if messageKeys == nil {
+		messageKeys = []MessageKey{}
 	}
 	ancID := NodeID{}
 	if ancestor != nil {
@@ -150,6 +200,7 @@ func NewLeafNode(data []byte, ancestor *NodeID, ancestorVersion *uint64) *LeafNo
 		leafNodeVersion: leafNodeVersion,
 		ancestor:        ancID,
 		ancestorVersion: ancVersion,
+		messageKeys:     messageKeys,
 		data:            data,
 	}
 }

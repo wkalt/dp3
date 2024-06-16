@@ -98,7 +98,7 @@ func NewInsert(
 	// now at the parent of the leaf
 	nodeID := ids[len(ids)-1]
 	bucket := bucket(timestamp, current)
-	node := nodestore.NewLeafNode(data, nil, nil)
+	node := nodestore.NewLeafNode(nil, data, nil, nil)
 	if err := tw.Put(ctx, nodeID, node); err != nil {
 		return nil, fmt.Errorf("failed to store leaf node: %w", err)
 	}
@@ -186,7 +186,7 @@ func NewDelete(
 				return nil, fmt.Errorf("failed to write empty MCAP: %w", err)
 			}
 			leafID := nodestore.RandomNodeID()
-			leaf := nodestore.NewLeafNode(leafData.Bytes(), nil, nil)
+			leaf := nodestore.NewLeafNode(nil, leafData.Bytes(), nil, nil)
 			leaf.DeleteRange(deleteRangeStart, deleteRangeEnd)
 			if err := tw.Put(ctx, leafID, leaf); err != nil {
 				return nil, fmt.Errorf("failed to store new leaf node: %w", err)

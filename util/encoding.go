@@ -99,6 +99,14 @@ func DecodeU32(r io.Reader) (uint32, error) {
 	return x, nil
 }
 
+func DecodeU64(r io.Reader) (uint64, error) {
+	var x uint64
+	if err := binary.Read(r, binary.LittleEndian, &x); err != nil {
+		return 0, fmt.Errorf("failed to decode uint32: %w", err)
+	}
+	return x, nil
+}
+
 func DecodePrefixedString(r io.Reader) (string, error) {
 	length, err := DecodeU32(r)
 	if err != nil {

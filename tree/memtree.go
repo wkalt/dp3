@@ -139,8 +139,6 @@ func (m *MemTree) ToBytes(ctx context.Context, oid uint64) ([]byte, error) { // 
 		}
 	}
 
-	// todo avoid second lookup
-
 	// serialize the path in reverse order
 	buf := &bytes.Buffer{}
 	offset := 0

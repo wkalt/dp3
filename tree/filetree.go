@@ -5,7 +5,6 @@ package tree
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 
@@ -88,42 +87,24 @@ func (t *fileTree) GetLeafNode(ctx context.Context, id nodestore.NodeID) (
 	}
 	start, err := f.Seek(int64(t.offset)+int64(id.Offset()), io.SeekStart)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to seek to offset %d: %w", id.Offset(), err)
-	}
-
-	leafHeaderLength := 1 + 24 + 8 + 8 + 8
-	header := make([]byte, leafHeaderLength)
-	if _, err = io.ReadFull(f, header); err != nil {
 		if err := f.Close(); err != nil {
 			return nil, nil, fmt.Errorf("failed to close file: %w", err)
 		}
-		return nil, nil, fmt.Errorf("failed to read header: %w", err)
+		return nil, nil, fmt.Errorf("failed to seek to offset %d: %w", id.Offset(), err)
 	}
-
-	node, err := nodestore.BytesToNode(header)
+	var header nodestore.LeafNode
+	hlen, err := nodestore.ReadLeafHeader(f, &header)
 	if err != nil {
 		if err := f.Close(); err != nil {
 			return nil, nil, fmt.Errorf("failed to close file: %w", err)
 		}
-		return nil, nil, fmt.Errorf("failed to parse header: %w", err)
+		return nil, nil, fmt.Errorf("failed to read leaf header: %w", err)
 	}
-	leaf, ok := node.(*nodestore.LeafNode)
-	if !ok {
-		if err := f.Close(); err != nil {
-			return nil, nil, fmt.Errorf("failed to close file: %w", err)
-		}
-		return nil, nil, errors.New("not a leaf node")
-	}
-
-	// return rsc adjusted to read only the leaf data.
-	rsc, err := util.NewReadSeekCloserAt(
-		f,
-		int(start)+leafHeaderLength,
-		int(id.Length())-leafHeaderLength,
-	)
+	// return rsc adjusted to read only the leaf data. Closing is up to the caller.
+	rsc, err := util.NewReadSeekCloserAt(f, int(start)+hlen, int(id.Length())-hlen)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to instantiate reader: %w", err)
 	}
 
-	return leaf, rsc, nil
+	return &header, rsc, nil
 }
