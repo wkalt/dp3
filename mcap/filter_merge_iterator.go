@@ -7,6 +7,7 @@ import (
 	"io"
 
 	"github.com/foxglove/mcap/go/mcap"
+	"github.com/wkalt/dp3/nodestore"
 	"github.com/wkalt/dp3/util"
 )
 
@@ -52,11 +53,14 @@ type filterMergeIterator struct {
 	nextChannelID uint16
 
 	lastMark marker
+
+	filter    []nodestore.MessageKey
+	filterIdx int
 }
 
 // NewFilterMergeIterator returns a new filter merge iterator.
 func NewFilterMergeIterator(
-	filter MessageIterator,
+	filter []nodestore.MessageKey, // ordered by timestamp
 	iterators ...MessageIterator,
 ) (MessageIterator, error) {
 	pq := util.NewPriorityQueue(func(a, b record) bool {
@@ -70,12 +74,8 @@ func NewFilterMergeIterator(
 	})
 	heap.Init(pq)
 
-	// NB: mask may be nil, in which case zeroth index is unused.
-	targets := []MessageIterator{filter}
-	targets = append(targets, iterators...)
-
 	// push one element from each iterator onto queue
-	for i, it := range targets {
+	for i, it := range iterators {
 		if it == nil {
 			continue
 		}
@@ -92,13 +92,14 @@ func NewFilterMergeIterator(
 
 	return &filterMergeIterator{
 		pq:            pq,
-		iterators:     targets,
+		iterators:     iterators,
 		schemaHashes:  make(map[uint64]*mcap.Schema),
 		channelHashes: make(map[uint64]*mcap.Channel),
 		channels:      make(map[*mcap.Channel]*mcap.Channel),
 		schemas:       make(map[*mcap.Schema]*mcap.Schema),
 		nextSchemaID:  1,
 		nextChannelID: 0,
+		filter:        filter,
 	}, nil
 }
 
@@ -107,7 +108,7 @@ func NewFilterMergeIterator(
 func FilterMerge(
 	w io.Writer,
 	msgCallback func(*mcap.Schema, *mcap.Channel, *mcap.Message) error,
-	mask MessageIterator,
+	mask []nodestore.MessageKey,
 	iterators ...MessageIterator,
 ) error {
 	iterator, err := NewFilterMergeIterator(mask, iterators...)
@@ -137,11 +138,22 @@ func (mi *filterMergeIterator) Next([]byte) (*mcap.Schema, *mcap.Channel, *mcap.
 			heap.Push(mi.pq, rec)
 		}
 
-		// Skip any messages from the mask, but record the time/sequence
-		if rec.idx == 0 {
+		// Bring the filter forward to the current message if it is behind.
+		for mi.filterIdx < len(mi.filter) &&
+			(mi.filter[mi.filterIdx].Timestamp < rec.message.LogTime ||
+				(mi.filter[mi.filterIdx].Timestamp == rec.message.LogTime &&
+					mi.filter[mi.filterIdx].Sequence < rec.message.Sequence)) {
+			mi.filterIdx++
+		}
+
+		// If the timestamp and sequence match the current index in the filter,
+		// skip completely. Multiple hits are possible so do not bump the filter
+		// index.
+		if mi.filterIdx < len(mi.filter) && rec.message.LogTime == mi.filter[mi.filterIdx].Timestamp &&
+			rec.message.Sequence == mi.filter[mi.filterIdx].Sequence {
 			mi.lastMark.timestamp = rec.message.LogTime
-			mi.lastMark.sequence = rec.message.Sequence
 			mi.lastMark.valid = true
+			mi.lastMark.sequence = rec.message.Sequence
 			continue
 		}
 

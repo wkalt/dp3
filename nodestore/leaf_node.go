@@ -77,7 +77,8 @@ func (n *LeafNode) Size() uint64 {
 	return uint64(len(n.data) + 1)
 }
 
-// AncestorDeleted returns true if the ancestor node has been deleted.
+// AncestorDeleted returns true if the ancestor node has been partially or fully
+// deleted.
 func (n *LeafNode) AncestorDeleted() bool {
 	return n.ancestorDeleteEnd > 0
 }

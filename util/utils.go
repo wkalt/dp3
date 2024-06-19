@@ -259,3 +259,16 @@ func CloseAllContext[T ContextCloser](ctx context.Context, closers ...T) error {
 	}
 	return nil
 }
+
+func HashSliceOverlap[T comparable](a, b []T) bool {
+	m := make(map[T]struct{}, len(a))
+	for _, x := range a {
+		m[x] = struct{}{}
+	}
+	for _, y := range b {
+		if _, ok := m[y]; ok {
+			return true
+		}
+	}
+	return false
+}

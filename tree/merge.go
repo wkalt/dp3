@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"slices"
 	"sort"
 	"strings"
@@ -46,24 +47,39 @@ func Merge(
 	return nodeID, nil
 }
 
+func getHeader(
+	ctx context.Context,
+	input util.Pair[TreeReader, nodestore.NodeID],
+) (*nodestore.LeafNode, error) {
+	tr := input.First
+	leafID := input.Second
+	header, r, err := tr.GetLeafNode(ctx, leafID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get leaf iterator: %w", err)
+	}
+	if err := r.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close leaf reader: %w", err)
+	}
+	return header, nil
+}
+
 func getIterator(
 	ctx context.Context,
 	input util.Pair[TreeReader, nodestore.NodeID],
-) (*nodestore.LeafNode, mcap.MessageIterator, func() error, error) {
+) (mcap.MessageIterator, func() error, error) {
 	tr := input.First
 	leafID := input.Second
-
-	header, r, err := tr.GetLeafNode(ctx, leafID)
+	_, r, err := tr.GetLeafNode(ctx, leafID)
 	if err != nil {
-		return header, nil, nil, fmt.Errorf("failed to get leaf iterator: %w", err)
+		return nil, nil, fmt.Errorf("failed to get leaf iterator: %w", err)
 	}
 	reader, err := mcap.NewReader(r)
 	if err != nil {
-		return header, nil, nil, fmt.Errorf("failed to build leaf reader: %w", err)
+		return nil, nil, fmt.Errorf("failed to build leaf reader: %w", err)
 	}
 	iterator, err := reader.Messages()
 	if err != nil {
-		return header, nil, nil, fmt.Errorf("failed to create message iterator: %w", err)
+		return nil, nil, fmt.Errorf("failed to create message iterator: %w", err)
 	}
 	closer := func() error {
 		reader.Close()
@@ -72,7 +88,7 @@ func getIterator(
 		}
 		return nil
 	}
-	return header, iterator, closer, nil
+	return iterator, closer, nil
 }
 
 func onMessageCallback() (
@@ -120,22 +136,66 @@ func onMessageCallback() (
 	}
 }
 
-func buildFilterIterator(
+func buildFilter(
 	ctx context.Context,
-	dest *util.Pair[TreeReader, nodestore.NodeID],
-) (mcap.MessageIterator, func(), error) {
-	if dest == nil {
-		return nil, func() {}, nil
-	}
-	tr := dest.First
-	destLeafID := dest.Second
-	destiterator, finish, err := BuildLeafIterator(ctx, tr, destLeafID, false)
+	tr TreeReader,
+	leafID nodestore.NodeID,
+) (*nodestore.LeafNode, []nodestore.MessageKey, error) {
+	nodes := []*nodestore.LeafNode{}
+	leaf, rsc, err := tr.GetLeafNode(ctx, leafID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to build destination iterator: %w", err)
+		return nil, nil, fmt.Errorf("failed to get leaf: %w", err)
 	}
-	return destiterator, func() { util.MaybeWarn(ctx, finish) }, nil
+	if err := rsc.Close(); err != nil {
+		return nil, nil, fmt.Errorf("failed to close leaf reader: %w", err)
+	}
+	nodes = append(nodes, leaf)
+	ancestor := leaf.Ancestor()
+	for (ancestor != nodestore.NodeID{}) {
+		leaf, rsc, err := tr.GetLeafNode(ctx, ancestor)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to get ancestor: %w", err)
+		}
+		if err := rsc.Close(); err != nil {
+			return nil, nil, fmt.Errorf("failed to close ancestor reader: %w", err)
+		}
+		nodes = append(nodes, leaf)
+		ancestor = leaf.Ancestor()
+	}
+	slices.Reverse(nodes)
+	rangesets := [][][]uint64{}
+	start := uint64(0)
+	end := uint64(math.MaxUint64)
+	for _, leaf := range nodes {
+		if leaf.AncestorDeleted() {
+			for i, rangeset := range rangesets {
+				rangesets[i] = SplitRangeSet(rangeset, leaf.AncestorDeleteStart(), leaf.AncestorDeleteEnd())
+			}
+		}
+		rangesets = append(rangesets, [][]uint64{{start, end}})
+	}
+	keys := []nodestore.MessageKey{}
+	for i, rangeset := range rangesets {
+		messageKeys := nodes[i].MessageKeys()
+		for _, key := range messageKeys {
+			for _, r := range rangeset {
+				if key.Timestamp >= r[0] && key.Timestamp < r[1] {
+					keys = append(keys, key)
+					break
+				}
+			}
+		}
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if keys[i].Timestamp == keys[j].Timestamp {
+			return keys[i].Sequence < keys[j].Sequence
+		}
+		return keys[i].Timestamp < keys[j].Timestamp
+	})
+	return leaf, keys, nil
 }
 
+// nolint: funlen
 func mergeLeaves(
 	ctx context.Context,
 	cw *util.CountingWriter,
@@ -151,44 +211,82 @@ func mergeLeaves(
 	if len(inputs) == 0 {
 		return nodeID, nil, errors.New("no leaves to merge")
 	}
+
+	// If we have no destination and only one input, leaf bytes can be copied
+	// without decompression.
+	if dest == nil && len(inputs) == 1 {
+		nodeID, err := mergeOneLeafDirect(ctx, cw, version, nil, nil, inputs[0])
+		if err != nil {
+			return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge single node: %w", err)
+		}
+		return nodeID, nil, nil
+	}
+
 	var ancestorNodeID *nodestore.NodeID
 	var ancestorVersion *uint64
+	var filter []nodestore.MessageKey
 	if dest != nil {
 		ancestorNodeID = &dest.Second
 		ancestorVersion = destVersion
+		_, filter, err = buildFilter(ctx, dest.First, dest.Second)
+		if err != nil {
+			return nodestore.NodeID{}, nil, err
+		}
 	}
 
-	header := nodestore.NewLeafNode(nil, []byte{}, ancestorNodeID, ancestorVersion)
-	mask, finish, err := buildFilterIterator(ctx, dest)
-	if err != nil {
-		return nodestore.NodeID{}, nil, err
-	}
-	defer finish()
-
+	// Otherwise, we need to merge leaves.
+	newHeader := nodestore.NewLeafNode(nil, []byte{}, ancestorNodeID, ancestorVersion)
 	iterators := make([]mcap.MessageIterator, len(inputs))
+
+	// Build a list of message keys associated with the incoming data.
 	keys := []nodestore.MessageKey{}
+	for _, input := range inputs {
+		header, err := getHeader(ctx, input)
+		if err != nil {
+			return nodestore.NodeID{}, nil, err
+		}
+		if header.AncestorDeleted() {
+			if ancestorNodeID == nil {
+				return nodestore.NodeID{}, nil, errElideNode
+			}
+			start := header.AncestorDeleteStart()
+			end := header.AncestorDeleteEnd()
+			newHeader.DeleteRange(start, end)
+			keys = util.Filter(func(key nodestore.MessageKey) bool {
+				return key.Timestamp < start || key.Timestamp >= end
+			}, keys)
+		}
+		keys = append(keys, header.MessageKeys()...)
+	}
+
+	// If the length of inputs is 1, we can still skip merging if there is no
+	// overlap between the filter and the list of keys we just built.
+	if len(inputs) == 1 && !util.HashSliceOverlap(filter, keys) {
+		nodeID, err := mergeOneLeafDirect(
+			ctx, cw, version, ancestorNodeID, ancestorVersion, inputs[0])
+		if err != nil {
+			return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge single node: %w", err)
+		}
+		return nodeID, nil, nil
+	}
+
+	// Otherwise, we will need to merge bytes. Take another pass through the
+	// inputs to get the iterators.
 	for i, input := range inputs {
-		inputHeader, iterator, finish, err := getIterator(ctx, input)
+		iterator, finish, err := getIterator(ctx, input)
 		if err != nil {
 			return nodestore.NodeID{}, nil, err
 		}
 		defer util.MaybeWarn(ctx, finish)
 		iterators[i] = iterator
-		if inputHeader.AncestorDeleted() {
-			if ancestorNodeID == nil {
-				return nodestore.NodeID{}, nil, errElideNode
-			}
-			header.DeleteRange(inputHeader.AncestorDeleteStart(), inputHeader.AncestorDeleteEnd())
-		}
-		keys = append(keys, inputHeader.MessageKeys()...)
 	}
-	header.SetMessageKeys(keys)
+	newHeader.SetMessageKeys(keys)
 	schemaStats, callback := onMessageCallback()
 	offset := uint64(cw.Count())
-	if err := header.EncodeTo(cw); err != nil {
+	if err := newHeader.EncodeTo(cw); err != nil {
 		return nodestore.NodeID{}, nil, fmt.Errorf("failed to write leaf header: %w", err)
 	}
-	if err = mcap.FilterMerge(cw, callback, mask, iterators...); err != nil {
+	if err = mcap.FilterMerge(cw, callback, filter, iterators...); err != nil {
 		return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge leaf iterators: %w", err)
 	}
 	length := uint64(cw.Count()) - offset
@@ -306,8 +404,15 @@ func mergeInnerNode( // nolint: funlen
 		// If we are in the fast path we have no destination and only one
 		// input, and require no merging of leaves. In this case we copy
 		// leaf bytes directly and do not compute statistics at merge time.
-		fastpath := len(conflictedNodes) == 1 && destChild == nil
-		if len(conflictedPairs) > 0 {
+
+		// now refine the merging strategy to include message indexes
+
+		var targetChild *nodestore.Child
+		if destChild != nil {
+			targetChild = destNode.Children[conflict]
+		}
+
+		if len(conflictedPairs) > 0 { // nolint: nestif
 			var destConflict *nodestore.Child
 			if destChild != nil {
 				destConflict = destNode.Children[conflict]
@@ -321,14 +426,23 @@ func mergeInnerNode( // nolint: funlen
 				}
 				return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge nodes: %w", err)
 			}
+
+			// Signifies we merged one leaf efficiently and need to merge the
+			// destination stats with the single input's children.
+			if mergedStats == nil {
+				mergedStats = nodestore.CloneStatsMap(conflictedNodes[0].Children[conflict].Statistics)
+				if targetChild != nil {
+					mergedStats, err = nodestore.MergeStatsMaps(mergedStats, targetChild.Statistics)
+					if err != nil {
+						return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge stats: %w", err)
+					}
+				}
+			}
+
 			newNode.Children[conflict] = &nodestore.Child{
-				ID:      mergedID,
-				Version: version,
-				Statistics: util.When(
-					fastpath,
-					nodestore.CloneStatsMap(conflictedNodes[0].Children[conflict].Statistics),
-					mergedStats,
-				),
+				ID:         mergedID,
+				Version:    version,
+				Statistics: mergedStats,
 			}
 			continue
 		}
@@ -368,10 +482,12 @@ func mergeInnerNode( // nolint: funlen
 	return nodestore.NewNodeID(version, offset, uint64(len(data))), outputStats, nil
 }
 
-func mergeOneLeaf(
+func mergeOneLeafDirect(
 	ctx context.Context,
 	cw *util.CountingWriter,
 	version uint64,
+	ancestorID *nodestore.NodeID,
+	ancestorVersion *uint64,
 	pair util.Pair[TreeReader, nodestore.NodeID],
 ) (nodestore.NodeID, error) {
 	tr := pair.First
@@ -381,14 +497,24 @@ func mergeOneLeaf(
 		return nodestore.NodeID{}, fmt.Errorf("failed to get leaf: %w", err)
 	}
 	defer r.Close()
+	newHeader := nodestore.NewLeafNode(
+		header.MessageKeys(),
+		[]byte{},
+		ancestorID,
+		ancestorVersion,
+	)
+	if header.AncestorDeleted() {
+		newHeader.DeleteRange(header.AncestorDeleteStart(), header.AncestorDeleteEnd())
+	}
 	offset := uint64(cw.Count())
-	if err := header.EncodeTo(cw); err != nil {
+	if err := newHeader.EncodeTo(cw); err != nil {
 		return nodestore.NodeID{}, fmt.Errorf("failed to write leaf header: %w", err)
 	}
 	if _, err := io.Copy(cw, r); err != nil {
 		return nodestore.NodeID{}, fmt.Errorf("failed to copy leaf data: %w", err)
 	}
 	length := uint64(cw.Count()) - offset
+
 	return nodestore.NewNodeID(version, offset, length), nil
 }
 
@@ -402,33 +528,32 @@ func mergeConflictedPairs(
 	destChild *nodestore.Child,
 	conflictedPairs []util.Pair[TreeReader, nodestore.NodeID],
 ) (nodestore.NodeID, map[string]*nodestore.Statistics, error) {
-	var mergedStats map[string]*nodestore.Statistics
-	if newNode.Height > 1 {
+	switch {
+	case newNode.Height > 1:
 		return mergeInnerNode(ctx, cw, version, dest, conflictedPairs)
-	}
-
-	if destChild == nil && len(conflictedPairs) == 1 {
-		nodeID, err := mergeOneLeaf(ctx, cw, version, conflictedPairs[0])
+	case destChild == nil && len(conflictedPairs) == 1:
+		nodeID, err := mergeOneLeafDirect(ctx, cw, version, nil, nil, conflictedPairs[0])
 		if err != nil {
 			return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge single node: %w", err)
 		}
 		return nodeID, nil, nil
-	}
-
-	mergedID, mergedStats, err := mergeLeaves(
-		ctx, cw, version, destVersion, dest, conflictedPairs,
-	)
-	if err != nil {
-		return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge nodes: %w", err)
-	}
-	if destChild != nil {
-		mergedStats, err = nodestore.MergeStatsMaps(mergedStats, destChild.Statistics)
+	default:
+		mergedID, mergedStats, err := mergeLeaves(
+			ctx, cw, version, destVersion, dest, conflictedPairs,
+		)
 		if err != nil {
-			return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge stats: %w", err)
+			return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge nodes: %w", err)
 		}
-	}
 
-	return mergedID, mergedStats, nil
+		if destChild != nil && mergedStats != nil {
+			mergedStats, err = nodestore.MergeStatsMaps(mergedStats, destChild.Statistics)
+			if err != nil {
+				return nodestore.NodeID{}, nil, fmt.Errorf("failed to merge stats: %w", err)
+			}
+		}
+
+		return mergedID, mergedStats, nil
+	}
 }
 
 func buildConflictedPairs(

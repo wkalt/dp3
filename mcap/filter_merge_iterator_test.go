@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/wkalt/dp3/mcap"
+	"github.com/wkalt/dp3/nodestore"
 )
 
 func TestMergeFilterIterator(t *testing.T) {
@@ -81,14 +82,13 @@ func TestMergeFilterIterator(t *testing.T) {
 
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
-			var filter mcap.MessageIterator
-			if len(c.filter) > 0 {
-				filter = mcap.NewMockIterator("topic", c.filter)
-			}
-
 			var inputs []mcap.MessageIterator
 			for _, input := range c.inputs {
 				inputs = append(inputs, mcap.NewMockIterator("topic", input))
+			}
+			filter := []nodestore.MessageKey{}
+			for _, f := range c.filter {
+				filter = append(filter, nodestore.MessageKey{Timestamp: uint64(f[0]), Sequence: uint32(f[1])})
 			}
 			iter, err := mcap.NewFilterMergeIterator(filter, inputs...)
 			require.NoError(t, err)

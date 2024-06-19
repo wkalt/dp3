@@ -441,7 +441,6 @@ func runSequence(ctx context.Context, t *testing.T, tmgr *treemgr.TreeManager, s
 			require.NoError(t, err)
 			right, err := strconv.ParseInt(nums[1], 10, 64)
 			require.NoError(t, err)
-			mcap.WriteFile(t, buf, [][]int64{{left}, {right}}...)
 			require.NoError(t, tmgr.DeleteMessages(
 				ctx, "db", "my-device", "topic-0", 1e9*uint64(left), 1e9*uint64(right)))
 		default:
