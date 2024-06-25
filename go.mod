@@ -6,11 +6,12 @@ require (
 	github.com/alecthomas/participle/v2 v2.1.1
 	github.com/fatih/color v1.16.0
 	github.com/foxglove/go-rosbag v0.0.6
-	github.com/goccy/go-json v0.10.2
-	github.com/minio/minio-go/v7 v7.0.68
+	github.com/goccy/go-json v0.10.3
+	github.com/minio/minio-go/v7 v7.0.72
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.9.0
-	google.golang.org/protobuf v1.33.0
+	github.com/wkalt/migrate v0.0.0-20240613031459-65aa49660c06
+	google.golang.org/protobuf v1.34.2
 )
 
 require (
@@ -118,8 +119,8 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/juju/ratelimit v1.0.2 // indirect
-	github.com/klauspost/compress v1.17.8 // indirect
-	github.com/klauspost/cpuid/v2 v2.2.6 // indirect
+	github.com/klauspost/compress v1.17.9 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
 	github.com/klauspost/filepathx v1.1.1 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect
 	github.com/klauspost/readahead v1.4.0 // indirect
@@ -216,7 +217,6 @@ require (
 	github.com/unrolled/secure v1.14.0 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/vbauerster/mpb/v8 v8.7.2 // indirect
-	github.com/wkalt/migrate v0.0.0-20240613031459-65aa49660c06 // indirect
 	github.com/xdg/scram v1.0.5 // indirect
 	github.com/xdg/stringprep v1.0.3 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
@@ -236,15 +236,15 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.26.0 // indirect
 	goftp.io/server/v2 v2.0.1 // indirect
-	golang.org/x/crypto v0.21.0 // indirect
-	golang.org/x/mod v0.15.0 // indirect
-	golang.org/x/net v0.21.0 // indirect
+	golang.org/x/crypto v0.24.0 // indirect
+	golang.org/x/mod v0.18.0 // indirect
+	golang.org/x/net v0.26.0 // indirect
 	golang.org/x/oauth2 v0.17.0 // indirect
-	golang.org/x/sys v0.18.0 // indirect
-	golang.org/x/term v0.18.0 // indirect
-	golang.org/x/text v0.14.0 // indirect
+	golang.org/x/sys v0.21.0 // indirect
+	golang.org/x/term v0.21.0 // indirect
+	golang.org/x/text v0.16.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
-	golang.org/x/tools v0.18.0 // indirect
+	golang.org/x/tools v0.22.0 // indirect
 	google.golang.org/api v0.164.0 // indirect
 	google.golang.org/appengine v1.6.8 // indirect
 	google.golang.org/genproto v0.0.0-20240205150955-31a09d347014 // indirect
@@ -258,7 +258,7 @@ require (
 )
 
 require (
-	github.com/DataDog/sketches-go v1.4.5
+	github.com/DataDog/sketches-go v1.4.6
 	github.com/bmatcuk/doublestar/v4 v4.6.1
 	github.com/chzyer/readline v1.5.1
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
@@ -272,7 +272,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/relvacode/iso8601 v1.4.0
 	github.com/spaolacci/murmur3 v1.1.0
-	golang.org/x/exp v0.0.0-20240222234643-814bf88cf225
-	golang.org/x/sync v0.6.0
+	golang.org/x/exp v0.0.0-20240613232115-7f521ea00fb8
+	golang.org/x/sync v0.7.0
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
