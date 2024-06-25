@@ -1,6 +1,6 @@
 module github.com/wkalt/dp3
 
-go 1.22.0
+go 1.22.3
 
 require (
 	github.com/alecthomas/participle/v2 v2.1.1
@@ -8,7 +8,7 @@ require (
 	github.com/foxglove/go-rosbag v0.0.6
 	github.com/goccy/go-json v0.10.2
 	github.com/minio/minio-go/v7 v7.0.68
-	github.com/spf13/cobra v1.8.0
+	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.9.0
 	google.golang.org/protobuf v1.33.0
 )
