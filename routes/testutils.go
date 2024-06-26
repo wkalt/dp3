@@ -10,7 +10,7 @@ import (
 
 func MakeTestRoutes(ctx context.Context, t *testing.T, tmgr *treemgr.TreeManager) (string, func()) {
 	t.Helper()
-	handler := MakeRoutes(tmgr)
+	handler := MakeRoutes(tmgr, nil)
 	srv := httptest.NewServer(handler)
 	return srv.URL, srv.Close
 }

@@ -24,6 +24,8 @@ func WithRequestID(h http.Handler) http.Handler {
 	})
 }
 
+// WithCORSAllowedOrigins is a middleware that allows requests from specified
+// origins.
 func WithCORSAllowedOrigins(origins []string) func(http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

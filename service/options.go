@@ -24,6 +24,14 @@ type DP3Options struct {
 	StorageProvider storage.Provider
 	DatabasePath    string
 	WALDir          string
+	AllowedOrigins  []string
+}
+
+// WithAllowedOrigins sets the allowed origins for CORS.
+func WithAllowedOrigins(origins []string) DP3Option {
+	return func(opts *DP3Options) {
+		opts.AllowedOrigins = origins
+	}
 }
 
 // WithCacheSizeMegabytes sets the cache size in megabytes.

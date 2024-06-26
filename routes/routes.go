@@ -30,15 +30,11 @@ func clientError(err error) error {
 }
 
 // MakeRoutes creates a new router with all the routes for the DP3 service.
-func MakeRoutes(tmgr *treemgr.TreeManager) *mux.Router {
+func MakeRoutes(tmgr *treemgr.TreeManager, allowedOrigins []string) *mux.Router {
 	r := mux.NewRouter()
 	r.Use(
 		mw.WithRequestID,
-		mw.WithCORSAllowedOrigins([]string{
-			"http://localhost:5174",
-			"http://localhost:5173",
-			"http://localhost:8080",
-		}),
+		mw.WithCORSAllowedOrigins(allowedOrigins),
 	)
 	r.HandleFunc("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_, err := w.Write([]byte("dp3"))

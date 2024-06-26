@@ -101,7 +101,7 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 	if err != nil {
 		return fmt.Errorf("failed to create tree manager: %w", err)
 	}
-	r := routes.MakeRoutes(tmgr)
+	r := routes.MakeRoutes(tmgr, opts.AllowedOrigins)
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", opts.Port),
 		Handler: r,
@@ -171,6 +171,11 @@ func readOpts(opts ...DP3Option) (*DP3Options, error) {
 		SyncWorkers:    4,
 		DatabasePath:   "dp3.db",
 		WALDir:         "waldir",
+		AllowedOrigins: []string{
+			"http://localhost:5174",
+			"http://localhost:5173",
+			"http://localhost:8080",
+		},
 	}
 	for _, opt := range opts {
 		opt(&options)

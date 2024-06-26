@@ -18,6 +18,7 @@ var (
 	serverSyncWorkers        int
 	serverDBPath             string
 	serverWALDir             string
+	allowedOrigins           []string
 
 	// Directory storage provider options
 	serverDataDir string
@@ -104,6 +105,8 @@ func init() {
 	serverCmd.PersistentFlags().StringVarP(&serverDBPath, "db-path", "", "dp3.db", "rootmap database location")
 	serverCmd.PersistentFlags().StringVarP(&serverLogLevel, "log-level", "l", "info", "Log level")
 	serverCmd.PersistentFlags().IntVarP(&serverSyncWorkers, "sync-workers", "", 2, "Sync workers")
+
+	serverCmd.PersistentFlags().StringSliceVarP(&allowedOrigins, "allowed-origins", "o", []string{}, "Allowed origins")
 
 	serverCmd.PersistentFlags().StringVar(&serverS3Endpoint, "s3-endpoint", "", "S3 endpoint (for S3 storage)")
 	serverCmd.PersistentFlags().StringVar(&serverS3AccessKey, "s3-access-key-id", "", "S3 access key ID (for S3 storage)")
