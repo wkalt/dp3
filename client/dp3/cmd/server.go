@@ -15,11 +15,12 @@ var (
 	serverPort               int
 	serverCacheSizeMegabytes int
 	serverLogLevel           string
+	serverSyncWorkers        int
+	serverDBPath             string
+	serverWALDir             string
 
 	// Directory storage provider options
 	serverDataDir string
-	serverWALDir  string
-	serverDBPath  string
 
 	// S3 storage provider options
 	serverS3Endpoint  string
@@ -85,6 +86,7 @@ var serverCmd = &cobra.Command{
 			service.WithStorageProvider(store),
 			service.WithWALDir(serverWALDir),
 			service.WithDatabasePath(serverDBPath),
+			service.WithSyncWorkers(serverSyncWorkers),
 		}
 		if err := svc.Start(ctx, opts...); err != nil {
 			bailf("Shutdown error: %s", err)
@@ -101,6 +103,7 @@ func init() {
 	serverCmd.PersistentFlags().StringVarP(&serverWALDir, "wal-dir", "", "waldir", "WAL directory")
 	serverCmd.PersistentFlags().StringVarP(&serverDBPath, "db-path", "", "dp3.db", "rootmap database location")
 	serverCmd.PersistentFlags().StringVarP(&serverLogLevel, "log-level", "l", "info", "Log level")
+	serverCmd.PersistentFlags().IntVarP(&serverSyncWorkers, "sync-workers", "", 2, "Sync workers")
 
 	serverCmd.PersistentFlags().StringVar(&serverS3Endpoint, "s3-endpoint", "", "S3 endpoint (for S3 storage)")
 	serverCmd.PersistentFlags().StringVar(&serverS3AccessKey, "s3-access-key-id", "", "S3 access key ID (for S3 storage)")
