@@ -61,7 +61,7 @@ var exportCmd = &cobra.Command{
 		if err := json.NewEncoder(buf).Encode(messageRequest); err != nil {
 			bailf("error encoding request: %s", err)
 		}
-		resp, err := http.Post("http://localhost:8089/export", "application/json", buf)
+		resp, err := http.Post(serverURL+"/export", "application/json", buf)
 		if err != nil {
 			bailf("error calling export: %s", err)
 		}

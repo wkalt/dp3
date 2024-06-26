@@ -74,7 +74,7 @@ func printStatRange(
 	if err := json.NewEncoder(buf).Encode(req); err != nil {
 		return fmt.Errorf("error encoding request: %s", err)
 	}
-	resp, err := http.Post("http://localhost:8089/statrange", "application/json", buf)
+	resp, err := http.Post(serverURL+"/statrange", "application/json", buf)
 	if err != nil {
 		return fmt.Errorf("error calling statrange: %s", err)
 	}
