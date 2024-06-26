@@ -101,7 +101,8 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 	if err != nil {
 		return fmt.Errorf("failed to create tree manager: %w", err)
 	}
-	r := routes.MakeRoutes(tmgr, opts.AllowedOrigins)
+	log.Infof(ctx, "Building routes with allowed origins %+v", opts.AllowedOrigins)
+	r := routes.MakeRoutes(tmgr, opts.AllowedOrigins, opts.SharedKey)
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", opts.Port),
 		Handler: r,
@@ -176,6 +177,7 @@ func readOpts(opts ...DP3Option) (*DP3Options, error) {
 			"http://localhost:5173",
 			"http://localhost:8080",
 		},
+		SharedKey: "",
 	}
 	for _, opt := range opts {
 		opt(&options)

@@ -61,7 +61,7 @@ var tailCmd = &cobra.Command{
 			if err := json.NewEncoder(buf).Encode(messageRequest); err != nil {
 				bailf("error encoding request: %s", err)
 			}
-			resp, err := http.Post(serverURL+"/export", "application/json", buf)
+			resp, err := httpc.Post(serverURL+"/export", "application/json", buf)
 			if err != nil {
 				bailf("error calling export: %s", err)
 			}

@@ -30,7 +30,11 @@ func clientError(err error) error {
 }
 
 // MakeRoutes creates a new router with all the routes for the DP3 service.
-func MakeRoutes(tmgr *treemgr.TreeManager, allowedOrigins []string) *mux.Router {
+func MakeRoutes(
+	tmgr *treemgr.TreeManager,
+	allowedOrigins []string,
+	sharedKey string,
+) *mux.Router {
 	r := mux.NewRouter()
 	r.Use(
 		mw.WithRequestID,
@@ -44,18 +48,24 @@ func MakeRoutes(tmgr *treemgr.TreeManager, allowedOrigins []string) *mux.Router 
 	}))
 	r.HandleFunc("/export", newExportHandler(tmgr)).Methods("POST")
 	r.HandleFunc("/statrange", newStatRangeHandler(tmgr)).Methods("POST", "GET")
-	r.HandleFunc("/delete", newDeleteHandler(tmgr)).Methods("POST", "GET")
 	r.HandleFunc("/databases", newDatabasesHandler(tmgr)).Methods("GET")
 
-	r.HandleFunc("/databases/{database}/import", newImportHandler(tmgr)).Methods("POST")
 	r.HandleFunc("/databases/{database}/query", newQueryHandler(tmgr)).Methods("POST")
 	r.HandleFunc("/databases/{database}/summarize-children",
 		summarizeChildrenHandler(tmgr)).Methods("GET")
-	r.HandleFunc("/databases/{database}/producers/{producer}/import",
-		newImportStreamHandler(tmgr)).Methods("POST", "OPTIONS")
 	r.HandleFunc("/databases/{database}/topics", newTopicsHandler(tmgr)).Methods("GET")
 	r.HandleFunc("/databases/{database}/tables", newTablesHandler(tmgr)).Methods("GET")
 	r.HandleFunc("/databases/{database}/producers", newProducersHandler(tmgr)).Methods("GET")
 	r.HandleFunc("/databases/{database}/schemas/{hash}", newSchemasHandler(tmgr)).Methods("GET")
+
+	// These use authentication if provided.
+	authmw := mw.WithSharedKeyAuth(sharedKey)
+	r.Handle("/delete",
+		authmw(newDeleteHandler(tmgr))).Methods("POST", "GET")
+	r.Handle("/databases/{database}/import",
+		authmw(newImportHandler(tmgr))).Methods("POST")
+	r.Handle("/databases/{database}/producers/{producer}/import",
+		authmw(newImportStreamHandler(tmgr))).Methods("POST", "OPTIONS")
+
 	return r
 }

@@ -40,7 +40,7 @@ func doImport(database string, producer string, paths []string, workers int) err
 				return fmt.Errorf("error encoding request: %s", err)
 			}
 			url := fmt.Sprintf(serverURL+"/databases/%s/import", database)
-			resp, err := http.Post(url, "application/json", buf)
+			resp, err := httpc.Post(url, "application/json", buf)
 			if err != nil {
 				return fmt.Errorf("error calling import: %s", err)
 			}

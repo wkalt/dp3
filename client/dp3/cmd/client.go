@@ -111,7 +111,7 @@ func executeQuery(database string, query string, explain bool) error {
 		return fmt.Errorf("error encoding request: %w", err)
 	}
 	url := fmt.Sprintf("%s/databases/%s/query", serverURL, database)
-	resp, err := http.Post(url, "application/json", buf)
+	resp, err := httpc.Post(url, "application/json", buf)
 	if err != nil {
 		return fmt.Errorf("error calling export: %w", err)
 	}
@@ -324,7 +324,7 @@ func doDelete(database, producer, topic string, start, end int64) error {
 	if err := json.NewEncoder(buf).Encode(req); err != nil {
 		return fmt.Errorf("error encoding request: %w", err)
 	}
-	resp, err := http.Post(serverURL+"/delete", "application/json", buf)
+	resp, err := httpc.Post(serverURL+"/delete", "application/json", buf)
 	if err != nil {
 		return fmt.Errorf("error calling delete: %w", err)
 	}
@@ -409,7 +409,7 @@ func printTables(w io.Writer, database string, producer string, topic string) er
 	values.Add("topic", url.QueryEscape(topic))
 	values.Add("historical", strconv.FormatBool(historical))
 	url := fmt.Sprintf(serverURL+"/databases/%s/tables?%s", database, values.Encode())
-	resp, err := http.Get(url)
+	resp, err := httpc.Get(url)
 	if err != nil {
 		return fmt.Errorf("error calling tables: %s", err)
 	}

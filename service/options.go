@@ -25,6 +25,16 @@ type DP3Options struct {
 	DatabasePath    string
 	WALDir          string
 	AllowedOrigins  []string
+	SharedKey       string
+}
+
+// WithSharedKey sets a shared authentication key for the service. Note that
+// this is only applied on write endpoints currently - others are
+// unauthenticated.
+func WithSharedKey(key string) DP3Option {
+	return func(opts *DP3Options) {
+		opts.SharedKey = key
+	}
 }
 
 // WithAllowedOrigins sets the allowed origins for CORS.

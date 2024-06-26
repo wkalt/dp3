@@ -9,11 +9,13 @@ import (
 
 type Client struct {
 	serverURL string
+	httpc     *http.Client
 }
 
-func New(serverURL string) *Client {
+func New(serverURL, sharedKey string) *Client {
 	return &Client{
 		serverURL: serverURL,
+		httpc:     NewHTTPClient(sharedKey),
 	}
 }
 
@@ -24,7 +26,7 @@ func (c *Client) StreamImport(
 	r io.Reader,
 ) error {
 	url := fmt.Sprintf("%s/databases/%s/producers/%s/import", c.serverURL, database, producer)
-	resp, err := http.Post(url, "application/octet-stream", r)
+	resp, err := c.httpc.Post(url, "application/octet-stream", r)
 	if err != nil {
 		return fmt.Errorf("error calling import: %w", err)
 	}
@@ -36,4 +38,23 @@ func (c *Client) StreamImport(
 		return fmt.Errorf("failed to import: %s", body)
 	}
 	return nil
+}
+
+type transport struct {
+	key string
+}
+
+func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", t.key))
+	return http.DefaultTransport.RoundTrip(req)
+}
+
+func newTransport(key string) *transport {
+	return &transport{key: key}
+}
+
+func NewHTTPClient(sharedKey string) *http.Client {
+	return &http.Client{
+		Transport: newTransport(sharedKey),
+	}
 }

@@ -69,3 +69,9 @@ func InternalServerError(ctx context.Context, w http.ResponseWriter, msg string,
 	log.Errorw(ctx, "Internal server error", "msg", fmt.Errorf(msg, args...))
 	writeErrorResponse(ctx, w, http.StatusInternalServerError, errors.New("internal server error"))
 }
+
+// Unauthorized logs the error and sends a 401 response to the client.
+func Unauthorized(ctx context.Context, w http.ResponseWriter, msg string, args ...any) {
+	log.Debugw(ctx, "Unauthorized", "msg", fmt.Errorf(msg, args...))
+	writeErrorResponse(ctx, w, http.StatusUnauthorized, fmt.Errorf(msg, args...))
+}

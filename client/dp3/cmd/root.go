@@ -8,9 +8,15 @@ import (
 	"plugin"
 
 	"github.com/spf13/cobra"
+	"github.com/wkalt/dp3/client/dp3/client"
 )
 
-var serverURL string
+var (
+	serverURL string
+	sharedKey string
+)
+
+var httpc = client.NewHTTPClient(sharedKey)
 
 var rootCmd = &cobra.Command{
 	Use:   "dp3",
@@ -76,4 +82,5 @@ func loadPlugins() {
 func init() {
 	loadPlugins()
 	rootCmd.PersistentFlags().StringVarP(&serverURL, "server-url", "", "http://localhost:8089", "server-url")
+	rootCmd.PersistentFlags().StringVarP(&sharedKey, "shared-key", "", "", "shared key to use for authentication")
 }

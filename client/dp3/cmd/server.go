@@ -19,6 +19,7 @@ var (
 	serverDBPath             string
 	serverWALDir             string
 	allowedOrigins           []string
+	serverSharedKey          string
 
 	// Directory storage provider options
 	serverDataDir string
@@ -88,6 +89,8 @@ var serverCmd = &cobra.Command{
 			service.WithWALDir(serverWALDir),
 			service.WithDatabasePath(serverDBPath),
 			service.WithSyncWorkers(serverSyncWorkers),
+			service.WithSharedKey(serverSharedKey),
+			service.WithAllowedOrigins(allowedOrigins),
 		}
 		if err := svc.Start(ctx, opts...); err != nil {
 			bailf("Shutdown error: %s", err)
@@ -105,6 +108,7 @@ func init() {
 	serverCmd.PersistentFlags().StringVarP(&serverDBPath, "db-path", "", "dp3.db", "rootmap database location")
 	serverCmd.PersistentFlags().StringVarP(&serverLogLevel, "log-level", "l", "info", "Log level")
 	serverCmd.PersistentFlags().IntVarP(&serverSyncWorkers, "sync-workers", "", 2, "Sync workers")
+	serverCmd.PersistentFlags().StringVarP(&serverSharedKey, "shared-key", "", "", "shared authentication key")
 
 	serverCmd.PersistentFlags().StringSliceVarP(&allowedOrigins, "allowed-origins", "o", []string{}, "Allowed origins")
 
