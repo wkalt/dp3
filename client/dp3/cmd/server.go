@@ -18,6 +18,8 @@ var (
 
 	// Directory storage provider options
 	serverDataDir string
+	serverWALDir  string
+	serverDBPath  string
 
 	// S3 storage provider options
 	serverS3Endpoint  string
@@ -81,6 +83,8 @@ var serverCmd = &cobra.Command{
 			service.WithCacheSizeMegabytes(uint64(serverCacheSizeMegabytes)),
 			service.WithLogLevel(logLevel),
 			service.WithStorageProvider(store),
+			service.WithWALDir(serverWALDir),
+			service.WithDatabasePath(serverDBPath),
 		}
 		if err := svc.Start(ctx, opts...); err != nil {
 			bailf("Shutdown error: %s", err)
@@ -94,6 +98,8 @@ func init() {
 	serverCmd.PersistentFlags().IntVarP(&serverPort, "port", "p", 8089, "Port to listen on")
 	serverCmd.PersistentFlags().IntVarP(&serverCacheSizeMegabytes, "cache-size", "c", 1024, "Cache size in megabytes")
 	serverCmd.PersistentFlags().StringVarP(&serverDataDir, "data-dir", "d", "", "Data directory (for directory storage)")
+	serverCmd.PersistentFlags().StringVarP(&serverWALDir, "wal-dir", "", "waldir", "WAL directory")
+	serverCmd.PersistentFlags().StringVarP(&serverDBPath, "db-path", "", "dp3.db", "rootmap database location")
 	serverCmd.PersistentFlags().StringVarP(&serverLogLevel, "log-level", "l", "info", "Log level")
 
 	serverCmd.PersistentFlags().StringVar(&serverS3Endpoint, "s3-endpoint", "", "S3 endpoint (for S3 storage)")

@@ -168,7 +168,7 @@ func readOpts(opts ...DP3Option) (*DP3Options, error) {
 		CacheSizeBytes: 1 * gigabyte,
 		Port:           8089,
 		LogLevel:       slog.LevelInfo,
-		SyncWorkers:    32,
+		SyncWorkers:    4,
 		DatabasePath:   "dp3.db",
 		WALDir:         "waldir",
 	}

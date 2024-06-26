@@ -20,3 +20,9 @@ clean:
 	rm -rf data/*
 	rm -rf waldir/*
 	rm dp3.db*
+
+deploy: build
+	scp dp3 web@wyattalt.com:~/bin/
+	scp -r ~/.dp3 web@wyattalt.com:~/.dp3
+	ssh web@wyattalt.com systemctl restart --user server.dp3.dev
+	ssh web@wyattalt.com systemctl restart --user demo.dp3.dev
