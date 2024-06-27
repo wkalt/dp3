@@ -90,7 +90,9 @@ var serverCmd = &cobra.Command{
 			service.WithDatabasePath(serverDBPath),
 			service.WithSyncWorkers(serverSyncWorkers),
 			service.WithSharedKey(serverSharedKey),
-			service.WithAllowedOrigins(allowedOrigins),
+		}
+		if len(allowedOrigins) > 0 {
+			opts = append(opts, service.WithAllowedOrigins(allowedOrigins))
 		}
 		if err := svc.Start(ctx, opts...); err != nil {
 			bailf("Shutdown error: %s", err)
