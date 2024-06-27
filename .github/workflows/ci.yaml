@@ -17,6 +17,7 @@ jobs:
           go-version: '1.22'
           cache: false
       - name: golangci-lint
+        working-directory: server
         uses: golangci/golangci-lint-action@v4
         with:
           version: v1.56
