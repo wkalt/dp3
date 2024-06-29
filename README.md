@@ -5,6 +5,9 @@ logs produced by sensors and internal processing logic on robots.
 It is under active development and not suitable for production use. For details
 on the motivation and architecture see the [paper](./doc/paper/dp3.pdf).
 
+There is a basic web application backed by dp3 at
+[https://demo.dp3.dev](https://demo.dp3.dev).
+
 ## Quickstart
 
 ### Requirements
