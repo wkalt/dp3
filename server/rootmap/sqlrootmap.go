@@ -137,19 +137,16 @@ func (rm *sqlRootmap) getLatestByTopicQuery(
 	sb.WriteString(`
 	select tables.topic,
 	tables.producer,
-	r1.storage_prefix,
-	r1.node_id,
-	r1.version,
-	r1.timestamp,
+	(select storage_prefix from rootmap
+	where table_id = tables.id order by version desc limit 1) as storage_prefix,
+	(select node_id from rootmap
+	where table_id = tables.id order by version desc limit 1) as node_id,
+	(select version from rootmap where table_id = tables.id order by version desc limit 1) as version,
+	(select timestamp from rootmap where table_id = tables.id order by version desc limit 1) as timestamp,
 	latest_truncations.version as truncation_version
-	from tables inner join rootmap r1 
-	on tables.id = r1.table_id
-	left join rootmap r2
-	on (r1.table_id = r2.table_id and r1.version < r2.version)
-	left join latest_truncations
-	on latest_truncations.table_id = tables.id
-	where r2.rowid is null
-	and tables.database = ?
+	from tables
+	left join latest_truncations on latest_truncations.table_id = tables.id
+	where tables.database = ?
 	`)
 	params = []any{database}
 	if producer != "" {
