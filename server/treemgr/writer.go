@@ -58,6 +58,8 @@ type writer struct {
 	messageKeys  []nodestore.MessageKey
 	schemaStats  map[uint16]*nodestore.Statistics
 	schemaHashes map[uint16]string
+
+	compressor fmcap.CustomCompressor
 }
 
 func newWriter(
@@ -66,6 +68,7 @@ func newWriter(
 	database string,
 	producer string,
 	topic string,
+	compressor fmcap.CustomCompressor,
 ) (*writer, error) {
 	dims, err := tmgr.dimensions(ctx, database, producer, topic)
 	if err != nil {
@@ -90,6 +93,7 @@ func newWriter(
 		schemaStats:  map[uint16]*nodestore.Statistics{},
 		schemaHashes: map[uint16]string{},
 		parsers:      map[uint16]*schema.Parser{},
+		compressor:   compressor,
 	}, nil
 }
 
@@ -128,7 +132,10 @@ func (w *writer) writeChannel(channel *fmcap.Channel) error {
 
 func (w *writer) initialize(ts uint64) (err error) {
 	lower, upper := w.dims.bounds(ts)
-	w.w, err = mcap.NewWriter(w.buf, mcap.WithCompression(fmcap.CompressionZSTD))
+	w.w, err = mcap.NewWriter(
+		w.buf,
+		mcap.WithCompressor(w.compressor),
+	)
 	if err != nil {
 		return fmt.Errorf("failed to create mcap writer: %w", err)
 	}

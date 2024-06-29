@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/foxglove/mcap/go/mcap"
+	"github.com/klauspost/compress/zstd"
 )
 
 type WriterOption func(*mcap.WriterOptions)
@@ -12,6 +13,36 @@ type WriterOption func(*mcap.WriterOptions)
 func WithCompression(compression mcap.CompressionFormat) WriterOption {
 	return func(o *mcap.WriterOptions) {
 		o.Compression = compression
+	}
+}
+
+type ZSTDCompressor struct {
+	enc *zstd.Encoder
+}
+
+func (z *ZSTDCompressor) Compressor() mcap.ResettableWriteCloser {
+	return z.enc
+}
+
+func (z *ZSTDCompressor) Compression() mcap.CompressionFormat {
+	return mcap.CompressionZSTD
+}
+
+func NewZSTDCompressor() (mcap.CustomCompressor, error) {
+	encoder, err := zstd.NewWriter(
+		nil,
+		zstd.WithEncoderConcurrency(1),
+		zstd.WithWindowSize(256*1024),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build new zstd compressor: %w", err)
+	}
+	return &ZSTDCompressor{enc: encoder}, nil
+}
+
+func WithCompressor(compressor mcap.CustomCompressor) WriterOption {
+	return func(o *mcap.WriterOptions) {
+		o.Compressor = compressor
 	}
 }
 

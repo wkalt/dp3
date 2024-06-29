@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"sync"
 
 	"github.com/DataDog/sketches-go/ddsketch"
 	"github.com/DataDog/sketches-go/ddsketch/store"
@@ -37,11 +38,45 @@ const (
 )
 
 type dsketch struct {
+	mtx  *sync.Mutex
+	data []byte
 	*ddsketch.DDSketch
+}
+
+func (d *dsketch) parse() error {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	if d.DDSketch != nil {
+		return nil
+	}
+	data := d.data
+	sketch, err := ddsketch.DecodeDDSketch(data, store.BufferedPaginatedStoreConstructor, nil)
+	if err != nil {
+		return fmt.Errorf("failed to decode ddsketch: %w", err)
+	}
+	d.DDSketch = sketch
+	d.data = nil
+	return nil
+}
+
+func (d *dsketch) GetSketch() (*ddsketch.DDSketch, error) {
+	if d.DDSketch != nil {
+		return d.DDSketch, nil
+	}
+	if err := d.parse(); err != nil {
+		return nil, fmt.Errorf("failed to parse ddsketch: %w", err)
+	}
+	return d.DDSketch, nil
 }
 
 func (d dsketch) MarshalJSON() ([]byte, error) {
 	buf := []byte{}
+	if d.DDSketch == nil {
+		if err := d.parse(); err != nil {
+			return nil, fmt.Errorf("failed to parse ddsketch: %w", err)
+		}
+	}
+
 	d.Encode(&buf, false)
 	data, err := json.Marshal(buf)
 	if err != nil {
@@ -55,11 +90,8 @@ func (d *dsketch) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &buf); err != nil {
 		return fmt.Errorf("failed to unmarshal buffer: %w", err)
 	}
-	sketch, err := ddsketch.DecodeDDSketch(buf, store.BufferedPaginatedStoreConstructor, nil)
-	if err != nil {
-		return fmt.Errorf("failed to decode ddsketch: %w", err)
-	}
-	d.DDSketch = sketch
+	d.data = buf
+	d.mtx = &sync.Mutex{}
 	return nil
 }
 
@@ -105,7 +137,7 @@ func NewNumericalSummary() (*NumericalSummary, error) {
 		Mean:     0,
 		Sum:      0,
 		Count:    0,
-		DDSketch: dsketch{sketch},
+		DDSketch: dsketch{&sync.Mutex{}, nil, sketch},
 	}, nil
 }
 
@@ -115,6 +147,18 @@ func (n *NumericalSummary) Merge(other *NumericalSummary) error {
 	n.Sum += other.Sum
 	n.Count += other.Count
 	n.Mean = n.Sum / n.Count
+
+	if n.DDSketch.DDSketch == nil {
+		if err := n.DDSketch.parse(); err != nil {
+			return fmt.Errorf("failed to parse ddsketch: %w", err)
+		}
+	}
+	if other.DDSketch.DDSketch == nil {
+		if err := other.DDSketch.parse(); err != nil {
+			return fmt.Errorf("failed to parse ddsketch: %w", err)
+		}
+	}
+
 	if err := n.DDSketch.MergeWith(other.DDSketch.DDSketch); err != nil {
 		return fmt.Errorf("failed to merge ddsketch: %w", err)
 	}
@@ -146,6 +190,11 @@ func (n *NumericalSummary) ranges(
 ) ([]StatRange, error) {
 	qs := []float64{
 		0.25, 0.5, 0.75, 0.9, 0.95, 0.99,
+	}
+	if n.DDSketch.DDSketch == nil {
+		if err := n.DDSketch.parse(); err != nil {
+			return nil, fmt.Errorf("failed to parse ddsketch: %w", err)
+		}
 	}
 	quantiles, err := n.DDSketch.GetValuesAtQuantiles(qs)
 	if err != nil {

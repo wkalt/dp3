@@ -53,6 +53,11 @@ func NewNodestore(
 }
 
 // Put an object to storage.
+func (n *Nodestore) CacheInnerNode(id NodeID, node Node) {
+	n.cache.Put(id, node, node.Size())
+}
+
+// Put an object to storage.
 func (n *Nodestore) Put(ctx context.Context, prefix string, oid uint64, r io.Reader) error {
 	objectname := prefix + "/" + strconv.FormatUint(oid, 10)
 	if err := n.store.Put(ctx, objectname, r); err != nil {

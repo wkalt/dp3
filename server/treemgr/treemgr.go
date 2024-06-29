@@ -237,7 +237,9 @@ func (tm *TreeManager) Receive(
 		var writer *writer
 		var ok bool
 		if writer, ok = writers[channel.Topic]; !ok {
-			writer, err = tm.handleNewTopic(ctx, database, producer, channel.Topic)
+			compressor := compressorPool.Get().(fmcap.CustomCompressor)
+			defer compressorPool.Put(compressor)
+			writer, err = tm.handleNewTopic(ctx, database, producer, channel.Topic, compressor)
 			if err != nil {
 				return fmt.Errorf("failed to create writer: %w", err)
 			}
@@ -278,6 +280,7 @@ func (tm *TreeManager) handleNewTopic(
 	database string,
 	producer string,
 	topic string,
+	compressor fmcap.CustomCompressor,
 ) (*writer, error) {
 	if _, _, _, _, err := tm.rootmap.GetLatest(ctx, database, producer, topic); err != nil {
 		switch {
@@ -290,7 +293,7 @@ func (tm *TreeManager) handleNewTopic(
 			return nil, fmt.Errorf("failed to get latest root: %w", err)
 		}
 	}
-	writer, err := newWriter(ctx, tm, database, producer, topic)
+	writer, err := newWriter(ctx, tm, database, producer, topic, compressor)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create writer: %w", err)
 	}
@@ -580,10 +583,11 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 		return fmt.Errorf("failed to get next version: %w", err)
 	}
 	var nodeID nodestore.NodeID
+	var innerNodes []util.Pair[nodestore.NodeID, *nodestore.InnerNode]
 	if err := util.RunPipe(ctx,
 		func(ctx context.Context, w io.Writer) error {
 			var err error
-			if nodeID, err = tree.Merge(ctx, w, version, basereader, readers...); err != nil {
+			if nodeID, innerNodes, err = tree.Merge(ctx, w, version, basereader, readers...); err != nil {
 				return fmt.Errorf("failed to merge partial trees: %w", err)
 			}
 			return nil
@@ -597,6 +601,7 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 	); err != nil {
 		return fmt.Errorf("failed to merge partial trees: %w", err)
 	}
+
 	if err := tm.rootmap.Put(
 		ctx,
 		batch.Database,
@@ -607,6 +612,11 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 		nodeID,
 	); err != nil {
 		return fmt.Errorf("failed to put root: %w", err)
+	}
+
+	// cache inner nodes
+	for _, pair := range innerNodes {
+		tm.ns.CacheInnerNode(pair.First, pair.Second)
 	}
 	return nil
 }
@@ -780,6 +790,17 @@ func (tm *TreeManager) loadIterators(
 	return util.Map(func(p util.Pair[int, *tree.Iterator]) *tree.Iterator {
 		return p.Second
 	}, iterators), nil
+}
+
+var compressorPool = &sync.Pool{ // nolint:gochecknoglobals
+	New: func() interface{} {
+		compressor, err := mcap.NewZSTDCompressor()
+		if err != nil {
+			panic(fmt.Sprintf("failed to create compressor: %v", err))
+		}
+
+		return compressor
+	},
 }
 
 func (tm *TreeManager) getMessages(

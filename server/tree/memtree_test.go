@@ -65,7 +65,7 @@ func TestMemtreeSerialization(t *testing.T) {
 			dest := tree.NewMemTree(nodestore.RandomNodeID(), rootnode)
 
 			buf := &bytes.Buffer{}
-			_, err := tree.Merge(ctx, buf, 1, dest, trees...)
+			_, _, err := tree.Merge(ctx, buf, 1, dest, trees...)
 			require.NoError(t, err)
 
 			merged := &tree.MemTree{}

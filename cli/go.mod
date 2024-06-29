@@ -9,7 +9,6 @@ require (
 	github.com/minio/minio-go/v7 v7.0.72
 	github.com/relvacode/iso8601 v1.4.0
 	github.com/spf13/cobra v1.8.1
-	github.com/wkalt/dp3 v0.0.0-20240627015206-ef352fe378c6
 	github.com/wkalt/dp3/server v0.0.0-20240627201238-68955869f27e
 	golang.org/x/sync v0.7.0
 	golang.org/x/text v0.16.0
@@ -21,6 +20,8 @@ require (
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/foxglove/mcap/go/mcap v1.4.1 // indirect
+	github.com/go-echarts/go-echarts/v2 v2.2.3 // indirect
+	github.com/go-echarts/statsview v0.3.4 // indirect
 	github.com/goccy/go-json v0.10.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/mux v1.8.1 // indirect
@@ -34,6 +35,7 @@ require (
 	github.com/minio/md5-simd v1.1.2 // indirect
 	github.com/pierrec/lz4/v4 v4.1.21 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
+	github.com/rs/cors v1.11.0 // indirect
 	github.com/rs/xid v1.5.0 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect

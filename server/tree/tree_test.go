@@ -89,7 +89,7 @@ func TestMergeErrors(t *testing.T) {
 		tw3 := tree.NewMemTree(nodestore.RandomNodeID(), root3)
 
 		buf := &bytes.Buffer{}
-		_, err = tree.Merge(ctx, buf, 1, tw3, tw, tw2)
+		_, _, err = tree.Merge(ctx, buf, 1, tw3, tw, tw2)
 		require.Error(t, err)
 	})
 
@@ -103,7 +103,7 @@ func TestMergeErrors(t *testing.T) {
 		tw2 := tree.NewMemTree(nodestore.RandomNodeID(), root2)
 
 		buf := &bytes.Buffer{}
-		_, err = tree.Merge(ctx, buf, 1, tw2, tw)
+		_, _, err = tree.Merge(ctx, buf, 1, tw2, tw)
 		require.ErrorIs(t, err, nodestore.NodeNotFoundError{})
 	})
 }
@@ -279,7 +279,7 @@ func TestDeleteMessagesInRange(t *testing.T) {
 
 			// Merge the two trees, setup and partial
 			buf := &bytes.Buffer{}
-			_, err = tree.Merge(ctx, buf, version, base, partial)
+			_, _, err = tree.Merge(ctx, buf, version, base, partial)
 			require.NoError(t, err)
 
 			overlay := &tree.MemTree{}
@@ -439,7 +439,7 @@ func TestMergingOutOfVersionOrder(t *testing.T) {
 	dest1 := tree.NewMemTree(nodestore.RandomNodeID(), root1)
 
 	buf := &bytes.Buffer{}
-	_, err = tree.Merge(ctx, buf, 3, dest1, tw2, tw3, tw1)
+	_, _, err = tree.Merge(ctx, buf, 3, dest1, tw2, tw3, tw1)
 	require.NoError(t, err)
 }
 
@@ -506,7 +506,7 @@ func TestMerge(t *testing.T) {
 				ctx, t, 2, 0, util.Pow(uint64(64), int(c.height+1)), c.height, 64, c.inserts,
 			)
 			buf := &bytes.Buffer{}
-			_, err := tree.Merge(ctx, buf, 3, base, partial)
+			_, _, err := tree.Merge(ctx, buf, 3, base, partial)
 			require.NoError(t, err)
 
 			overlay := &tree.MemTree{}

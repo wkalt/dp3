@@ -9,6 +9,7 @@ require (
 	github.com/goccy/go-json v0.10.3
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/mux v1.8.1
+	github.com/klauspost/compress v1.17.9
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/minio/madmin-go v1.7.5
 	github.com/minio/minio v0.0.0-20240626083206-b35d0838721a
@@ -131,7 +132,6 @@ require (
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/juju/ratelimit v1.0.2 // indirect
-	github.com/klauspost/compress v1.17.9 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.8 // indirect
 	github.com/klauspost/filepathx v1.1.1 // indirect
 	github.com/klauspost/pgzip v1.2.6 // indirect

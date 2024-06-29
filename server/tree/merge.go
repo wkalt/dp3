@@ -26,7 +26,7 @@ func Merge(
 	version uint64,
 	dest TreeReader,
 	inputs ...TreeReader,
-) (nodestore.NodeID, error) {
+) (nodestore.NodeID, []util.Pair[nodestore.NodeID, *nodestore.InnerNode], error) {
 	var destPair *util.Pair[TreeReader, nodestore.NodeID]
 	if dest != nil {
 		destPair = util.Pointer(util.NewPair(dest, dest.Root()))
@@ -37,14 +37,15 @@ func Merge(
 	}
 	cw := util.NewCountingWriter(w)
 
-	nodeID, _, err := mergeInnerNode(ctx, cw, version, destPair, inputPairs)
+	var innerNodes []util.Pair[nodestore.NodeID, *nodestore.InnerNode]
+	nodeID, _, err := mergeInnerNode(ctx, cw, version, destPair, inputPairs, &innerNodes)
 	if err != nil {
-		return nodeID, fmt.Errorf("failed to partial trees roots: %w", err)
+		return nodeID, nil, fmt.Errorf("failed to partial trees roots: %w", err)
 	}
 	if _, err = w.Write(nodeID[:]); err != nil {
-		return nodeID, fmt.Errorf("failed to write root node ID to object end: %w", err)
+		return nodeID, nil, fmt.Errorf("failed to write root node ID to object end: %w", err)
 	}
-	return nodeID, nil
+	return nodeID, innerNodes, nil
 }
 
 func getHeader(
@@ -334,6 +335,7 @@ func mergeInnerNode( // nolint: funlen
 	version uint64,
 	dest *util.Pair[TreeReader, nodestore.NodeID],
 	inputs []util.Pair[TreeReader, nodestore.NodeID],
+	outputs *[]util.Pair[nodestore.NodeID, *nodestore.InnerNode],
 ) (nodeID nodestore.NodeID, stats map[string]*nodestore.Statistics, err error) {
 	if len(inputs) == 0 {
 		return nodeID, nil, errors.New("no children to merge")
@@ -418,7 +420,7 @@ func mergeInnerNode( // nolint: funlen
 				destConflict = destNode.Children[conflict]
 			}
 			mergedID, mergedStats, err := mergeConflictedPairs(
-				ctx, newNode, cw, version, destVersion, destChild, destConflict, conflictedPairs,
+				ctx, newNode, cw, version, destVersion, destChild, destConflict, conflictedPairs, outputs,
 			)
 			if err != nil {
 				if errors.Is(err, errElideNode) {
@@ -479,7 +481,10 @@ func mergeInnerNode( // nolint: funlen
 		return nodestore.NodeID{}, nil, fmt.Errorf("failed to serialize inner node: %w", err)
 	}
 
-	return nodestore.NewNodeID(version, offset, uint64(len(data))), outputStats, nil
+	id := nodestore.NewNodeID(version, offset, uint64(len(data)))
+	*outputs = append(*outputs, util.NewPair(id, newNode))
+
+	return id, outputStats, nil
 }
 
 func mergeOneLeafDirect(
@@ -527,10 +532,11 @@ func mergeConflictedPairs(
 	dest *util.Pair[TreeReader, nodestore.NodeID],
 	destChild *nodestore.Child,
 	conflictedPairs []util.Pair[TreeReader, nodestore.NodeID],
+	outputs *[]util.Pair[nodestore.NodeID, *nodestore.InnerNode],
 ) (nodestore.NodeID, map[string]*nodestore.Statistics, error) {
 	switch {
 	case newNode.Height > 1:
-		return mergeInnerNode(ctx, cw, version, dest, conflictedPairs)
+		return mergeInnerNode(ctx, cw, version, dest, conflictedPairs, outputs)
 	case destChild == nil && len(conflictedPairs) == 1:
 		nodeID, err := mergeOneLeafDirect(ctx, cw, version, nil, nil, conflictedPairs[0])
 		if err != nil {

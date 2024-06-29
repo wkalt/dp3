@@ -63,7 +63,7 @@ func MergeInserts(
 	}
 
 	buf := &bytes.Buffer{}
-	_, err = Merge(ctx, buf, version, nil, trees...)
+	_, _, err = Merge(ctx, buf, version, nil, trees...)
 	require.NoError(t, err)
 
 	output := &MemTree{}
