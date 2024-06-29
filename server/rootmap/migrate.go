@@ -51,9 +51,22 @@ func initialMigration(tx *sql.Tx) error {
 	return nil
 }
 
+func indexLatestRoots(tx *sql.Tx) error {
+	stmt := `
+	create index rootmap_table_id_version_idx on rootmap(table_id, version);
+    drop index rootmap_table_id_idx;
+	`
+	_, err := tx.Exec(stmt)
+	if err != nil {
+		return fmt.Errorf("failed to create index: %w", err)
+	}
+	return nil
+}
+
 func Migrate(db *sql.DB) error {
 	migrations := map[int]migrate.Migration{
 		1: initialMigration,
+		2: indexLatestRoots,
 	}
 	if err := migrate.Migrate(db, migrations); err != nil {
 		return fmt.Errorf("migration failure: %w", err)

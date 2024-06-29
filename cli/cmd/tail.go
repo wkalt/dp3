@@ -13,8 +13,8 @@ import (
 	"github.com/relvacode/iso8601"
 	"github.com/spf13/cobra"
 	"github.com/wkalt/dp3/cli/util"
-	"github.com/wkalt/dp3/mcap"
-	"github.com/wkalt/dp3/routes"
+	"github.com/wkalt/dp3/server/mcap"
+	"github.com/wkalt/dp3/server/routes"
 )
 
 var (

@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/wkalt/dp3/routes"
+	"github.com/wkalt/dp3/server/routes"
 	"golang.org/x/sync/errgroup"
 )
 

@@ -12,8 +12,8 @@ import (
 	"github.com/relvacode/iso8601"
 	"github.com/spf13/cobra"
 	cutil "github.com/wkalt/dp3/cli/util"
-	"github.com/wkalt/dp3/nodestore"
-	"github.com/wkalt/dp3/routes"
+	"github.com/wkalt/dp3/server/nodestore"
+	"github.com/wkalt/dp3/server/routes"
 )
 
 var (

@@ -7,8 +7,8 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	"github.com/spf13/cobra"
-	"github.com/wkalt/dp3/service"
-	"github.com/wkalt/dp3/storage"
+	"github.com/wkalt/dp3/server/service"
+	"github.com/wkalt/dp3/server/storage"
 )
 
 var (

@@ -10,6 +10,7 @@ require (
 	github.com/relvacode/iso8601 v1.4.0
 	github.com/spf13/cobra v1.8.1
 	github.com/wkalt/dp3 v0.0.0-20240627015206-ef352fe378c6
+	github.com/wkalt/dp3/server v0.0.0-20240627201238-68955869f27e
 	golang.org/x/sync v0.7.0
 	golang.org/x/text v0.16.0
 )
@@ -46,3 +47,5 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+replace github.com/wkalt/dp3/server => ../server

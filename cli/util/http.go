@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/wkalt/dp3/util/httputil"
+	"github.com/wkalt/dp3/server/util/httputil"
 )
 
 // MustOK will print the error message from the response and exit if the

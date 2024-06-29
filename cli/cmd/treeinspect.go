@@ -13,9 +13,9 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
-	"github.com/wkalt/dp3/mcap"
-	"github.com/wkalt/dp3/nodestore"
-	"github.com/wkalt/dp3/util"
+	"github.com/wkalt/dp3/server/mcap"
+	"github.com/wkalt/dp3/server/nodestore"
+	"github.com/wkalt/dp3/server/util"
 )
 
 var (

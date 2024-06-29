@@ -10,8 +10,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/wkalt/dp3/tree"
-	"github.com/wkalt/dp3/wal"
+	"github.com/wkalt/dp3/server/tree"
+	"github.com/wkalt/dp3/server/wal"
 )
 
 var (
