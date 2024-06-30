@@ -82,7 +82,8 @@ func (n *Nodestore) Get(ctx context.Context, prefix string, id NodeID) (Node, er
 		return nil, fmt.Errorf("failed to get node %s: %w", id, err)
 	}
 	defer reader.Close()
-	data, err := io.ReadAll(reader)
+	data := make([]byte, id.Length())
+	_, err = io.ReadFull(reader, data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read node: %w", err)
 	}

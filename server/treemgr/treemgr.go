@@ -249,20 +249,21 @@ func (tm *TreeManager) Receive(
 			return fmt.Errorf("failed to write message: %w", err)
 		}
 	}
+	for _, schema := range schemas {
+		if err := tm.storeSchema(ctx, database, schema); err != nil {
+			return fmt.Errorf("failed to store schema: %w", err)
+		}
+	}
 	for _, k := range util.Okeys(writers) {
 		writer := writers[k]
 		if err := writer.Close(ctx); err != nil {
 			return fmt.Errorf("failed to close writer: %w", err)
 		}
 	}
-	for _, schema := range schemas {
-		if err := tm.storeSchema(ctx, database, schema); err != nil {
-			return fmt.Errorf("failed to store schema: %w", err)
-		}
-	}
 	return nil
 }
 
+// GetSchema retrieves a schema from the schema store.
 func (tm *TreeManager) GetSchema(
 	ctx context.Context,
 	database string,

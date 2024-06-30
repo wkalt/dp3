@@ -109,6 +109,7 @@ func (s *SchemaStore) checkCache(database, hash string) (*mcap.Schema, bool) {
 	return schema, ok
 }
 
+// Get retrieves a schema from the store.
 func (s *SchemaStore) Get(
 	ctx context.Context,
 	database string,
@@ -129,6 +130,10 @@ func (s *SchemaStore) Get(
 	defer reader.Close()
 	bytes, err := io.ReadAll(reader)
 	if err != nil {
+		// minio may return this directly here
+		if err.Error() == "The specified key does not exist." {
+			return nil, ErrSchemaNotFound
+		}
 		return nil, fmt.Errorf("failed to read schema: %w", err)
 	}
 	internal := internalSchema{}

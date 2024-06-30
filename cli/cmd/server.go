@@ -30,6 +30,7 @@ var (
 	serverS3SecretKey string
 	serverS3Bucket    string
 	serverS3UseTLS    bool
+	serverS3Region    string
 )
 
 var serverCmd = &cobra.Command{
@@ -69,6 +70,7 @@ var serverCmd = &cobra.Command{
 			mc, err := minio.New(serverS3Endpoint, &minio.Options{
 				Creds:  credentials.NewStaticV4(serverS3AccessKey, serverS3SecretKey, ""),
 				Secure: serverS3UseTLS,
+				Region: serverS3Region,
 			})
 			if err != nil {
 				bailf("error creating S3 client: %s", err)
@@ -119,4 +121,5 @@ func init() {
 	serverCmd.PersistentFlags().StringVar(&serverS3SecretKey, "s3-secret-key", "", "S3 secret key (for S3 storage)")
 	serverCmd.PersistentFlags().StringVar(&serverS3Bucket, "s3-bucket", "", "S3 bucket (for S3 storage)")
 	serverCmd.PersistentFlags().BoolVarP(&serverS3UseTLS, "s3-tls", "t", false, "Use TLS (for S3 storage)")
+	serverCmd.PersistentFlags().StringVar(&serverS3Region, "s3-region", "", "S3 region")
 }

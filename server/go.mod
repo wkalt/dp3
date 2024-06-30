@@ -13,6 +13,7 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/minio/madmin-go v1.7.5
 	github.com/minio/minio v0.0.0-20240626083206-b35d0838721a
+	github.com/minio/minio-go v6.0.14+incompatible
 	github.com/minio/minio-go/v7 v7.0.72
 	github.com/relvacode/iso8601 v1.4.0
 	github.com/spaolacci/murmur3 v1.1.0
@@ -83,6 +84,7 @@ require (
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fraugster/parquet-go v0.12.0 // indirect
 	github.com/go-asn1-ber/asn1-ber v1.5.7 // indirect
+	github.com/go-ini/ini v1.67.0 // indirect
 	github.com/go-jose/go-jose/v4 v4.0.2 // indirect
 	github.com/go-ldap/ldap/v3 v3.4.8 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
