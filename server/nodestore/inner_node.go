@@ -90,8 +90,8 @@ func (c *Child) MessageSummary() MessageSummary {
 		minObserved = append(minObserved, stats.MinObservedTime)
 		maxObserved = append(maxObserved, stats.MaxObservedTime)
 	}
-	s.MinObservedTime = time.Unix(0, util.Reduce(util.Min, minObserved[0], minObserved[1:]))
-	s.MaxObservedTime = time.Unix(0, util.Reduce(util.Max, maxObserved[0], maxObserved[1:]))
+	s.MinObservedTime = time.Unix(0, util.Reduce(minObserved[1:], minObserved[0], util.Min))
+	s.MaxObservedTime = time.Unix(0, util.Reduce(maxObserved[1:], maxObserved[0], util.Max))
 	return s
 }
 

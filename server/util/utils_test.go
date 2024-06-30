@@ -122,7 +122,7 @@ func TestReduce(t *testing.T) {
 		{"multiple", []int{1, 2, 3, 4, 5}, 15},
 	}
 	for _, c := range cases {
-		require.Equal(t, c.expected, util.Reduce(func(a, b int) int { return a + b }, 0, c.input), c.assertion)
+		require.Equal(t, c.expected, util.Reduce(c.input, 0, func(a, b int) int { return a + b }), c.assertion)
 	}
 }
 

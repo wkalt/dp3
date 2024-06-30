@@ -89,7 +89,7 @@ func When[T any](cond bool, a, b T) T {
 
 // Reduce applies a function to each element of a slice, accumulating the
 // results.
-func Reduce[T any, U any](f func(U, T) U, init U, xs []T) U {
+func Reduce[T any, U any](xs []T, init U, f func(U, T) U) U {
 	acc := init
 	for _, x := range xs {
 		acc = f(acc, x)
