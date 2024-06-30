@@ -19,6 +19,12 @@ type ChildNodeSummary struct {
 	SchemaHashes      []string  `json:"schemaHashes"`
 }
 
+// IterateChildren iterates over the children of the tree within the given time
+// range at a bucket width at least as small as the one provided. Depending on
+// the physical tree dimensions, this can result in a much more granular
+// division than the one requested (never less granular). The caller should be
+// aware of this and consider pre-aggregating results to the requested
+// granularity.
 func IterateChildren(
 	ctx context.Context,
 	tr TreeReader,
