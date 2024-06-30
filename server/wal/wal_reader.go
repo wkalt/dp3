@@ -8,6 +8,7 @@ import (
 	"hash/crc32"
 	"io"
 
+	"github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/server/util"
 )
 
@@ -76,6 +77,15 @@ func ParseInsertRecord(data []byte) *InsertRecord {
 	offset += util.ReadPrefixedString(data[offset:], &topic)
 	offset += util.ReadPrefixedString(data[offset:], &batchID)
 
+	var schemaCount uint32
+	offset += util.ReadU32(data[offset:], &schemaCount)
+	schemas := make([]*mcap.Schema, schemaCount)
+	for i := range schemas {
+		offset += util.ReadPrefixedString(data[offset:], &schemas[i].Name)
+		offset += util.ReadPrefixedString(data[offset:], &schemas[i].Encoding)
+		offset += util.ReadPrefixedBytes(data[offset:], &schemas[i].Data)
+	}
+
 	var addr Address
 	offset += copy(addr[:], data[offset:offset+24])
 	return &InsertRecord{
@@ -84,33 +94,71 @@ func ParseInsertRecord(data []byte) *InsertRecord {
 		Topic:    topic,
 		BatchID:  batchID,
 		Addr:     addr,
+		Schemas:  schemas,
 		Data:     data[offset:],
 	}
 }
 
-func ParseInsertRecordHeader(r io.Reader) (int, error) {
+func ParseInsertRecordHeader(r io.Reader) (*InsertRecord, int, error) {
 	buf := make([]byte, 9)
 	n, err := io.ReadFull(r, buf)
 	if err != nil {
-		return 0, fmt.Errorf("failed to read insert record header: %w", err)
+		return nil, 0, fmt.Errorf("failed to read insert record header: %w", err)
 	}
 	database, err := util.DecodePrefixedString(r)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse database: %w", err)
+		return nil, 0, fmt.Errorf("failed to parse database: %w", err)
 	}
 	producer, err := util.DecodePrefixedString(r)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse producer: %w", err)
+		return nil, 0, fmt.Errorf("failed to parse producer: %w", err)
 	}
 	topic, err := util.DecodePrefixedString(r)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse topic: %w", err)
+		return nil, 0, fmt.Errorf("failed to parse topic: %w", err)
 	}
 	batchID, err := util.DecodePrefixedString(r)
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse batch ID: %w", err)
+		return nil, 0, fmt.Errorf("failed to parse batch ID: %w", err)
 	}
-	return 24 + n + 4*4 + len(database) + len(producer) + len(topic) + len(batchID), nil
+	_, err = io.ReadFull(r, buf[:4])
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to read schema count: %w", err)
+	}
+	schemaCount := binary.LittleEndian.Uint32(buf)
+	schemas := make([]*mcap.Schema, schemaCount)
+	schemasLength := 4 // four byte count
+	for i := 0; i < int(schemaCount); i++ {
+		name, err := util.DecodePrefixedString(r)
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to parse schema name: %w", err)
+		}
+		encoding, err := util.DecodePrefixedString(r)
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to parse schema encoding: %w", err)
+		}
+		data, err := util.DecodePrefixedBytes(r)
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to parse schema data: %w", err)
+		}
+		schemas[i] = &mcap.Schema{Name: name, Encoding: encoding, Data: data}
+		schemasLength += 4 + len(name) + 4 + len(encoding) + 4 + len(data)
+	}
+	record := &InsertRecord{
+		Database: database,
+		Producer: producer,
+		Topic:    topic,
+		BatchID:  batchID,
+		Schemas:  schemas,
+	}
+	return record, 24 +
+		n +
+		4*4 +
+		len(database) +
+		len(producer) +
+		len(topic) +
+		len(batchID) +
+		schemasLength, nil
 }
 
 // Next returns the next record from the WAL file, with CRC validation.

@@ -102,12 +102,26 @@ func (w *Writer) WriteInsert(rec InsertRecord) (Address, int, error) {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
 
-	header := make([]byte, 4+len(rec.Database)+4+len(rec.Producer)+4+len(rec.Topic)+4+len(rec.BatchID)+24)
+	schemasLength := 4 // four byte count
+	for _, schema := range rec.Schemas {
+		schemasLength += 4 + len(schema.Name)
+		schemasLength += 4 + len(schema.Encoding)
+		schemasLength += 4 + len(schema.Data)
+	}
+
+	header := make([]byte, 4+len(rec.Database)+4+len(rec.Producer)+4+len(rec.Topic)+4+len(rec.BatchID)+schemasLength+24)
 	var offset int
 	offset += util.WritePrefixedString(header[offset:], rec.Database)
 	offset += util.WritePrefixedString(header[offset:], rec.Producer)
 	offset += util.WritePrefixedString(header[offset:], rec.Topic)
 	offset += util.WritePrefixedString(header[offset:], rec.BatchID)
+
+	offset += util.U32(header[offset:], uint32(len(rec.Schemas)))
+	for _, schema := range rec.Schemas {
+		offset += util.WritePrefixedString(header[offset:], schema.Name)
+		offset += util.WritePrefixedString(header[offset:], schema.Encoding)
+		offset += util.WritePrefixedBytes(header[offset:], schema.Data)
+	}
 
 	addr := NewAddress(w.id, uint64(w.size()), uint64(1+8+len(header)+len(rec.Data)+4))
 	copy(header[offset:], addr[:])
@@ -136,7 +150,7 @@ func (w *Writer) writeRecord(rectype RecordType, header []byte, data []byte) (ad
 	n, err = w.writer.Write(buf)
 	w.offset += int64(n)
 	if err != nil {
-		return addr, n, fmt.Errorf("failed to write record header: %w", err)
+		return addr, n, fmt.Errorf("failed to write record: %w", err)
 	}
 	if f, ok := w.writer.(interface{ Flush() error }); ok {
 		if err := f.Flush(); err != nil {

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strconv"
 	"time"
+
+	"github.com/foxglove/mcap/go/mcap"
 )
 
 /*
@@ -48,6 +50,7 @@ type InsertRecord struct {
 	Topic    string
 	BatchID  string
 	Addr     Address
+	Schemas  []*mcap.Schema
 	Data     []byte
 }
 
@@ -69,8 +72,7 @@ type MergeCompleteRecord struct {
 // Batch represents a collection of inserts that will be merged into the tree
 // together. The WAL manager maintains a batch for each producer/topic combo
 // that is receiving writes, and intelligently dispatches them for merging based
-// on either size or inactivit, and intelligently dispatches them for merging
-// based on either size or inactivity.
+// on either size or inactivity.
 type Batch struct {
 	ID         string
 	Database   string

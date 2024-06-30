@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/foxglove/mcap/go/mcap"
 	"github.com/google/uuid"
 	"github.com/wkalt/dp3/server/tree"
 	"github.com/wkalt/dp3/server/util"
@@ -138,6 +139,7 @@ func (w *WALManager) Insert(
 	database string,
 	producer string,
 	topic string,
+	schemas []*mcap.Schema,
 	data []byte,
 ) (Address, error) {
 	w.mtx.Lock()
@@ -149,7 +151,7 @@ func (w *WALManager) Insert(
 		bat = w.newBatch(id, database, producer, topic)
 		w.pendingInserts[tid] = bat
 	}
-	addr, err := w.insert(tid, bat.ID, data)
+	addr, err := w.insert(tid, bat.ID, schemas, data)
 	if err != nil {
 		return Address{}, err
 	}
@@ -174,21 +176,21 @@ func (w *WALManager) Insert(
 // GetReader gets a tree.TreeReader from a WAL address, presumed to be a leaf
 // address. The tree reader is backed by a limited reader over the data portion
 // of the insert record.
-func (w *WALManager) GetReader(addr Address) (tree.TreeReader, error) {
+func (w *WALManager) GetReader(addr Address) (*InsertRecord, tree.TreeReader, error) {
 	f, err := w.openr(addr.object())
 	if err != nil {
-		return nil, fmt.Errorf("failed to open wal file: %w", err)
+		return nil, nil, fmt.Errorf("failed to open wal file: %w", err)
 	}
 	defer f.Close()
 
 	_, err = f.Seek(addr.offset(), io.SeekStart)
 	if err != nil {
-		return nil, fmt.Errorf("failed to seek to record offset: %w", err)
+		return nil, nil, fmt.Errorf("failed to seek to record offset: %w", err)
 	}
 
-	headerlen, err := ParseInsertRecordHeader(f)
+	recordHeader, headerlen, err := ParseInsertRecordHeader(f)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse insert record header: %w", err)
+		return nil, nil, fmt.Errorf("failed to parse insert record header: %w", err)
 	}
 
 	path := w.waldir + "/" + addr.object()
@@ -205,9 +207,9 @@ func (w *WALManager) GetReader(addr Address) (tree.TreeReader, error) {
 	}
 	reader, err := tree.NewFileTree(factory, dataOffset, dataLength)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create tree reader: %w", err)
+		return nil, nil, fmt.Errorf("failed to create tree reader: %w", err)
 	}
-	return reader, nil
+	return recordHeader, reader, nil
 }
 
 // Get data from the WAL at a given address.
@@ -418,12 +420,13 @@ func (w *WALManager) mergeInactiveBatches(ctx context.Context) error {
 	return nil
 }
 
-func (w *WALManager) insert(tid TreeID, batchID string, data []byte) (Address, error) {
+func (w *WALManager) insert(tid TreeID, batchID string, schemas []*mcap.Schema, data []byte) (Address, error) {
 	addr, _, err := w.writer.WriteInsert(InsertRecord{
 		Database: tid.Database,
 		Producer: tid.Producer,
 		Topic:    tid.Topic,
 		BatchID:  batchID,
+		Schemas:  schemas,
 		Data:     data,
 	})
 	if err != nil {

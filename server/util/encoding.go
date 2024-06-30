@@ -54,6 +54,19 @@ func ReadPrefixedString(data []byte, s *string) int {
 	return 4 + length
 }
 
+// ReadPrefixedBytes reads a byte string from data and stores it in s, returning.
+func ReadPrefixedBytes(data []byte, s *[]byte) int {
+	if len(data) < 4 {
+		panic("short buffer")
+	}
+	length := int(binary.LittleEndian.Uint32(data))
+	if len(data[4:]) < length {
+		panic("short buffer")
+	}
+	*s = data[4 : length+4]
+	return 4 + length
+}
+
 // ReadPrefixedString reads a string from src and stores it in x, returning the written length.
 func U8(dst []byte, src uint8) int {
 	dst[0] = src
@@ -82,8 +95,19 @@ func Bool(dst []byte, src bool) int {
 	return 1
 }
 
-// WritePrefixedString writes a string to buf and returns the written length.
+// WritePrefixedString writes a string to buf with a length prefix and returns
+// the written length.
 func WritePrefixedString(buf []byte, s string) int {
+	if len(buf) < 4+len(s) {
+		panic("buffer too small")
+	}
+	binary.LittleEndian.PutUint32(buf, uint32(len(s)))
+	return 4 + copy(buf[4:], s)
+}
+
+// WritePrefixedBytes writes a byte string to a buffer with length prefix and
+// returns the written length.
+func WritePrefixedBytes(buf []byte, s []byte) int {
 	if len(buf) < 4+len(s) {
 		panic("buffer too small")
 	}
@@ -118,4 +142,17 @@ func DecodePrefixedString(r io.Reader) (string, error) {
 		return "", fmt.Errorf("failed to read string: %w", err)
 	}
 	return string(buf), nil
+}
+
+func DecodePrefixedBytes(r io.Reader) ([]byte, error) {
+	length, err := DecodeU32(r)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read bytes length: %w", err)
+	}
+	buf := make([]byte, length)
+	_, err = io.ReadFull(r, buf)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read bytes: %w", err)
+	}
+	return buf, nil
 }

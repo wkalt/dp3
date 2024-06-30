@@ -84,7 +84,7 @@ func printWALInsertID(ctx context.Context, id string) error {
 
 	addr := wal.NewAddress(uint64(object), uint64(offset), uint64(length))
 
-	tr, err := wmgr.GetReader(addr)
+	_, tr, err := wmgr.GetReader(addr)
 	if err != nil {
 		return fmt.Errorf("failed to get WAL reader: %w", err)
 	}

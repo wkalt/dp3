@@ -187,7 +187,7 @@ func (tm *TreeManager) DeleteMessages(
 	if err != nil {
 		return fmt.Errorf("failed to serialize tree: %w", err)
 	}
-	_, err = tm.wal.Insert(ctx, database, producer, topic, serialized)
+	_, err = tm.wal.Insert(ctx, database, producer, topic, nil, serialized)
 	if err != nil {
 		return fmt.Errorf("failed to insert into WAL: %w", err)
 	}
@@ -570,14 +570,18 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 		return fmt.Errorf("failed to get root: %w", err)
 	}
 	basereader := tree.NewBYOTreeReader(prefix, existingRootID, tm.ns.Get, tm.ns.GetLeafNode)
-
 	readers := make([]tree.TreeReader, 0, len(batch.Addrs))
 	for _, addr := range batch.Addrs {
-		reader, err := tm.wal.GetReader(addr)
+		recordHeader, reader, err := tm.wal.GetReader(addr)
 		if err != nil {
 			return fmt.Errorf("failed to get reader: %w", err)
 		}
 		readers = append(readers, reader)
+		for _, schema := range recordHeader.Schemas {
+			if err := tm.storeSchema(ctx, batch.Database, schema); err != nil {
+				return fmt.Errorf("failed to store schema: %w", err)
+			}
+		}
 	}
 	version, err := tm.vs.NextVersion(ctx)
 	if err != nil {
@@ -602,7 +606,6 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 	); err != nil {
 		return fmt.Errorf("failed to merge partial trees: %w", err)
 	}
-
 	if err := tm.rootmap.Put(
 		ctx,
 		batch.Database,
@@ -614,7 +617,6 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 	); err != nil {
 		return fmt.Errorf("failed to put root: %w", err)
 	}
-
 	// cache inner nodes
 	for _, pair := range innerNodes {
 		tm.ns.CacheInnerNode(pair.First, pair.Second)
@@ -880,6 +882,7 @@ func (tm *TreeManager) insert(
 	if !ok {
 		return fmt.Errorf("unexpected node type: %w", tree.NewUnexpectedNodeError(nodestore.Inner, currentRoot))
 	}
+
 	mt, err := tree.NewInsert(ctx, currentRootNode, version, time, messageKeys, stats, data)
 	if err != nil {
 		return fmt.Errorf("insertion failure: %w", err)
@@ -891,7 +894,19 @@ func (tm *TreeManager) insert(
 	if err != nil {
 		return fmt.Errorf("failed to serialize tree: %w", err)
 	}
-	_, err = tm.wal.Insert(ctx, database, producer, topic, serialized)
+	rw, err := mcap.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return fmt.Errorf("failed to create mcap reader: %w", err)
+	}
+	info, err := rw.Info()
+	if err != nil {
+		return fmt.Errorf("failed to read mcap info: %w", err)
+	}
+	schemas := []*fmcap.Schema{}
+	for _, schema := range info.Schemas {
+		schemas = append(schemas, schema)
+	}
+	_, err = tm.wal.Insert(ctx, database, producer, topic, schemas, serialized)
 	if err != nil {
 		return fmt.Errorf("failed to insert into WAL: %w", err)
 	}
