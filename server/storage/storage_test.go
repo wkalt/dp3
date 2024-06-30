@@ -31,7 +31,7 @@ func TestStorageProviders(t *testing.T) {
 	}{
 		{
 			"s3 store",
-			storage.NewS3Store(mc, bucket),
+			storage.NewS3Store(mc, bucket, 0),
 		},
 		{
 			"memory store",

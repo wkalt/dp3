@@ -22,12 +22,15 @@ const (
 type s3store struct {
 	mc     *minio.Client
 	bucket string
+
+	partsize int
 }
 
-func NewS3Store(mc *minio.Client, bucket string) *s3store {
+func NewS3Store(mc *minio.Client, bucket string, partsizeBytes int) *s3store {
 	return &s3store{
-		mc:     mc,
-		bucket: bucket,
+		mc:       mc,
+		bucket:   bucket,
+		partsize: partsizeBytes,
 	}
 }
 
@@ -39,7 +42,9 @@ func (s *s3store) Put(ctx context.Context, id string, r io.Reader) error {
 		id,
 		r,
 		-1,
-		minio.PutObjectOptions{},
+		minio.PutObjectOptions{
+			PartSize: uint64(s.partsize),
+		},
 	)
 	if err != nil {
 		return fmt.Errorf("failed to write object: %w", err)

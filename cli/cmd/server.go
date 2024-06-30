@@ -25,12 +25,13 @@ var (
 	serverDataDir string
 
 	// S3 storage provider options
-	serverS3Endpoint  string
-	serverS3AccessKey string
-	serverS3SecretKey string
-	serverS3Bucket    string
-	serverS3UseTLS    bool
-	serverS3Region    string
+	serverS3Endpoint            string
+	serverS3AccessKey           string
+	serverS3SecretKey           string
+	serverS3Bucket              string
+	serverS3UseTLS              bool
+	serverS3Region              string
+	serverS3MultipartPartSizeMB int
 )
 
 var serverCmd = &cobra.Command{
@@ -75,7 +76,7 @@ var serverCmd = &cobra.Command{
 			if err != nil {
 				bailf("error creating S3 client: %s", err)
 			}
-			store = storage.NewS3Store(mc, serverS3Bucket)
+			store = storage.NewS3Store(mc, serverS3Bucket, serverS3MultipartPartSizeMB*1024*1024)
 		} else {
 			var err error
 			store, err = storage.NewDirectoryStore(serverDataDir)
@@ -122,4 +123,5 @@ func init() {
 	serverCmd.PersistentFlags().StringVar(&serverS3Bucket, "s3-bucket", "", "S3 bucket (for S3 storage)")
 	serverCmd.PersistentFlags().BoolVarP(&serverS3UseTLS, "s3-tls", "t", false, "Use TLS (for S3 storage)")
 	serverCmd.PersistentFlags().StringVar(&serverS3Region, "s3-region", "", "S3 region")
+	serverCmd.PersistentFlags().IntVar(&serverS3MultipartPartSizeMB, "s3-multipart-part-size-mb", 5, "S3 region")
 }
