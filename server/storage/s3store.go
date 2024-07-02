@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/minio/minio-go/v7"
+	"github.com/wkalt/dp3/server/util"
 )
 
 /*
@@ -79,7 +80,8 @@ func (s *s3store) GetRange(ctx context.Context, id string, offset int, length in
 		}
 		return nil, fmt.Errorf("failed to seek: %w", err)
 	}
-	return obj, nil
+	rsc := util.NewWrappedReadSeekCloser(obj, int64(offset), int64(length))
+	return rsc, nil
 }
 
 // Delete removes an object from the object store.

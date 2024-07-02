@@ -36,7 +36,6 @@ func Merge(
 		inputPairs = append(inputPairs, util.NewPair(input, input.Root()))
 	}
 	cw := util.NewCountingWriter(w)
-
 	var innerNodes []util.Pair[nodestore.NodeID, *nodestore.InnerNode]
 	nodeID, _, err := mergeInnerNode(ctx, cw, version, destPair, inputPairs, &innerNodes)
 	if err != nil {
