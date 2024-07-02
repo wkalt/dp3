@@ -6,6 +6,7 @@ import (
 	"os"
 	"testing"
 
+	"github.com/foxglove/mcap/go/mcap"
 	"github.com/stretchr/testify/require"
 	"github.com/wkalt/dp3/server/wal"
 )
@@ -68,13 +69,20 @@ func TestWALLookups(t *testing.T) {
 			require.NoError(t, wm.Recover(ctx))
 			addrs := []wal.Address{}
 			data := make([]byte, 100)
+			schemas := []*mcap.Schema{
+				{
+					ID:       1,
+					Name:     "schema",
+					Encoding: "ros1msg",
+					Data:     []byte{0x01, 0x02},
+				},
+			}
 			for _, record := range c.records {
 				if record == wal.WALInsert {
-					addr, err := wm.Insert(ctx, "db", "producer", "topic", nil, data)
+					addr, err := wm.Insert(ctx, "db", "producer", "topic", schemas, data)
 					require.NoError(t, err)
 					addrs = append(addrs, addr)
 				}
-				// todo don't think this is testing anything
 			}
 			for _, addr := range addrs {
 				value, err := wm.Get(addr)

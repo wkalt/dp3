@@ -81,9 +81,11 @@ func ParseInsertRecord(data []byte) *InsertRecord {
 	offset += util.ReadU32(data[offset:], &schemaCount)
 	schemas := make([]*mcap.Schema, schemaCount)
 	for i := range schemas {
-		offset += util.ReadPrefixedString(data[offset:], &schemas[i].Name)
-		offset += util.ReadPrefixedString(data[offset:], &schemas[i].Encoding)
-		offset += util.ReadPrefixedBytes(data[offset:], &schemas[i].Data)
+		schema := &mcap.Schema{}
+		offset += util.ReadPrefixedString(data[offset:], &schema.Name)
+		offset += util.ReadPrefixedString(data[offset:], &schema.Encoding)
+		offset += util.ReadPrefixedBytes(data[offset:], &schema.Data)
+		schemas[i] = schema
 	}
 
 	var addr Address
