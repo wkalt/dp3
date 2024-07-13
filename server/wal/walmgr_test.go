@@ -25,7 +25,7 @@ func TestWALRotation(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, wm.Recover(ctx))
 	for i := 0; i < 100; i++ {
-		_, err := wm.Insert(ctx, "db", "producer", "topic", nil, []byte{0x01, 0x02})
+		_, err := wm.Insert("db", "producer", "topic", nil, []byte{0x01, 0x02})
 		require.NoError(t, err)
 	}
 
@@ -79,7 +79,7 @@ func TestWALLookups(t *testing.T) {
 			}
 			for _, record := range c.records {
 				if record == wal.WALInsert {
-					addr, err := wm.Insert(ctx, "db", "producer", "topic", schemas, data)
+					addr, err := wm.Insert("db", "producer", "topic", schemas, data)
 					require.NoError(t, err)
 					addrs = append(addrs, addr)
 				}
@@ -206,7 +206,7 @@ func TestWALRecovery(t *testing.T) {
 				topic := "topic"
 				for _, producer := range c.inserts {
 					data := make([]byte, 100)
-					_, err := wm.Insert(ctx, "db", producer, topic, nil, data)
+					_, err := wm.Insert("db", producer, topic, nil, data)
 					require.NoError(t, err)
 				}
 				await(c.expectedBatchCount) // wait for any batches to process prior to shutdown
@@ -245,7 +245,7 @@ func TestScenarios(t *testing.T) {
 			require.NoError(t, batch.Finish())
 		})
 		require.NoError(t, wm.Recover(ctx))
-		_, err = wm.Insert(ctx, "db", "producer", "topic", nil, []byte{0x01, 0x02})
+		_, err = wm.Insert("db", "producer", "topic", nil, []byte{0x01, 0x02})
 		require.NoError(t, err)
 		teardown()
 
@@ -264,7 +264,7 @@ func TestScenarios(t *testing.T) {
 		})
 		require.NoError(t, wm2.Recover(ctx))
 		require.Empty(t, wm2.Stats().PendingInserts)
-		_, err = wm2.Insert(ctx, "db", "producer", "topic", nil, []byte{0x01, 0x02})
+		_, err = wm2.Insert("db", "producer", "topic", nil, []byte{0x01, 0x02})
 		require.NoError(t, err)
 		require.Len(t, wm2.Stats().PendingInserts, 1)
 		teardown()
@@ -278,14 +278,6 @@ func TestScenarios(t *testing.T) {
 		teardown()
 	})
 
-	t.Run("flushes split across a single insert", func(t *testing.T) {
-
-	})
-
-	t.Run("multiple topics interleaved", func(t *testing.T) {
-
-	})
-
 	t.Run("log pruning does not delete data we need", func(t *testing.T) {
 		ctx := context.Background()
 		tmpdir, err := os.MkdirTemp("", "wal_test")
@@ -296,14 +288,14 @@ func TestScenarios(t *testing.T) {
 			require.NoError(t, batch.Finish())
 		})
 		require.NoError(t, wm.Recover(ctx))
-		_, err = wm.Insert(ctx, "db", "producer", "topic", nil, []byte{0x01, 0x02})
+		_, err = wm.Insert("db", "producer", "topic", nil, []byte{0x01, 0x02})
 		require.NoError(t, err)
 
 		removed, err := wm.RemoveStaleFiles(ctx)
 		require.NoError(t, err)
 		require.Zero(t, removed)
 
-		n, err := wm.ForceMerge(ctx)
+		n, err := wm.ForceMerge()
 		require.NoError(t, err)
 		await(n)
 
@@ -321,10 +313,6 @@ func TestScenarios(t *testing.T) {
 		require.Equal(t, 1, removed)
 		teardown()
 	})
-
-	t.Run("logs rotate based on size", func(t *testing.T) {
-
-	})
 }
 
 func testWALManager(
@@ -333,7 +321,7 @@ func testWALManager(
 	tmpdir string,
 	threshold int,
 	batchfn func(*wal.Batch),
-) (*wal.WALManager, func(n int), func()) {
+) (*wal.Manager, func(n int), func()) {
 	t.Helper()
 	merges := make(chan *wal.Batch)
 	wm, err := wal.NewWALManager(

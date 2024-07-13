@@ -44,6 +44,6 @@ func NewBYOTreeReader(
 	getLeaf func(context.Context, string, nodestore.NodeID) (
 		*nodestore.LeafNode, io.ReadSeekCloser, error,
 	),
-) TreeReader {
+) Reader {
 	return &byoTreeReader{root, prefix, get, getLeaf}
 }

@@ -20,22 +20,22 @@ lookups).
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type walReader struct {
+type Reader struct {
 	r      io.ReadSeeker
 	offset int64
 }
 
-func (r *walReader) Offset() int64 {
+func (r *Reader) Offset() int64 {
 	return r.offset
 }
 
 // NewReader creates a new WAL reader.
-func NewReader(r io.ReadSeeker) (*walReader, error) {
+func NewReader(r io.ReadSeeker) (*Reader, error) {
 	if err := validateMagic(r); err != nil {
 		return nil, err
 	}
 	offset := int64(len(Magic) + 2)
-	return &walReader{r: r, offset: offset}, nil
+	return &Reader{r: r, offset: offset}, nil
 }
 
 // ParseMergeRequestRecord parses a merge request record.
@@ -164,7 +164,7 @@ func ParseInsertRecordHeader(r io.Reader) (*InsertRecord, int, error) {
 }
 
 // Next returns the next record from the WAL file, with CRC validation.
-func (r *walReader) Next() (RecordType, []byte, error) {
+func (r *Reader) Next() (RecordType, []byte, error) {
 	header := make([]byte, 1+8)
 	_, err := io.ReadFull(r.r, header)
 	if err != nil {

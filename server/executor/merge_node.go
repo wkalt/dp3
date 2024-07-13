@@ -23,12 +23,12 @@ child that originated the popped tuple, if available.
 ////////////////////////////////////////////////////////////////////////////////
 
 type queueElement struct {
-	tuple *tuple
+	tuple *Tuple
 	index int
 }
 
-// mergeNode represents the merge node.
-type mergeNode struct {
+// MergeNode represents the merge node.
+type MergeNode struct {
 	children []Node
 	pq       *util.PriorityQueue[queueElement]
 
@@ -40,8 +40,8 @@ type mergeNode struct {
 // NewMergeNode returns a new merge node.
 // The descending parameter specifies the order in which tuples should be
 // popped from the priority queue.
-func NewMergeNode(descending bool, children ...Node) *mergeNode {
-	return &mergeNode{
+func NewMergeNode(descending bool, children ...Node) *MergeNode {
+	return &MergeNode{
 		children: children,
 		pq: util.NewPriorityQueue(func(a, b queueElement) bool {
 			if a.tuple.message.LogTime == b.tuple.message.LogTime {
@@ -59,7 +59,7 @@ func NewMergeNode(descending bool, children ...Node) *mergeNode {
 
 // initialize pushes one message from each child into the priority queue,
 // concurrently.
-func (n *mergeNode) initialize(ctx context.Context) error {
+func (n *MergeNode) initialize(ctx context.Context) error {
 	g := errgroup.Group{}
 	g.SetLimit(len(n.children))
 	for i, child := range n.children {
@@ -86,14 +86,17 @@ func (n *mergeNode) initialize(ctx context.Context) error {
 }
 
 // Next returns the next tuple from the node.
-func (n *mergeNode) Next(ctx context.Context) (*tuple, error) {
+func (n *MergeNode) Next(ctx context.Context) (*Tuple, error) {
 	if !n.initialized {
 		if err := n.initialize(ctx); err != nil {
 			return nil, fmt.Errorf("failed to initialize merge node: %w", err)
 		}
 	}
 	if n.pq.Len() > 0 {
-		element := heap.Pop(n.pq).(queueElement)
+		element, ok := heap.Pop(n.pq).(queueElement)
+		if !ok {
+			return nil, errors.New("failed to pop element from priority queue")
+		}
 		next, err := n.children[element.index].Next(ctx)
 		if err != nil && !errors.Is(err, io.EOF) {
 			return nil, fmt.Errorf("failed to get next message on child %d: %w", element.index, err)
@@ -107,7 +110,7 @@ func (n *mergeNode) Next(ctx context.Context) (*tuple, error) {
 }
 
 // Close the node.
-func (n *mergeNode) Close(ctx context.Context) error {
+func (n *MergeNode) Close(ctx context.Context) error {
 	if err := util.CloseAllContext(ctx, n.children...); err != nil {
 		return fmt.Errorf("failed to close children: %w", err)
 	}
@@ -115,7 +118,7 @@ func (n *mergeNode) Close(ctx context.Context) error {
 }
 
 // String returns a string representation of the node.
-func (n *mergeNode) String() string {
+func (n *MergeNode) String() string {
 	sb := strings.Builder{}
 	sb.WriteString("[merge")
 	for _, child := range n.children {

@@ -12,8 +12,9 @@ import (
 	"syscall"
 	"time"
 
-	_ "net/http/pprof"
+	"net/http/pprof"
 
+	"github.com/gorilla/mux"
 	"github.com/wkalt/dp3/server/nodestore"
 	"github.com/wkalt/dp3/server/rootmap"
 	"github.com/wkalt/dp3/server/routes"
@@ -48,6 +49,7 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 	if err != nil {
 		return fmt.Errorf("failed to read options: %w", err)
 	}
+
 	slog.SetLogLoggerLevel(opts.LogLevel)
 	log.Debugf(ctx, "Debug logging enabled")
 	store := opts.StorageProvider
@@ -64,7 +66,7 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 	}
 
 	ns := nodestore.NewNodestore(store, cache)
-	rm, err := rootmap.NewSQLRootmap(ctx, db, rootmap.WithReservationSize(1e9))
+	rm, err := rootmap.NewSQLRootmap(ctx, db)
 	if err != nil {
 		return fmt.Errorf("failed to open rootmap: %w", err)
 	}
@@ -77,7 +79,7 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 	if err = versiondb.Ping(); err != nil {
 		return fmt.Errorf("failed to ping database at %s: %w", dbpath, err)
 	}
-	vs := versionstore.NewVersionStore(ctx, versiondb, 1e9)
+	vs := versionstore.NewVersionStore(versiondb, 1e9)
 
 	walopts := []wal.Option{
 		wal.WithInactiveBatchMergeInterval(2 * time.Second),
@@ -105,8 +107,9 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 	log.Infof(ctx, "Building routes with allowed origins %+v", opts.AllowedOrigins)
 	r := routes.MakeRoutes(tmgr, opts.AllowedOrigins, opts.SharedKey)
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", opts.Port),
-		Handler: r,
+		Addr:              fmt.Sprintf(":%d", opts.Port),
+		Handler:           r,
+		ReadHeaderTimeout: 5 * time.Second,
 	}
 
 	sigint := make(chan os.Signal, 1)
@@ -124,8 +127,15 @@ func (dp3 *DP3) Start(ctx context.Context, options ...DP3Option) error { //nolin
 	}()
 
 	go func() {
+		r := mux.NewRouter()
+		r.PathPrefix("/debug/pprof/").HandlerFunc(pprof.Index)
 		log.Infof(ctx, "Starting pprof server on :6060")
-		if err := http.ListenAndServe(":6060", nil); err != nil {
+		srv := &http.Server{
+			Addr:              "localhost:6060",
+			Handler:           r,
+			ReadHeaderTimeout: 5 * time.Second,
+		}
+		if err := srv.ListenAndServe(); err != nil {
 			log.Errorf(ctx, "failed to start pprof server: %s", err)
 		}
 	}()

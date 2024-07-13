@@ -61,7 +61,7 @@ func TestImportHandler(t *testing.T) {
 	tmgr, done := treemgr.TestTreeManager(ctx, t)
 	defer done()
 
-	url, finish := routes.MakeTestRoutes(ctx, t, tmgr)
+	url, finish := routes.MakeTestRoutes(t, tmgr)
 	defer finish()
 
 	for _, c := range cases {

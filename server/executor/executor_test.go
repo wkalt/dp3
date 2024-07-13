@@ -22,7 +22,7 @@ func TestQueryExecution(t *testing.T) {
 	ctx := context.Background()
 	tmgr, finish := treemgr.TestTreeManager(ctx, t)
 	defer finish()
-	prepTmgr2(t, ctx, tmgr)
+	prepTmgr2(ctx, t, tmgr)
 
 	t.Run("join scenarios", func(t *testing.T) {
 		type message util.Pair[string, uint64] // topic, timestamp
@@ -299,7 +299,7 @@ func TestCompilePlan(t *testing.T) {
 		t.Run(c.assertion, func(t *testing.T) {
 			tmgr, finish := treemgr.TestTreeManager(ctx, t)
 			defer finish()
-			prepTmgr(t, ctx, tmgr)
+			prepTmgr(ctx, t, tmgr)
 
 			ast, err := parser.ParseString("", c.query)
 			require.NoError(t, err)
@@ -314,7 +314,7 @@ func TestCompilePlan(t *testing.T) {
 	}
 }
 
-func prepTmgr(t *testing.T, ctx context.Context, tmgr *treemgr.TreeManager) {
+func prepTmgr(ctx context.Context, t *testing.T, tmgr *treemgr.TreeManager) {
 	t.Helper()
 	buf := &bytes.Buffer{}
 	mcap.WriteFile(t, buf, [][]int64{{1, 3, 5}, {2, 4, 6}}...)
@@ -322,7 +322,7 @@ func prepTmgr(t *testing.T, ctx context.Context, tmgr *treemgr.TreeManager) {
 	require.NoError(t, tmgr.ForceFlush(ctx))
 }
 
-func prepTmgr2(t *testing.T, ctx context.Context, tmgr *treemgr.TreeManager) {
+func prepTmgr2(ctx context.Context, t *testing.T, tmgr *treemgr.TreeManager) {
 	t.Helper()
 	schema := []byte(`
 	uint8 u8

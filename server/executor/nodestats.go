@@ -10,7 +10,7 @@ import (
 	"github.com/wkalt/dp3/server/util"
 )
 
-type nodestats struct {
+type NodeStats struct {
 	bytesOut  int
 	tuplesOut int
 
@@ -27,14 +27,14 @@ type nodestats struct {
 	lastTupleRecorded bool
 }
 
-func NewNodeStats(child Node, label string) *nodestats {
-	return &nodestats{
+func NewNodeStats(child Node, label string) *NodeStats {
+	return &NodeStats{
 		child: child,
 		label: label,
 	}
 }
 
-func (n *nodestats) Next(ctx context.Context) (*tuple, error) {
+func (n *NodeStats) Next(ctx context.Context) (*Tuple, error) {
 	if !n.initialized {
 		n.StartTimer()
 		n.initialized = true
@@ -51,11 +51,11 @@ func (n *nodestats) Next(ctx context.Context) (*tuple, error) {
 	return tup, nil
 }
 
-func (n *nodestats) String() string {
+func (n *NodeStats) String() string {
 	return n.child.String()
 }
 
-func (n *nodestats) Close(ctx context.Context) error {
+func (n *NodeStats) Close(ctx context.Context) error {
 	if !n.lastTupleRecorded {
 		n.RecordLastTuple()
 	}
@@ -72,23 +72,23 @@ func (n *nodestats) Close(ctx context.Context) error {
 	return nil
 }
 
-func (n *nodestats) IncBytesOut(bytes int) {
+func (n *NodeStats) IncBytesOut(bytes int) {
 	n.bytesOut += bytes
 }
 
-func (n *nodestats) IncTuplesOut(tuples int) {
+func (n *NodeStats) IncTuplesOut(tuples int) {
 	n.tuplesOut += tuples
 }
 
-func (n *nodestats) StartTimer() {
+func (n *NodeStats) StartTimer() {
 	n.startTime = time.Now()
 }
 
-func (n *nodestats) RecordFirstTuple() {
+func (n *NodeStats) RecordFirstTuple() {
 	n.elapsedToFirstTuple = time.Since(n.startTime)
 }
 
-func (n *nodestats) RecordLastTuple() {
+func (n *NodeStats) RecordLastTuple() {
 	n.elapsedToLastTuple = time.Since(n.startTime)
 	n.lastTupleRecorded = true
 }

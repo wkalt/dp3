@@ -213,7 +213,7 @@ func NewDelete(
 // confusing results so clients must be prepared to handle it.
 func GetStatRange(
 	ctx context.Context,
-	tr TreeReader,
+	tr Reader,
 	start uint64,
 	end uint64,
 	granularity uint64,

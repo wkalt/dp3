@@ -28,7 +28,7 @@ type MemTree struct {
 }
 
 // Get returns the node with the given ID.
-func (m *MemTree) Get(ctx context.Context, id nodestore.NodeID) (nodestore.Node, error) {
+func (m *MemTree) Get(_ context.Context, id nodestore.NodeID) (nodestore.Node, error) {
 	node, ok := m.nodes[id]
 	if !ok {
 		return nil, nodestore.NodeNotFoundError{NodeID: id}
@@ -52,7 +52,7 @@ func (m *MemTree) GetLeafNode(
 }
 
 // Put inserts a node into the MemTree.
-func (m *MemTree) Put(ctx context.Context, id nodestore.NodeID, node nodestore.Node) error {
+func (m *MemTree) Put(_ context.Context, id nodestore.NodeID, node nodestore.Node) error {
 	if m.nodes == nil {
 		m.nodes = make(map[nodestore.NodeID]nodestore.Node)
 	}

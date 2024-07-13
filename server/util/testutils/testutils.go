@@ -17,12 +17,16 @@ General purpose test utilitites.
 
 // GetOpenPort returns an open port that can be used for testing.
 func GetOpenPort() (int, error) {
-	l, err := net.Listen("tcp", ":0")
+	l, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		return 0, fmt.Errorf("failed to get open port: %w", err)
 	}
 	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port, nil
+	addr, ok := l.Addr().(*net.TCPAddr)
+	if !ok {
+		return 0, fmt.Errorf("failed to get open port: %w", err)
+	}
+	return addr.Port, nil
 }
 
 // Flatten concatenates slices of the same type.
@@ -134,4 +138,14 @@ func TrimLeadingSpace(s string) string {
 		lines[i] = strings.TrimLeft(line, " ")
 	}
 	return strings.Join(lines, "\n")
+}
+
+// Must converts an interface to a specific type or fails the test.
+func Must[T any](t *testing.T, x any) T {
+	t.Helper()
+	v, ok := x.(T)
+	if !ok {
+		t.Fatalf("failed to convert %T to %T", x, v)
+	}
+	return v
 }

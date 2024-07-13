@@ -434,6 +434,3 @@ func TestParseDuration(t *testing.T) {
 	_, err = parser.Duration()
 	require.Error(t, err)
 }
-
-func TestMessageParser(t *testing.T) {
-}

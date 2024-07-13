@@ -19,7 +19,7 @@ either from memory, from WAL, or from the nodestore.
 
 ////////////////////////////////////////////////////////////////////////////////
 
-type TreeReader interface {
+type Reader interface {
 	Root() nodestore.NodeID
 	Get(ctx context.Context, id nodestore.NodeID) (nodestore.Node, error)
 	GetLeafNode(ctx context.Context, id nodestore.NodeID) (*nodestore.LeafNode, io.ReadSeekCloser, error)
@@ -28,7 +28,7 @@ type TreeReader interface {
 func getNode(
 	ctx context.Context,
 	id nodestore.NodeID,
-	readers ...TreeReader,
+	readers ...Reader,
 ) (remote bool, node nodestore.Node, err error) {
 	for i, reader := range readers {
 		if reader == nil {
@@ -47,13 +47,17 @@ func getNode(
 }
 
 // Print a tree reader in human-readable format.
-func Print(ctx context.Context, readers ...TreeReader) (string, error) {
+func Print(ctx context.Context, readers ...Reader) (string, error) {
 	overlay := readers[0]
 	node, err := overlay.Get(ctx, overlay.Root())
 	if err != nil {
 		return "", fmt.Errorf("failed to get root node: %w", err)
 	}
-	return printInnerNode(ctx, false, readers, node.(*nodestore.InnerNode), 0, nil)
+	inner, ok := node.(*nodestore.InnerNode)
+	if !ok {
+		return "", errors.New("root node is not an inner node")
+	}
+	return printInnerNode(ctx, false, readers, inner, 0, nil)
 }
 
 func printStats(stats map[string]*nodestore.Statistics) string {
@@ -75,7 +79,7 @@ func printStats(stats map[string]*nodestore.Statistics) string {
 
 func printLeaf(
 	ctx context.Context,
-	readers []TreeReader,
+	readers []Reader,
 	node *nodestore.LeafNode,
 ) (string, error) {
 	sb := &strings.Builder{}
@@ -120,7 +124,7 @@ func printLeaf(
 func printInnerNode(
 	ctx context.Context,
 	remote bool,
-	readers []TreeReader,
+	readers []Reader,
 	node *nodestore.InnerNode,
 	version uint64,
 	stats map[string]*nodestore.Statistics,

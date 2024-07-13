@@ -27,7 +27,7 @@ type ChildNodeSummary struct {
 // granularity.
 func IterateChildren(
 	ctx context.Context,
-	tr TreeReader,
+	tr Reader,
 	start uint64,
 	end uint64,
 	bucketWidthSecs int,

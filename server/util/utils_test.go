@@ -194,7 +194,7 @@ func TestFilter(t *testing.T) {
 }
 
 func TestRunPipeSynchrony(t *testing.T) {
-	wfunc := func(ctx context.Context, w io.Writer) error {
+	wfunc := func(_ context.Context, w io.Writer) error {
 		if _, err := w.Write([]byte("hello")); err != nil {
 			return fmt.Errorf("failed to write: %w", err)
 		}
@@ -202,7 +202,7 @@ func TestRunPipeSynchrony(t *testing.T) {
 	}
 	var value string
 	buf := make([]byte, 5)
-	rfunc := func(ctx context.Context, r io.Reader) error {
+	rfunc := func(_ context.Context, r io.Reader) error {
 		if _, err := io.ReadFull(r, buf); err != nil {
 			return fmt.Errorf("failed to read: %w", err)
 		}
@@ -215,14 +215,14 @@ func TestRunPipeSynchrony(t *testing.T) {
 }
 
 func TestPipeCompletedWritesCloseReads(t *testing.T) {
-	wfunc := func(ctx context.Context, w io.Writer) error {
+	wfunc := func(_ context.Context, w io.Writer) error {
 		if _, err := w.Write([]byte("hello")); err != nil {
 			return fmt.Errorf("failed to write: %w", err)
 		}
 		return nil
 	}
 	var value string
-	rfunc := func(ctx context.Context, r io.Reader) error {
+	rfunc := func(_ context.Context, r io.Reader) error {
 		data, err := io.ReadAll(r)
 		require.NoError(t, err)
 		value = string(data)
@@ -236,14 +236,14 @@ func TestPipeCompletedWritesCloseReads(t *testing.T) {
 func TestRunPipe(t *testing.T) {
 	ctx := context.Background()
 	t.Run("write and read", func(t *testing.T) {
-		wfunc := func(ctx context.Context, w io.Writer) error {
+		wfunc := func(_ context.Context, w io.Writer) error {
 			if _, err := w.Write([]byte("hello")); err != nil {
 				return fmt.Errorf("failed to write: %w", err)
 			}
 			return nil
 		}
 		buf := make([]byte, 5)
-		rfunc := func(ctx context.Context, r io.Reader) error {
+		rfunc := func(_ context.Context, r io.Reader) error {
 			if _, err := io.ReadFull(r, buf); err != nil {
 				return fmt.Errorf("failed to read: %w", err)
 			}
@@ -253,32 +253,32 @@ func TestRunPipe(t *testing.T) {
 		assert.Equal(t, "hello", string(buf))
 	})
 	t.Run("write error", func(t *testing.T) {
-		wfunc := func(ctx context.Context, w io.Writer) error {
+		wfunc := func(_ context.Context, _ io.Writer) error {
 			return io.ErrClosedPipe
 		}
-		rfunc := func(ctx context.Context, r io.Reader) error {
+		rfunc := func(_ context.Context, _ io.Reader) error {
 			return nil
 		}
 		require.ErrorIs(t, util.RunPipe(ctx, wfunc, rfunc), io.ErrClosedPipe)
 	})
 	t.Run("write error read blocked", func(t *testing.T) {
-		wfunc := func(ctx context.Context, w io.Writer) error {
+		wfunc := func(_ context.Context, _ io.Writer) error {
 			return io.ErrClosedPipe
 		}
-		rfunc := func(ctx context.Context, r io.Reader) error {
+		rfunc := func(_ context.Context, r io.Reader) error {
 			_, err := io.ReadAll(r)
 			return fmt.Errorf("failed to read data: %w", err)
 		}
 		require.ErrorIs(t, util.RunPipe(ctx, wfunc, rfunc), io.ErrClosedPipe)
 	})
 	t.Run("read error", func(t *testing.T) {
-		wfunc := func(ctx context.Context, w io.Writer) error {
+		wfunc := func(_ context.Context, w io.Writer) error {
 			if _, err := w.Write([]byte("hello")); err != nil {
 				return fmt.Errorf("failed to write: %w", err)
 			}
 			return nil
 		}
-		rfunc := func(ctx context.Context, r io.Reader) error {
+		rfunc := func(_ context.Context, _ io.Reader) error {
 			return io.ErrClosedPipe
 		}
 		require.ErrorIs(t, util.RunPipe(ctx, wfunc, rfunc), io.ErrClosedPipe)

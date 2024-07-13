@@ -15,7 +15,7 @@ func TestVersionStore(t *testing.T) {
 	t.Helper()
 	db, err := sql.Open("sqlite3", ":memory:")
 	require.NoError(t, err)
-	vs := versionstore.NewVersionStore(ctx, db, 1000)
+	vs := versionstore.NewVersionStore(db, 1000)
 	t.Run("next version", func(t *testing.T) {
 		last := uint64(0)
 		for i := 0; i < 1e6; i++ {

@@ -30,7 +30,7 @@ type Iterator struct {
 
 	readclosers []io.ReadSeekCloser
 	msgIterator mcap.MessageIterator
-	tr          TreeReader
+	tr          Reader
 	minVersion  uint64
 
 	childFilter func(*nodestore.Child) (bool, error)
@@ -42,8 +42,7 @@ type Iterator struct {
 
 // NewTreeIterator returns a new iterator over the given tree.
 func NewTreeIterator(
-	ctx context.Context,
-	tr TreeReader,
+	tr Reader,
 	descending bool,
 	start uint64,
 	end uint64,
@@ -196,7 +195,7 @@ func (ti *Iterator) getNextLeaf(ctx context.Context) (nodeID nodestore.NodeID, e
 // accounting for ancestors.
 func BuildLeafIterator(
 	ctx context.Context,
-	tr TreeReader,
+	tr Reader,
 	leafID nodestore.NodeID,
 	descending bool,
 ) (mcap.MessageIterator, func() error, error) {

@@ -98,7 +98,7 @@ func TestDeleteHandler(t *testing.T) {
 	require.NoError(t, tmgr.Receive(ctx, "db", "producer", f))
 	require.NoError(t, tmgr.ForceFlush(ctx))
 
-	url, finish := routes.MakeTestRoutes(ctx, t, tmgr)
+	url, finish := routes.MakeTestRoutes(t, tmgr)
 	defer finish()
 
 	for _, c := range cases {

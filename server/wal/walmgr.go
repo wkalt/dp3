@@ -68,8 +68,8 @@ representation of the file ID.
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// WALManager is the write-ahead log manager.
-type WALManager struct {
+// Manager is the write-ahead log manager.
+type Manager struct {
 	f              io.WriteCloser
 	writer         *Writer
 	counter        uint64
@@ -87,7 +87,7 @@ func NewWALManager(
 	waldir string,
 	merges chan<- *Batch,
 	opts ...Option,
-) (*WALManager, error) {
+) (*Manager, error) {
 	conf := &config{
 		mergeSizeThreshold:         2 * gigabyte,
 		staleBatchThreshold:        5 * time.Second,
@@ -98,7 +98,7 @@ func NewWALManager(
 	for _, opt := range opts {
 		opt(conf)
 	}
-	wmgr := &WALManager{
+	wmgr := &Manager{
 		merges:         merges,
 		mtx:            &sync.Mutex{},
 		config:         conf,
@@ -134,8 +134,7 @@ func NewWALManager(
 
 // Insert data into the WAL for a producer and topic. The data should be the
 // serialized representation of a memtree, i.e a partial tree.
-func (w *WALManager) Insert(
-	ctx context.Context,
+func (w *Manager) Insert(
 	database string,
 	producer string,
 	topic string,
@@ -176,7 +175,7 @@ func (w *WALManager) Insert(
 // GetReader gets a tree.TreeReader from a WAL address, presumed to be a leaf
 // address. The tree reader is backed by a limited reader over the data portion
 // of the insert record.
-func (w *WALManager) GetReader(addr Address) (*InsertRecord, tree.TreeReader, error) {
+func (w *Manager) GetReader(addr Address) (*InsertRecord, tree.Reader, error) {
 	f, err := w.openr(addr.object())
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to open wal file: %w", err)
@@ -213,7 +212,7 @@ func (w *WALManager) GetReader(addr Address) (*InsertRecord, tree.TreeReader, er
 }
 
 // Get data from the WAL at a given address.
-func (w *WALManager) Get(addr Address) ([]byte, error) {
+func (w *Manager) Get(addr Address) ([]byte, error) {
 	f, err := w.openr(addr.object())
 	if err != nil {
 		return nil, fmt.Errorf("failed to open wal file: %w", err)
@@ -254,7 +253,7 @@ func (w *WALManager) Get(addr Address) ([]byte, error) {
 
 // ForceMerge forces the merge of all pending inserts in the WAL. This is used
 // in tests only - in operation merges are async.
-func (w *WALManager) ForceMerge(ctx context.Context) (int, error) {
+func (w *Manager) ForceMerge() (int, error) {
 	batches := []*Batch{}
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
@@ -279,14 +278,14 @@ func (w *WALManager) ForceMerge(ctx context.Context) (int, error) {
 	return c, nil
 }
 
-// WALStats contains statistics about the WAL manager.
-type WALStats struct {
+// Stats contains statistics about the WAL manager.
+type Stats struct {
 	PendingInserts map[TreeID][]Address
 	PendingMerges  map[string]*Batch
 }
 
 // Stats returns statistics about the WAL manager.
-func (w *WALManager) Stats() WALStats {
+func (w *Manager) Stats() Stats {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
 	inserts := map[TreeID][]Address{}
@@ -298,7 +297,7 @@ func (w *WALManager) Stats() WALStats {
 		merges[k] = v
 	}
 
-	return WALStats{
+	return Stats{
 		PendingInserts: inserts,
 		PendingMerges:  merges,
 	}
@@ -307,7 +306,7 @@ func (w *WALManager) Stats() WALStats {
 // Recover scans the files in the waldir and replays them through the walmgr's
 // internal state. Recover must be called before the WAL manager is ready to
 // use.
-func (w *WALManager) Recover(ctx context.Context) error {
+func (w *Manager) Recover(ctx context.Context) error {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
 	paths, err := listDir(w.waldir)
@@ -373,7 +372,7 @@ func listDir(dir string) ([]string, error) {
 	return result, nil
 }
 
-func (w *WALManager) mergeBatch(batch *Batch) error {
+func (w *Manager) mergeBatch(batch *Batch) error {
 	if _, _, err := w.writer.WriteMergeRequest(MergeRequestRecord{
 		Database: batch.Database,
 		Producer: batch.Producer,
@@ -393,7 +392,7 @@ func (w *WALManager) mergeBatch(batch *Batch) error {
 
 // merges bounded length queue; bound = 1 in tests?
 
-func (w *WALManager) mergeInactiveBatches(ctx context.Context) error {
+func (w *Manager) mergeInactiveBatches(ctx context.Context) error {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
 	batches := []*Batch{}
@@ -420,7 +419,7 @@ func (w *WALManager) mergeInactiveBatches(ctx context.Context) error {
 	return nil
 }
 
-func (w *WALManager) insert(tid TreeID, batchID string, schemas []*mcap.Schema, data []byte) (Address, error) {
+func (w *Manager) insert(tid TreeID, batchID string, schemas []*mcap.Schema, data []byte) (Address, error) {
 	addr, _, err := w.writer.WriteInsert(InsertRecord{
 		Database: tid.Database,
 		Producer: tid.Producer,
@@ -435,7 +434,7 @@ func (w *WALManager) insert(tid TreeID, batchID string, schemas []*mcap.Schema, 
 	return addr, nil
 }
 
-func (w *WALManager) openw(path string) (*os.File, error) {
+func (w *Manager) openw(path string) (*os.File, error) {
 	f, err := os.OpenFile(w.waldir+"/"+path, os.O_RDWR|os.O_CREATE, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
@@ -443,7 +442,7 @@ func (w *WALManager) openw(path string) (*os.File, error) {
 	return f, nil
 }
 
-func (w *WALManager) openr(path string) (*os.File, error) {
+func (w *Manager) openr(path string) (*os.File, error) {
 	f, err := os.OpenFile(w.waldir+"/"+path, os.O_RDWR, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file: %w", err)
@@ -451,7 +450,7 @@ func (w *WALManager) openr(path string) (*os.File, error) {
 	return f, nil
 }
 
-func (w *WALManager) completeMerge(id string) error {
+func (w *Manager) completeMerge(id string) error {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
 	if _, _, err := w.writer.WriteMergeComplete(MergeCompleteRecord{
@@ -463,7 +462,7 @@ func (w *WALManager) completeMerge(id string) error {
 	return nil
 }
 
-func (w *WALManager) RemoveStaleFiles(ctx context.Context) (removed int, err error) {
+func (w *Manager) RemoveStaleFiles(ctx context.Context) (removed int, err error) {
 	w.mtx.Lock()
 	defer w.mtx.Unlock()
 	files, err := listDir(w.waldir)
@@ -504,7 +503,7 @@ func (w *WALManager) RemoveStaleFiles(ctx context.Context) (removed int, err err
 	return removed, nil
 }
 
-func (w *WALManager) Rotate() error {
+func (w *Manager) Rotate() error {
 	if w.f != nil {
 		if err := w.f.Close(); err != nil {
 			return fmt.Errorf("failed to close log file: %w", err)
@@ -524,7 +523,7 @@ func (w *WALManager) Rotate() error {
 	return nil
 }
 
-func (w *WALManager) scanfile(ctx context.Context, id uint64) error {
+func (w *Manager) scanfile(ctx context.Context, id uint64) error {
 	f, err := w.openr(strconv.FormatUint(id, 10))
 	if err != nil {
 		return fmt.Errorf("failed to open wal file: %w", err)
@@ -585,7 +584,7 @@ func (w *WALManager) scanfile(ctx context.Context, id uint64) error {
 	}
 }
 
-func (w *WALManager) setfile(id uint64) error {
+func (w *Manager) setfile(id uint64) error {
 	f, err := w.openw(strconv.FormatUint(id, 10))
 	if err != nil {
 		return fmt.Errorf("failed to open wal file: %w", err)
@@ -603,7 +602,7 @@ func (w *WALManager) setfile(id uint64) error {
 	return nil
 }
 
-func (w *WALManager) newBatch(
+func (w *Manager) newBatch(
 	id string,
 	database string,
 	producer string,

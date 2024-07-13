@@ -11,19 +11,19 @@ OffsetNode implements the usual offset operator.
 
 ////////////////////////////////////////////////////////////////////////////////
 
-// offsetNode represents the offset node.
-type offsetNode struct {
+// OffsetNode represents the offset node.
+type OffsetNode struct {
 	child  Node
 	offset int
 }
 
 // NewOffsetNode constructs a new offset node.
-func NewOffsetNode(offset int, child Node) *offsetNode {
-	return &offsetNode{offset: offset, child: child}
+func NewOffsetNode(offset int, child Node) *OffsetNode {
+	return &OffsetNode{offset: offset, child: child}
 }
 
 // Next returns the next tuple from the node.
-func (n *offsetNode) Next(ctx context.Context) (*tuple, error) {
+func (n *OffsetNode) Next(ctx context.Context) (*Tuple, error) {
 	for n.offset > 0 {
 		_, err := n.child.Next(ctx)
 		if err != nil {
@@ -39,7 +39,7 @@ func (n *offsetNode) Next(ctx context.Context) (*tuple, error) {
 }
 
 // Close the node.
-func (n *offsetNode) Close(ctx context.Context) error {
+func (n *OffsetNode) Close(ctx context.Context) error {
 	if err := n.child.Close(ctx); err != nil {
 		return fmt.Errorf("failed to close offset node: %w", err)
 	}
@@ -47,6 +47,6 @@ func (n *offsetNode) Close(ctx context.Context) error {
 }
 
 // String returns a string representation of the node.
-func (n *offsetNode) String() string {
+func (n *OffsetNode) String() string {
 	return fmt.Sprintf("[offset %d %s]", n.offset, n.child.String())
 }

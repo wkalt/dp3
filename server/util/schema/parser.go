@@ -600,8 +600,8 @@ func compileSchemaByteCode(schema *Schema, fieldSelections []string) ([]byte, er
 	multiplicities := make(map[string]int)
 	unselected := make(map[string]int)
 	for _, selection := range fieldSelections {
-		multiplicities[selection] += 1
-		unselected[selection] += 1
+		multiplicities[selection]++
+		unselected[selection]++
 	}
 	for _, field := range schema.Fields {
 		// if we were requested specific fields but they are all selected, we
@@ -619,7 +619,7 @@ func compileSchemaByteCode(schema *Schema, fieldSelections []string) ([]byte, er
 			}
 			typ := pair.First
 			prefix := pair.Second
-			unselected[prefix] -= 1
+			unselected[prefix]--
 			include := fieldSelections == nil
 			if !include {
 				for _, selection := range fieldSelections {

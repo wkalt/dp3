@@ -20,15 +20,15 @@ const (
 	minioErrObjectNotExist = "The specified key does not exist."
 )
 
-type s3store struct {
+type S3Store struct {
 	mc     *minio.Client
 	bucket string
 
 	partsize int
 }
 
-func NewS3Store(mc *minio.Client, bucket string, partsizeBytes int) *s3store {
-	return &s3store{
+func NewS3Store(mc *minio.Client, bucket string, partsizeBytes int) *S3Store {
+	return &S3Store{
 		mc:       mc,
 		bucket:   bucket,
 		partsize: partsizeBytes,
@@ -36,7 +36,7 @@ func NewS3Store(mc *minio.Client, bucket string, partsizeBytes int) *s3store {
 }
 
 // Put stores the data in the object store.
-func (s *s3store) Put(ctx context.Context, id string, r io.Reader) error {
+func (s *S3Store) Put(ctx context.Context, id string, r io.Reader) error {
 	_, err := s.mc.PutObject(
 		ctx,
 		s.bucket,
@@ -53,7 +53,7 @@ func (s *s3store) Put(ctx context.Context, id string, r io.Reader) error {
 	return nil
 }
 
-func (s *s3store) Get(ctx context.Context, id string) (io.ReadCloser, error) {
+func (s *S3Store) Get(ctx context.Context, id string) (io.ReadCloser, error) {
 	obj, err := s.mc.GetObject(ctx, s.bucket, id, minio.GetObjectOptions{})
 	if err != nil {
 		if err.Error() == minioErrObjectNotExist {
@@ -65,7 +65,7 @@ func (s *s3store) Get(ctx context.Context, id string) (io.ReadCloser, error) {
 }
 
 // GetRange retrieves a range of bytes from the object store.
-func (s *s3store) GetRange(ctx context.Context, id string, offset int, length int) (io.ReadSeekCloser, error) {
+func (s *S3Store) GetRange(ctx context.Context, id string, offset int, length int) (io.ReadSeekCloser, error) {
 	req := minio.GetObjectOptions{}
 	if err := req.SetRange(int64(offset), int64(offset+length)); err != nil {
 		return nil, fmt.Errorf("failed to set range: %w", err)
@@ -85,7 +85,7 @@ func (s *s3store) GetRange(ctx context.Context, id string, offset int, length in
 }
 
 // Delete removes an object from the object store.
-func (s *s3store) Delete(ctx context.Context, id string) error {
+func (s *S3Store) Delete(ctx context.Context, id string) error {
 	if err := s.mc.RemoveObject(ctx, s.bucket, id, minio.RemoveObjectOptions{}); err != nil {
 		if err.Error() == minioErrObjectNotExist {
 			return ErrObjectNotFound
@@ -95,6 +95,6 @@ func (s *s3store) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
-func (s *s3store) String() string {
+func (s *S3Store) String() string {
 	return fmt.Sprintf("s3(%s)", s.bucket)
 }

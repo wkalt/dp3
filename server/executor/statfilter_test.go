@@ -11,6 +11,7 @@ import (
 	"github.com/wkalt/dp3/server/ql"
 	"github.com/wkalt/dp3/server/util"
 	"github.com/wkalt/dp3/server/util/schema"
+	"github.com/wkalt/dp3/server/util/testutils"
 	"github.com/wkalt/dp3/server/util/trigram"
 )
 
@@ -52,22 +53,26 @@ func newChild(t *testing.T, configs ...statconfig) *nodestore.Child {
 		case int:
 			summary, err := nodestore.NewNumericalSummary()
 			require.NoError(t, err)
-			require.NoError(t, summary.Observe(float64(fieldmin)))
-			require.NoError(t, summary.Observe(float64(fieldmax.(int))))
+			lo := float64(fieldmin)
+			hi := float64(testutils.Must[int](t, fieldmax))
+			require.NoError(t, summary.Observe(lo))
+			require.NoError(t, summary.Observe(hi))
 			statistics.NumStats[idx] = summary
 		case float64:
 			summary, err := nodestore.NewNumericalSummary()
 			require.NoError(t, err)
+			hi := testutils.Must[float64](t, fieldmax)
 			require.NoError(t, summary.Observe(fieldmin))
-			require.NoError(t, summary.Observe(fieldmax.(float64)))
+			require.NoError(t, summary.Observe(hi))
 			statistics.NumStats[idx] = summary
 		case string:
 			signature := trigram.NewSignature(12)
+			smax := testutils.Must[string](t, fieldmax)
 			signature.AddString(fieldmin)
-			signature.AddString(fieldmax.(string))
+			signature.AddString(smax)
 			statistics.TextStats[idx] = &nodestore.TextSummary{
 				Min:              fieldmin,
-				Max:              fieldmax.(string),
+				Max:              smax,
 				TrigramSignature: signature,
 			}
 		default:

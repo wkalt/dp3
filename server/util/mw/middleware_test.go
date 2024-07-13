@@ -10,6 +10,7 @@ import (
 
 	glog "log"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/wkalt/dp3/server/util/log"
 	"github.com/wkalt/dp3/server/util/mw"
@@ -22,7 +23,7 @@ func TestWithRequestID(t *testing.T) {
 	defer func() {
 		glog.SetOutput(os.Stderr)
 	}()
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 		log.Infof(r.Context(), "test")
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
@@ -35,9 +36,9 @@ func TestWithRequestID(t *testing.T) {
 
 func TestWithCORSAllowedOrigins(t *testing.T) {
 	ctx := context.Background()
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, err := w.Write([]byte("ok"))
-		require.NoError(t, err)
+		assert.NoError(t, err)
 	})
 
 	t.Run("allowed", func(t *testing.T) {

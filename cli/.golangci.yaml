@@ -40,12 +40,12 @@ linters:
     #- exhaustruct
     - exportloopref
     - forbidigo
-      #- forcetypeassert
+    - forcetypeassert
     - funlen
       #- gci
     - ginkgolinter
     - gocheckcompilerdirectives
-    - gochecknoglobals
+      #- gochecknoglobals
     - gochecknoinits
     - gochecksumtype
       # - gocognit
@@ -60,7 +60,7 @@ linters:
     #- gomoddirectives
     - gomodguard
     - goprintffuncname
-      #- gosec
+    - gosec
     - gosimple
     - gosmopolitan
     - govet
@@ -90,7 +90,7 @@ linters:
     - promlinter
     - protogetter
     - reassign
-      #- revive
+    - revive
     - rowserrcheck
     - sloglint
     - spancheck

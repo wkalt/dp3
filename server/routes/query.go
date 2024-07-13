@@ -68,7 +68,7 @@ func streamQueryResults(
 	if json {
 		piperead, pipewrite := io.Pipe()
 		go func() {
-			if err := mcap.MCAPToJSON(w, piperead); err != nil {
+			if err := mcap.ToJSON(w, piperead); err != nil {
 				done <- err
 				return
 			}

@@ -75,7 +75,7 @@ var tailCmd = &cobra.Command{
 			if err := json.Unmarshal([]byte(topicsHeader), &topics); err != nil {
 				bailf("error decoding topics header: %s", err)
 			}
-			if err := mcap.MCAPToJSON(os.Stdout, resp.Body); err != nil {
+			if err := mcap.ToJSON(os.Stdout, resp.Body); err != nil {
 				bailf("error converting to JSON: %s", err)
 			}
 		}

@@ -40,7 +40,7 @@ func MakeRoutes(
 		mw.WithRequestID,
 		mw.WithCORSAllowedOrigins(allowedOrigins),
 	)
-	r.HandleFunc("/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, err := w.Write([]byte("dp3"))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)

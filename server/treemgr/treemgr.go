@@ -47,7 +47,7 @@ type TreeManager struct {
 
 	syncWorkers int
 
-	wal *wal.WALManager
+	wal *wal.Manager
 }
 
 // NewRoot creates a new root for the provided producer and topic.
@@ -187,7 +187,7 @@ func (tm *TreeManager) DeleteMessages(
 	if err != nil {
 		return fmt.Errorf("failed to serialize tree: %w", err)
 	}
-	_, err = tm.wal.Insert(ctx, database, producer, topic, nil, serialized)
+	_, err = tm.wal.Insert(database, producer, topic, nil, serialized)
 	if err != nil {
 		return fmt.Errorf("failed to insert into WAL: %w", err)
 	}
@@ -237,13 +237,13 @@ func (tm *TreeManager) Receive(
 		var writer *writer
 		var ok bool
 		if writer, ok = writers[channel.Topic]; !ok {
-			compressor := compressorPool.Get().(fmcap.CustomCompressor)
-			defer compressorPool.Put(compressor)
-			writer, err = tm.handleNewTopic(ctx, database, producer, channel.Topic, compressor)
+			var finish func()
+			writer, finish, err = tm.handleNewTopic(ctx, database, producer, channel.Topic)
 			if err != nil {
 				return fmt.Errorf("failed to create writer: %w", err)
 			}
 			writers[channel.Topic] = writer
+			defer finish()
 		}
 		if err := writer.Write(ctx, schema, channel, msg); err != nil {
 			return fmt.Errorf("failed to write message: %w", err)
@@ -263,6 +263,35 @@ func (tm *TreeManager) Receive(
 	return nil
 }
 
+func (tm *TreeManager) handleNewTopic(
+	ctx context.Context,
+	database string,
+	producer string,
+	topic string,
+) (*writer, func(), error) {
+	if _, _, _, _, err := tm.rootmap.GetLatest(ctx, database, producer, topic); err != nil {
+		switch {
+		case errors.Is(err, rootmap.TableNotFoundError{}):
+			if err := tm.NewRoot(ctx, database, producer, topic); err != nil &&
+				!errors.Is(err, rootmap.ErrRootAlreadyExists) {
+				return nil, nil, fmt.Errorf("failed to create new root: %w", err)
+			}
+		default:
+			return nil, nil, fmt.Errorf("failed to get latest root: %w", err)
+		}
+	}
+	compressor, ok := compressorPool.Get().(fmcap.CustomCompressor)
+	if !ok {
+		return nil, nil, errors.New("failed to get compressor from pool")
+	}
+	writer, err := newWriter(ctx, tm, database, producer, topic, compressor)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to create writer: %w", err)
+	}
+	finish := func() { compressorPool.Put(compressor) }
+	return writer, finish, nil
+}
+
 // GetSchema retrieves a schema from the schema store.
 func (tm *TreeManager) GetSchema(
 	ctx context.Context,
@@ -274,31 +303,6 @@ func (tm *TreeManager) GetSchema(
 		return nil, fmt.Errorf("failed to get schema: %w", err)
 	}
 	return schema, nil
-}
-
-func (tm *TreeManager) handleNewTopic(
-	ctx context.Context,
-	database string,
-	producer string,
-	topic string,
-	compressor fmcap.CustomCompressor,
-) (*writer, error) {
-	if _, _, _, _, err := tm.rootmap.GetLatest(ctx, database, producer, topic); err != nil {
-		switch {
-		case errors.Is(err, rootmap.TableNotFoundError{}):
-			if err := tm.NewRoot(ctx, database, producer, topic); err != nil &&
-				!errors.Is(err, rootmap.ErrRootAlreadyExists) {
-				return nil, fmt.Errorf("failed to create new root: %w", err)
-			}
-		default:
-			return nil, fmt.Errorf("failed to get latest root: %w", err)
-		}
-	}
-	writer, err := newWriter(ctx, tm, database, producer, topic, compressor)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create writer: %w", err)
-	}
-	return writer, nil
 }
 
 func (tm *TreeManager) storeSchema(ctx context.Context, database string, schema *fmcap.Schema) error {
@@ -504,7 +508,7 @@ func (tm *TreeManager) GetStatisticsLatest(
 
 // ForceFlush forces a synchronous flush of WAL data to the tree. Used in tests only.
 func (tm *TreeManager) ForceFlush(ctx context.Context) error {
-	_, err := tm.wal.ForceMerge(ctx)
+	_, err := tm.wal.ForceMerge()
 	if err != nil {
 		return fmt.Errorf("failed to force merge: %w", err)
 	}
@@ -570,7 +574,7 @@ func (tm *TreeManager) mergeBatch(ctx context.Context, batch *wal.Batch) error {
 		return fmt.Errorf("failed to get root: %w", err)
 	}
 	basereader := tree.NewBYOTreeReader(prefix, existingRootID, tm.ns.Get, tm.ns.GetLeafNode)
-	readers := make([]tree.TreeReader, 0, len(batch.Addrs))
+	readers := make([]tree.Reader, 0, len(batch.Addrs))
 	for _, addr := range batch.Addrs {
 		recordHeader, reader, err := tm.wal.GetReader(addr)
 		if err != nil {
@@ -735,7 +739,7 @@ func (tm *TreeManager) NewTreeIterator(
 		return nil, fmt.Errorf("failed to get latest root: %w", err)
 	}
 	tr := tree.NewBYOTreeReader(prefix, rootID, tm.ns.Get, tm.ns.GetLeafNode)
-	return tree.NewTreeIterator(ctx, tr, descending, start, end, truncationVersion, childFilter), nil
+	return tree.NewTreeIterator(tr, descending, start, end, truncationVersion, childFilter), nil
 }
 
 func (tm *TreeManager) Truncate(
@@ -765,7 +769,7 @@ func (tm *TreeManager) loadIterators(
 	for i, root := range roots {
 		g.Go(func() error {
 			tr := tree.NewBYOTreeReader(root.Prefix, root.NodeID, tm.ns.Get, tm.ns.GetLeafNode)
-			it := tree.NewTreeIterator(ctx, tr, false, start, end, root.MinVersion, nil)
+			it := tree.NewTreeIterator(tr, false, start, end, root.MinVersion, nil)
 			schema, channel, message, err := it.Next(ctx)
 			if err != nil {
 				if errors.Is(err, io.EOF) {
@@ -839,7 +843,10 @@ func (tm *TreeManager) getMessages(
 	}
 	mc := mcap.NewMergeCoordinator(writer)
 	for pq.Len() > 0 {
-		rec := heap.Pop(pq).(record)
+		rec, ok := heap.Pop(pq).(record)
+		if !ok {
+			return errors.New("failed to pop record from priority queue")
+		}
 		if err := mc.Write(rec.schema, rec.channel, rec.message, false); err != nil {
 			return fmt.Errorf("failed to write message: %w", err)
 		}
@@ -906,7 +913,7 @@ func (tm *TreeManager) insert(
 	for _, schema := range info.Schemas {
 		schemas = append(schemas, schema)
 	}
-	_, err = tm.wal.Insert(ctx, database, producer, topic, schemas, serialized)
+	_, err = tm.wal.Insert(database, producer, topic, schemas, serialized)
 	if err != nil {
 		return fmt.Errorf("failed to insert into WAL: %w", err)
 	}
@@ -951,7 +958,10 @@ func (tm *TreeManager) dimensions(
 	if err != nil {
 		return nil, fmt.Errorf("failed to look up node %s/%s: %w", prefix, root, err)
 	}
-	inner := node.(*nodestore.InnerNode)
+	inner, ok := node.(*nodestore.InnerNode)
+	if !ok {
+		return nil, fmt.Errorf("unexpected node type: %w", tree.NewUnexpectedNodeError(nodestore.Inner, node))
+	}
 	return &treeDimensions{
 		height:  inner.Height,
 		bfactor: len(inner.Children),

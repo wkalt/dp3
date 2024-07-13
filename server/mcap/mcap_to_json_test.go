@@ -82,7 +82,7 @@ func TestMCAPToJSON(t *testing.T) {
 	require.NoError(t, writer.Close())
 
 	output := &bytes.Buffer{}
-	require.NoError(t, mcap.MCAPToJSON(output, buf))
+	require.NoError(t, mcap.ToJSON(output, buf))
 	expected := `{"topic":"/foo","sequence":0,"log_time":0.000000100,"publish_time":0.000000000,` +
 		`"data":{"u8":1,"u16":2,"u32":3,"u64":4,"i8":5,"i16":6,"i32":7,"i64":8,"f32":9,"f64":10,"s":"hello",` +
 		`"b":true,"t":11000000000,"d":12000000000,"c":13,"y":14,"flat_record":{"u8":15},` +

@@ -37,45 +37,189 @@ func NewJSONTranscoder(schema *Schema, decoder Decoder) (*JSONTranscoder, error)
 	}, nil
 }
 
-func (t *JSONTranscoder) formatPrimitive(typ PrimitiveType, value any) {
+func (t *JSONTranscoder) formatPrimitive(typ PrimitiveType, value any) error {
 	switch typ {
 	case FLOAT64:
-		t.buf = strconv.AppendFloat(t.buf, value.(float64), 'f', -1, 64)
+		return t.formatFloat64(value)
 	case FLOAT32:
-		t.buf = strconv.AppendFloat(t.buf, float64(value.(float32)), 'f', -1, 32)
+		return t.formatFloat32(value)
 	case BOOL:
-		t.buf = strconv.AppendBool(t.buf, value.(bool))
+		return t.formatBool(value)
 	case INT8:
-		t.buf = strconv.AppendInt(t.buf, int64(value.(int8)), 10)
+		return t.formatInt8(value)
 	case INT16:
-		t.buf = strconv.AppendInt(t.buf, int64(value.(int16)), 10)
+		return t.formatInt16(value)
 	case INT32:
-		t.buf = strconv.AppendInt(t.buf, int64(value.(int32)), 10)
+		return t.formatInt32(value)
 	case INT64:
-		t.buf = strconv.AppendInt(t.buf, value.(int64), 10)
+		return t.formatInt64(value)
 	case UINT8:
-		t.buf = strconv.AppendUint(t.buf, uint64(value.(uint8)), 10)
+		return t.formatUint8(value)
 	case UINT16:
-		t.buf = strconv.AppendUint(t.buf, uint64(value.(uint16)), 10)
+		return t.formatUint16(value)
 	case UINT32:
-		t.buf = strconv.AppendUint(t.buf, uint64(value.(uint32)), 10)
+		return t.formatUint32(value)
 	case UINT64:
-		t.buf = strconv.AppendUint(t.buf, value.(uint64), 10)
+		return t.formatUint64(value)
 	case STRING:
-		t.buf = append(t.buf, '"')
-		t.buf = append(t.buf, []byte(value.(string))...)
-		t.buf = append(t.buf, '"')
+		return t.formatString(value)
 	case TIME:
-		t.buf = strconv.AppendUint(t.buf, value.(uint64), 10)
+		return t.formatTime(value)
 	case DURATION:
-		t.buf = strconv.AppendUint(t.buf, value.(uint64), 10)
+		return t.formatDuration(value)
 	case CHAR:
-		t.buf = strconv.AppendUint(t.buf, uint64(value.(uint8)), 10)
+		return t.formatChar(value)
 	case BYTE:
-		t.buf = strconv.AppendUint(t.buf, uint64(value.(uint8)), 10)
+		return t.formatByte(value)
 	default:
-		panic("invalid type")
+		return fmt.Errorf("invalid type %v", typ)
 	}
+}
+
+func (t *JSONTranscoder) formatFloat64(value any) error {
+	v, ok := value.(float64)
+	if !ok {
+		return fmt.Errorf("invalid type %T for FLOAT64", value)
+	}
+	t.buf = strconv.AppendFloat(t.buf, v, 'f', -1, 64)
+	return nil
+}
+
+func (t *JSONTranscoder) formatFloat32(value any) error {
+	v, ok := value.(float32)
+	if !ok {
+		return fmt.Errorf("invalid type %T for FLOAT32", value)
+	}
+	t.buf = strconv.AppendFloat(t.buf, float64(v), 'f', -1, 32)
+	return nil
+}
+
+func (t *JSONTranscoder) formatBool(value any) error {
+	v, ok := value.(bool)
+	if !ok {
+		return fmt.Errorf("invalid type %T for BOOL", value)
+	}
+	t.buf = strconv.AppendBool(t.buf, v)
+	return nil
+}
+
+func (t *JSONTranscoder) formatInt8(value any) error {
+	v, ok := value.(int8)
+	if !ok {
+		return fmt.Errorf("invalid type %T for INT8", value)
+	}
+	t.buf = strconv.AppendInt(t.buf, int64(v), 10)
+	return nil
+}
+
+func (t *JSONTranscoder) formatInt16(value any) error {
+	v, ok := value.(int16)
+	if !ok {
+		return fmt.Errorf("invalid type %T for INT16", value)
+	}
+	t.buf = strconv.AppendInt(t.buf, int64(v), 10)
+	return nil
+}
+
+func (t *JSONTranscoder) formatInt32(value any) error {
+	v, ok := value.(int32)
+	if !ok {
+		return fmt.Errorf("invalid type %T for INT32", value)
+	}
+	t.buf = strconv.AppendInt(t.buf, int64(v), 10)
+	return nil
+}
+
+func (t *JSONTranscoder) formatInt64(value any) error {
+	v, ok := value.(int64)
+	if !ok {
+		return fmt.Errorf("invalid type %T for INT64", value)
+	}
+	t.buf = strconv.AppendInt(t.buf, v, 10)
+	return nil
+}
+
+func (t *JSONTranscoder) formatUint8(value any) error {
+	v, ok := value.(uint8)
+	if !ok {
+		return fmt.Errorf("invalid type %T for UINT8", value)
+	}
+	t.buf = strconv.AppendUint(t.buf, uint64(v), 10)
+	return nil
+}
+
+func (t *JSONTranscoder) formatUint16(value any) error {
+	v, ok := value.(uint16)
+	if !ok {
+		return fmt.Errorf("invalid type %T for UINT16", value)
+	}
+	t.buf = strconv.AppendUint(t.buf, uint64(v), 10)
+	return nil
+}
+
+func (t *JSONTranscoder) formatUint32(value any) error {
+	v, ok := value.(uint32)
+	if !ok {
+		return fmt.Errorf("invalid type %T for UINT32", value)
+	}
+	t.buf = strconv.AppendUint(t.buf, uint64(v), 10)
+	return nil
+}
+
+func (t *JSONTranscoder) formatUint64(value any) error {
+	v, ok := value.(uint64)
+	if !ok {
+		return fmt.Errorf("invalid type %T for UINT64", value)
+	}
+	t.buf = strconv.AppendUint(t.buf, v, 10)
+	return nil
+}
+
+func (t *JSONTranscoder) formatString(value any) error {
+	v, ok := value.(string)
+	if !ok {
+		return fmt.Errorf("invalid type %T for STRING", value)
+	}
+	t.buf = append(t.buf, '"')
+	t.buf = append(t.buf, []byte(v)...)
+	t.buf = append(t.buf, '"')
+	return nil
+}
+
+func (t *JSONTranscoder) formatTime(value any) error {
+	v, ok := value.(uint64)
+	if !ok {
+		return fmt.Errorf("invalid type %T for TIME", value)
+	}
+	t.buf = strconv.AppendUint(t.buf, v, 10)
+	return nil
+}
+
+func (t *JSONTranscoder) formatDuration(value any) error {
+	v, ok := value.(uint64)
+	if !ok {
+		return fmt.Errorf("invalid type %T for DURATION", value)
+	}
+	t.buf = strconv.AppendUint(t.buf, v, 10)
+	return nil
+}
+
+func (t *JSONTranscoder) formatChar(value any) error {
+	v, ok := value.(uint8)
+	if !ok {
+		return fmt.Errorf("invalid type %T for CHAR", value)
+	}
+	t.buf = strconv.AppendUint(t.buf, uint64(v), 10)
+	return nil
+}
+
+func (t *JSONTranscoder) formatByte(value any) error {
+	v, ok := value.(uint8)
+	if !ok {
+		return fmt.Errorf("invalid type %T for BYTE", value)
+	}
+	t.buf = strconv.AppendUint(t.buf, uint64(v), 10)
+	return nil
 }
 
 func (t *JSONTranscoder) Transcode(w io.Writer, buf []byte) error { // nolint: funlen
@@ -110,7 +254,9 @@ func (t *JSONTranscoder) Transcode(w io.Writer, buf []byte) error { // nolint: f
 			if e.typ.IsPrimitive() {
 				value := values[0]
 				values = values[1:]
-				t.formatPrimitive(e.typ.Primitive, value)
+				if err := t.formatPrimitive(e.typ.Primitive, value); err != nil {
+					return fmt.Errorf("failed to format primitive: %w", err)
+				}
 				if e.closer != "" {
 					t.buf = append(t.buf, e.closer...)
 				}
@@ -126,7 +272,10 @@ func (t *JSONTranscoder) Transcode(w io.Writer, buf []byte) error { // nolint: f
 				if items.IsPrimitive() {
 					switch items.Primitive {
 					case UINT8, BYTE:
-						value := values[0].([]byte)
+						value, ok := values[0].([]byte)
+						if !ok {
+							return fmt.Errorf("invalid type %T for BYTE", values[0])
+						}
 						values = values[1:]
 
 						t.buf = append(t.buf, '"')

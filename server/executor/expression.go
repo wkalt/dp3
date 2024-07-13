@@ -38,7 +38,7 @@ enters this infrastructure as either an "or", "and", or "binary expression".
 // expression holds a where clause and manages the compilation of new filters
 // for it as new schemas are observed in the playback stream.
 type expression struct {
-	filters map[*fmcap.Schema]func(*tuple) (bool, error)
+	filters map[*fmcap.Schema]func(*Tuple) (bool, error)
 	node    *plan.Node
 	target  string
 }
@@ -46,7 +46,7 @@ type expression struct {
 // newExpression creates a new expression.
 func newExpression(target string, node *plan.Node) *expression {
 	return &expression{
-		filters: make(map[*fmcap.Schema]func(*tuple) (bool, error)),
+		filters: make(map[*fmcap.Schema]func(*Tuple) (bool, error)),
 		target:  target,
 		node:    node,
 	}
@@ -54,7 +54,7 @@ func newExpression(target string, node *plan.Node) *expression {
 
 // filter evaluates a tuple against the where clause. This is the function
 // passed to the filter node constructor.
-func (e *expression) filter(t *tuple) (bool, error) {
+func (e *expression) filter(t *Tuple) (bool, error) {
 	fn, ok := e.filters[t.schema]
 	if !ok {
 		var err error
@@ -86,7 +86,7 @@ func gatherInvolvedColumns(node *plan.Node) ([]string, error) {
 }
 
 // compileFilter compiles a filter function for a schema.
-func (e *expression) compileFilter(targetSchema *fmcap.Schema) (func(t *tuple) (bool, error), error) { // nolint: funlen
+func (e *expression) compileFilter(targetSchema *fmcap.Schema) (func(t *Tuple) (bool, error), error) { // nolint: funlen
 	pkg, name, found := strings.Cut(targetSchema.Name, "/")
 	if !found {
 		pkg = ""
@@ -143,7 +143,7 @@ func (e *expression) compileFilter(targetSchema *fmcap.Schema) (func(t *tuple) (
 	if err != nil {
 		return nil, fmt.Errorf("failed to create parser for %s: %w", targetSchema.Name, err)
 	}
-	return func(t *tuple) (bool, error) {
+	return func(t *Tuple) (bool, error) {
 		_, values, err := parser.Parse(t.message.Data)
 		if err != nil {
 			return false, fmt.Errorf("failed to parse message: %w", err)

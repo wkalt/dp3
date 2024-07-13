@@ -498,7 +498,7 @@ func (rm *sqlRootmap) Get(
 	return prefix, nodestore.NodeID(decoded), nil
 }
 
-func NewSQLRootmap(ctx context.Context, db *sql.DB, opts ...Option) (Rootmap, error) {
+func NewSQLRootmap(ctx context.Context, db *sql.DB) (Rootmap, error) {
 	rm := &sqlRootmap{
 		db:        db,
 		mtx:       &sync.Mutex{},

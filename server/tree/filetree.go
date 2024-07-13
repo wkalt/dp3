@@ -12,7 +12,7 @@ import (
 	"github.com/wkalt/dp3/server/util"
 )
 
-type fileTree struct {
+type FileTree struct {
 	offset int
 	length int
 
@@ -25,7 +25,7 @@ func NewFileTree(
 	factory func() (io.ReadSeekCloser, error),
 	offset int,
 	length int,
-) (*fileTree, error) {
+) (*FileTree, error) {
 	f, err := factory()
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate reader: %w", err)
@@ -44,14 +44,14 @@ func NewFileTree(
 	if err != nil {
 		return nil, fmt.Errorf("failed to read root ID: %w", err)
 	}
-	return &fileTree{factory: factory, offset: offset, length: length, rootID: rootID}, nil
+	return &FileTree{factory: factory, offset: offset, length: length, rootID: rootID}, nil
 }
 
-func (t *fileTree) Root() nodestore.NodeID {
+func (t *FileTree) Root() nodestore.NodeID {
 	return t.rootID
 }
 
-func (t *fileTree) Get(ctx context.Context, id nodestore.NodeID) (nodestore.Node, error) {
+func (t *FileTree) Get(_ context.Context, id nodestore.NodeID) (nodestore.Node, error) {
 	f, err := t.factory()
 	if err != nil {
 		return nil, fmt.Errorf("failed to instantiate reader: %w", err)
@@ -76,7 +76,7 @@ func (t *fileTree) Get(ctx context.Context, id nodestore.NodeID) (nodestore.Node
 	return node, nil
 }
 
-func (t *fileTree) GetLeafNode(ctx context.Context, id nodestore.NodeID) (
+func (t *FileTree) GetLeafNode(_ context.Context, id nodestore.NodeID) (
 	*nodestore.LeafNode,
 	io.ReadSeekCloser,
 	error,

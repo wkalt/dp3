@@ -17,11 +17,11 @@ tests, without a storage dependency.
 // mockNode is a mock implementation of a node, used to simulate scan nodes in
 // tests.
 type mockNode struct {
-	tuples []*tuple
+	tuples []*Tuple
 }
 
 // Next returns the next tuple from the node.
-func (n *mockNode) Next(ctx context.Context) (*tuple, error) {
+func (n *mockNode) Next(_ context.Context) (*Tuple, error) {
 	if len(n.tuples) == 0 {
 		return nil, io.EOF
 	}
@@ -36,13 +36,13 @@ func (n *mockNode) String() string {
 }
 
 // Close the node.
-func (n *mockNode) Close(ctx context.Context) error {
+func (n *mockNode) Close(_ context.Context) error {
 	return nil
 }
 
 // NewMockNode constructs a new mock node.
 func NewMockNode(stamps ...uint64) Node {
-	tuples := make([]*tuple, 0, len(stamps))
+	tuples := make([]*Tuple, 0, len(stamps))
 	for _, stamp := range stamps {
 		tuples = append(tuples, newTuple(nil, nil, &fmcap.Message{
 			LogTime: stamp,

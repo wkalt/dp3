@@ -24,7 +24,7 @@ func isLeaf(data []byte) bool {
 	return data[0] > 128
 }
 
-func (b *byteTree) GetReader(ctx context.Context, id nodestore.NodeID) (io.ReadSeekCloser, error) {
+func (b *byteTree) GetReader(_ context.Context, id nodestore.NodeID) (io.ReadSeekCloser, error) {
 	offset := id.Offset()
 	length := id.Length()
 	_, err := b.r.Seek(int64(offset), io.SeekStart)
@@ -39,7 +39,7 @@ func (b *byteTree) GetReader(ctx context.Context, id nodestore.NodeID) (io.ReadS
 	return util.NewReadSeekNopCloser(bytes.NewReader(buf[1:])), nil
 }
 
-func (b *byteTree) Get(ctx context.Context, id nodestore.NodeID) (nodestore.Node, error) {
+func (b *byteTree) Get(_ context.Context, id nodestore.NodeID) (nodestore.Node, error) {
 	offset := id.Offset()
 	length := id.Length()
 	_, err := b.r.Seek(int64(offset), io.SeekStart)
@@ -68,7 +68,7 @@ func (b *byteTree) Get(ctx context.Context, id nodestore.NodeID) (nodestore.Node
 	return node, nil
 }
 
-func (b *byteTree) Put(ctx context.Context, id nodestore.NodeID, node nodestore.Node) error {
+func (b *byteTree) Put(_ context.Context, _ nodestore.NodeID, _ nodestore.Node) error {
 	return errors.New("not implemented")
 }
 

@@ -35,9 +35,9 @@ func MergeInserts(
 	height uint8,
 	bfactor int,
 	times [][]int64,
-) (uint64, TreeReader) {
+) (uint64, Reader) {
 	t.Helper()
-	trees := make([]TreeReader, 0, len(times)+1)
+	trees := make([]Reader, 0, len(times)+1)
 
 	// Add a base tree with the requested parameters
 	root := nodestore.NewInnerNode(height, start, end, bfactor)
@@ -72,7 +72,7 @@ func MergeInserts(
 	return version, output
 }
 
-func Validate(t *testing.T, ctx context.Context, tree TreeReader) {
+func Validate(ctx context.Context, t *testing.T, tree Reader) {
 	t.Helper()
 	root := tree.Root()
 	stack := []nodestore.NodeID{root}

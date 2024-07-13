@@ -127,7 +127,7 @@ func executeQuery(database string, query string, explain bool) error {
 	if !explain {
 		pager := maybePager()
 		return withPaging(pager, func(w io.Writer) error {
-			return mcap.MCAPToJSON(w, resp.Body)
+			return mcap.ToJSON(w, resp.Body)
 		})
 	}
 

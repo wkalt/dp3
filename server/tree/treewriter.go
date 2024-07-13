@@ -11,8 +11,8 @@ The TreeWriter interface is used to write nodes to a tree. It extends the
 TreeReader interface with methods to write nodes and set the tree root.
 */
 
-type TreeWriter interface {
+type Writer interface {
 	Put(ctx context.Context, id nodestore.NodeID, node nodestore.Node) error
 	SetRoot(id nodestore.NodeID)
-	TreeReader
+	Reader
 }

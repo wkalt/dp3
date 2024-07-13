@@ -37,7 +37,7 @@ var queryCmd = &cobra.Command{
 		}
 		util.MustOK(resp)
 		if exportJSON {
-			if err := mcap.MCAPToJSON(os.Stdout, resp.Body); err != nil {
+			if err := mcap.ToJSON(os.Stdout, resp.Body); err != nil {
 				bailf("error converting to JSON: %s", err)
 			}
 			return

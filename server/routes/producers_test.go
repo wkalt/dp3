@@ -43,7 +43,7 @@ func TestProducersHandler(t *testing.T) {
 				require.NoError(t, tmgr.Receive(ctx, "db", producer, bytes.NewReader(buf.Bytes())))
 				require.NoError(t, tmgr.ForceFlush(ctx))
 			}
-			url, finish := routes.MakeTestRoutes(ctx, t, tmgr)
+			url, finish := routes.MakeTestRoutes(t, tmgr)
 			defer finish()
 			request, err := http.NewRequestWithContext(
 				ctx,

@@ -75,7 +75,7 @@ func (vs *VersionStore) NextVersion(ctx context.Context) (uint64, error) {
 	return vs.c, nil
 }
 
-func NewVersionStore(ctx context.Context, db *sql.DB, reservationSize int) *VersionStore {
+func NewVersionStore(db *sql.DB, reservationSize int) *VersionStore {
 	return &VersionStore{
 		reservationSize: reservationSize,
 		mtx:             sync.Mutex{},

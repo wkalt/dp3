@@ -780,9 +780,15 @@ func newPagingClause(kvs ...any) []ql.PagingTerm {
 	}
 	terms := make([]ql.PagingTerm, 0, len(kvs)/2)
 	for i := 0; i < len(kvs); i += 2 {
-		keyword := kvs[i].(string)
-		value := kvs[i+1].(int)
-		terms = append(terms, newPagingTerm(keyword, value))
+		key, ok := kvs[i].(string)
+		if !ok {
+			panic("invalid key")
+		}
+		value, ok := kvs[i+1].(int)
+		if !ok {
+			panic("invalid value")
+		}
+		terms = append(terms, newPagingTerm(key, value))
 	}
 	return terms
 }

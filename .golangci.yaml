@@ -52,7 +52,7 @@ linters:
     - goconst
     - gocritic
     - godot
-      # - godox
+    - godox
       #- goerr113
     - gofmt
     - goheader
@@ -60,7 +60,7 @@ linters:
     #- gomoddirectives
     - gomodguard
     - goprintffuncname
-      #- gosec
+    - gosec
     - gosimple
     - gosmopolitan
     - govet
@@ -90,7 +90,7 @@ linters:
     - promlinter
     - protogetter
     - reassign
-      #- revive
+    - revive
     - rowserrcheck
     - sloglint
     - spancheck

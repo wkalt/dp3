@@ -33,14 +33,19 @@ func AddTags(ctx context.Context, kvs ...any) context.Context {
 	if len(kvs)%2 != 0 {
 		panic("log: AddTags requires an even number of arguments")
 	}
-	tags := ctx.Value(logTagKey)
-	if tags == nil {
-		tags = []any{}
+	value := ctx.Value(logTagKey)
+	tags := []any{}
+	if value != nil {
+		tagsValue, ok := value.([]any)
+		if !ok {
+			panic("log: invalid log tags value")
+		}
+		tags = append(tags, tagsValue...)
 	}
 	return context.WithValue(
 		ctx,
 		logTagKey,
-		append(tags.([]any), kvs...),
+		append(tags, kvs...),
 	)
 }
 
@@ -55,7 +60,11 @@ func levelf(ctx context.Context, level slog.Level, format string, args ...any) {
 	r := slog.NewRecord(time.Now(), level, fmt.Sprintf(format, args...), pcs[0])
 	tags := fromContext(ctx)
 	for i := 0; i < len(tags); i += 2 {
-		r.Add(tags[i].(string), tags[i+1])
+		key, ok := tags[i].(string)
+		if !ok {
+			panic("log: invalid log tag key")
+		}
+		r.Add(key, tags[i+1])
 	}
 	handler := slog.Default().Handler()
 	if handler.Enabled(ctx, level) {
@@ -90,11 +99,19 @@ func levelw(ctx context.Context, level slog.Level, msg string, keyvals ...any) {
 	runtime.Callers(2, pcs[:])
 	r := slog.NewRecord(time.Now(), level, msg, pcs[0])
 	for i := 0; i < len(keyvals); i += 2 {
-		r.Add(keyvals[i].(string), keyvals[i+1])
+		key, ok := keyvals[i].(string)
+		if !ok {
+			panic("log: invalid log key")
+		}
+		r.Add(key, keyvals[i+1])
 	}
 	tags := fromContext(ctx)
 	for i := 0; i < len(tags); i += 2 {
-		r.Add(tags[i].(string), tags[i+1])
+		key, ok := tags[i].(string)
+		if !ok {
+			panic("log: invalid log tag key")
+		}
+		r.Add(key, tags[i+1])
 	}
 	handler := slog.Default().Handler()
 	if handler.Enabled(ctx, level) {

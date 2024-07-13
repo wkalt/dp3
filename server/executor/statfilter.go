@@ -10,16 +10,16 @@ import (
 	"github.com/wkalt/dp3/server/util/trigram"
 )
 
-type statfilterfn func(*nodestore.Child) (bool, error)
+type StatfilterFn func(*nodestore.Child) (bool, error)
 
-func NewStatFilter(node *plan.Node) (statfilterfn, error) {
+func NewStatFilter(node *plan.Node) (StatfilterFn, error) {
 	if node == nil {
 		return passthroughFilter, nil
 	}
 	return compileFilter(node)
 }
 
-func compileFilter(node *plan.Node) (statfilterfn, error) {
+func compileFilter(node *plan.Node) (StatfilterFn, error) {
 	switch node.Type {
 	case plan.Or:
 		return compileOrFilter(node)
@@ -31,8 +31,8 @@ func compileFilter(node *plan.Node) (statfilterfn, error) {
 	return passthroughFilter, nil
 }
 
-func compileAndFilter(node *plan.Node) (statfilterfn, error) {
-	filters := make([]statfilterfn, len(node.Children))
+func compileAndFilter(node *plan.Node) (StatfilterFn, error) {
+	filters := make([]StatfilterFn, len(node.Children))
 	var err error
 	for i, child := range node.Children {
 		filters[i], err = compileFilter(child)
@@ -54,8 +54,8 @@ func compileAndFilter(node *plan.Node) (statfilterfn, error) {
 	}, nil
 }
 
-func compileOrFilter(node *plan.Node) (statfilterfn, error) {
-	filters := make([]statfilterfn, len(node.Children))
+func compileOrFilter(node *plan.Node) (StatfilterFn, error) {
+	filters := make([]StatfilterFn, len(node.Children))
 	var err error
 	for i, child := range node.Children {
 		filters[i], err = compileFilter(child)
@@ -77,9 +77,12 @@ func compileOrFilter(node *plan.Node) (statfilterfn, error) {
 	}, nil
 }
 
-func compileExprEqualsIntFilter(node *plan.Node) (statfilterfn, error) {
+func compileExprEqualsIntFilter(node *plan.Node) (StatfilterFn, error) {
 	value := *node.BinaryOpValue
-	x := value.Value().(int64)
+	x, ok := value.Value().(int64)
+	if !ok {
+		return nil, fmt.Errorf("invalid type %T for INT", value.Value())
+	}
 	_, fieldname, found := strings.Cut(*node.BinaryOpField, ".")
 	if !found {
 		return passthroughFilter, nil
@@ -96,9 +99,12 @@ func compileExprEqualsIntFilter(node *plan.Node) (statfilterfn, error) {
 	}, nil
 }
 
-func compileExprEqualsStringFilter(node *plan.Node) (statfilterfn, error) {
+func compileExprEqualsStringFilter(node *plan.Node) (StatfilterFn, error) {
 	value := *node.BinaryOpValue
-	s := value.Value().(string)
+	s, ok := value.Value().(string)
+	if !ok {
+		return nil, fmt.Errorf("invalid type %T for STRING", value)
+	}
 	_, fieldname, found := strings.Cut(*node.BinaryOpField, ".")
 	if !found {
 		return passthroughFilter, nil
@@ -120,9 +126,12 @@ func compileExprEqualsStringFilter(node *plan.Node) (statfilterfn, error) {
 	}, nil
 }
 
-func compileExprEqualsFloatFilter(node *plan.Node) (statfilterfn, error) {
+func compileExprEqualsFloatFilter(node *plan.Node) (StatfilterFn, error) {
 	value := *node.BinaryOpValue
-	x := value.Value().(float64)
+	x, ok := value.Value().(float64)
+	if !ok {
+		return nil, fmt.Errorf("invalid type %T for FLOAT", value)
+	}
 	_, fieldname, found := strings.Cut(*node.BinaryOpField, ".")
 	if !found {
 		return passthroughFilter, nil
@@ -139,7 +148,7 @@ func compileExprEqualsFloatFilter(node *plan.Node) (statfilterfn, error) {
 	}, nil
 }
 
-func compileExprEqualsFilter(node *plan.Node) (statfilterfn, error) {
+func compileExprEqualsFilter(node *plan.Node) (StatfilterFn, error) {
 	value := *node.BinaryOpValue
 	switch value.Value().(type) {
 	case string:
@@ -155,13 +164,16 @@ func compileExprEqualsFilter(node *plan.Node) (statfilterfn, error) {
 	}
 }
 
-func passthroughFilter(child *nodestore.Child) (bool, error) {
+func passthroughFilter(_ *nodestore.Child) (bool, error) {
 	return true, nil
 }
 
-func compileExprLessThanStringFilter(node *plan.Node) (statfilterfn, error) {
+func compileExprLessThanStringFilter(node *plan.Node) (StatfilterFn, error) {
 	value := *node.BinaryOpValue
-	s := value.Value().(string)
+	s, ok := value.Value().(string)
+	if !ok {
+		return nil, fmt.Errorf("invalid type %T for STRING", value)
+	}
 	_, fieldname, found := strings.Cut(*node.BinaryOpField, ".")
 	if !found {
 		return passthroughFilter, nil
@@ -178,9 +190,12 @@ func compileExprLessThanStringFilter(node *plan.Node) (statfilterfn, error) {
 	}, nil
 }
 
-func compileExprLessThanIntFilter(node *plan.Node) (statfilterfn, error) {
+func compileExprLessThanIntFilter(node *plan.Node) (StatfilterFn, error) {
 	value := *node.BinaryOpValue
-	x := value.Value().(int64)
+	x, ok := value.Value().(int64)
+	if !ok {
+		return nil, fmt.Errorf("invalid type %T for INT", value)
+	}
 	_, fieldname, found := strings.Cut(*node.BinaryOpField, ".")
 	if !found {
 		return passthroughFilter, nil
@@ -197,9 +212,12 @@ func compileExprLessThanIntFilter(node *plan.Node) (statfilterfn, error) {
 	}, nil
 }
 
-func compileExprLessThanFloatFilter(node *plan.Node) (statfilterfn, error) {
+func compileExprLessThanFloatFilter(node *plan.Node) (StatfilterFn, error) {
 	value := *node.BinaryOpValue
-	x := value.Value().(float64)
+	x, ok := value.Value().(float64)
+	if !ok {
+		return nil, fmt.Errorf("invalid type %T for FLOAT", value)
+	}
 	_, fieldname, found := strings.Cut(*node.BinaryOpField, ".")
 	if !found {
 		return passthroughFilter, nil
@@ -216,7 +234,7 @@ func compileExprLessThanFloatFilter(node *plan.Node) (statfilterfn, error) {
 	}, nil
 }
 
-func compileExprLessThanFilter(node *plan.Node) (statfilterfn, error) {
+func compileExprLessThanFilter(node *plan.Node) (StatfilterFn, error) {
 	value := *node.BinaryOpValue
 	switch value.Value().(type) {
 	case string:
@@ -232,9 +250,12 @@ func compileExprLessThanFilter(node *plan.Node) (statfilterfn, error) {
 	}
 }
 
-func compileExprGreaterThanStringFilter(node *plan.Node) (statfilterfn, error) {
+func compileExprGreaterThanStringFilter(node *plan.Node) (StatfilterFn, error) {
 	value := *node.BinaryOpValue
-	s := value.Value().(string)
+	s, ok := value.Value().(string)
+	if !ok {
+		return nil, fmt.Errorf("invalid type %T for STRING", value)
+	}
 	_, fieldname, found := strings.Cut(*node.BinaryOpField, ".")
 	if !found {
 		return passthroughFilter, nil
@@ -251,9 +272,12 @@ func compileExprGreaterThanStringFilter(node *plan.Node) (statfilterfn, error) {
 	}, nil
 }
 
-func compileExprGreaterThanIntFilter(node *plan.Node) (statfilterfn, error) {
+func compileExprGreaterThanIntFilter(node *plan.Node) (StatfilterFn, error) {
 	value := *node.BinaryOpValue
-	x := value.Value().(int64)
+	x, ok := value.Value().(int64)
+	if !ok {
+		return nil, fmt.Errorf("invalid type %T for INT", value)
+	}
 	_, fieldname, found := strings.Cut(*node.BinaryOpField, ".")
 	if !found {
 		return passthroughFilter, nil
@@ -270,9 +294,12 @@ func compileExprGreaterThanIntFilter(node *plan.Node) (statfilterfn, error) {
 	}, nil
 }
 
-func compileExprGreaterThanFloatFilter(node *plan.Node) (statfilterfn, error) {
+func compileExprGreaterThanFloatFilter(node *plan.Node) (StatfilterFn, error) {
 	value := *node.BinaryOpValue
-	x := value.Value().(float64)
+	x, ok := value.Value().(float64)
+	if !ok {
+		return nil, fmt.Errorf("invalid type %T for FLOAT", value)
+	}
 	_, fieldname, found := strings.Cut(*node.BinaryOpField, ".")
 	if !found {
 		return passthroughFilter, nil
@@ -289,7 +316,7 @@ func compileExprGreaterThanFloatFilter(node *plan.Node) (statfilterfn, error) {
 	}, nil
 }
 
-func compileExprGreaterThanFilter(node *plan.Node) (statfilterfn, error) {
+func compileExprGreaterThanFilter(node *plan.Node) (StatfilterFn, error) {
 	value := *node.BinaryOpValue
 	switch value.Value().(type) {
 	case string:
@@ -305,9 +332,12 @@ func compileExprGreaterThanFilter(node *plan.Node) (statfilterfn, error) {
 	}
 }
 
-func compileExprLessThanEqualString(node *plan.Node) (statfilterfn, error) {
+func compileExprLessThanEqualString(node *plan.Node) (StatfilterFn, error) {
 	value := *node.BinaryOpValue
-	s := value.Value().(string)
+	s, ok := value.Value().(string)
+	if !ok {
+		return nil, fmt.Errorf("invalid type %T for STRING", value)
+	}
 	_, fieldname, found := strings.Cut(*node.BinaryOpField, ".")
 	if !found {
 		return passthroughFilter, nil
@@ -324,9 +354,12 @@ func compileExprLessThanEqualString(node *plan.Node) (statfilterfn, error) {
 	}, nil
 }
 
-func compileExprLessThanEqualInt(node *plan.Node) (statfilterfn, error) {
+func compileExprLessThanEqualInt(node *plan.Node) (StatfilterFn, error) {
 	value := *node.BinaryOpValue
-	x := value.Value().(int64)
+	x, ok := value.Value().(int64)
+	if !ok {
+		return nil, fmt.Errorf("invalid type %T for INT", value)
+	}
 	_, fieldname, found := strings.Cut(*node.BinaryOpField, ".")
 	if !found {
 		return passthroughFilter, nil
@@ -343,9 +376,12 @@ func compileExprLessThanEqualInt(node *plan.Node) (statfilterfn, error) {
 	}, nil
 }
 
-func compileExprLessThanEqualFloat(node *plan.Node) (statfilterfn, error) {
+func compileExprLessThanEqualFloat(node *plan.Node) (StatfilterFn, error) {
 	value := *node.BinaryOpValue
-	x := value.Value().(float64)
+	x, ok := value.Value().(float64)
+	if !ok {
+		return nil, fmt.Errorf("invalid type %T for FLOAT", value)
+	}
 	_, fieldname, found := strings.Cut(*node.BinaryOpField, ".")
 	if !found {
 		return passthroughFilter, nil
@@ -362,7 +398,7 @@ func compileExprLessThanEqualFloat(node *plan.Node) (statfilterfn, error) {
 	}, nil
 }
 
-func compileExprLessThanEqualFilter(node *plan.Node) (statfilterfn, error) {
+func compileExprLessThanEqualFilter(node *plan.Node) (StatfilterFn, error) {
 	value := *node.BinaryOpValue
 	switch value.Value().(type) {
 	case string:
@@ -378,7 +414,7 @@ func compileExprLessThanEqualFilter(node *plan.Node) (statfilterfn, error) {
 	}
 }
 
-func compileExprGreaterThanEqualFilter(node *plan.Node) (statfilterfn, error) {
+func compileExprGreaterThanEqualFilter(node *plan.Node) (StatfilterFn, error) {
 	value := *node.BinaryOpValue
 	switch value.Value().(type) {
 	case string:
@@ -394,9 +430,12 @@ func compileExprGreaterThanEqualFilter(node *plan.Node) (statfilterfn, error) {
 	}
 }
 
-func compileExprGreaterThanEqualString(node *plan.Node) (statfilterfn, error) {
+func compileExprGreaterThanEqualString(node *plan.Node) (StatfilterFn, error) {
 	value := *node.BinaryOpValue
-	s := value.Value().(string)
+	s, ok := value.Value().(string)
+	if !ok {
+		return nil, fmt.Errorf("invalid type %T for STRING", value)
+	}
 	_, fieldname, found := strings.Cut(*node.BinaryOpField, ".")
 	if !found {
 		return passthroughFilter, nil
@@ -413,9 +452,12 @@ func compileExprGreaterThanEqualString(node *plan.Node) (statfilterfn, error) {
 	}, nil
 }
 
-func compileExprGreaterThanEqualInt(node *plan.Node) (statfilterfn, error) {
+func compileExprGreaterThanEqualInt(node *plan.Node) (StatfilterFn, error) {
 	value := *node.BinaryOpValue
-	x := value.Value().(int64)
+	x, ok := value.Value().(int64)
+	if !ok {
+		return nil, fmt.Errorf("invalid type %T for INT", value)
+	}
 	_, fieldname, found := strings.Cut(*node.BinaryOpField, ".")
 	if !found {
 		return passthroughFilter, nil
@@ -432,9 +474,12 @@ func compileExprGreaterThanEqualInt(node *plan.Node) (statfilterfn, error) {
 	}, nil
 }
 
-func compileExprGreaterThanEqualFloat(node *plan.Node) (statfilterfn, error) {
+func compileExprGreaterThanEqualFloat(node *plan.Node) (StatfilterFn, error) {
 	value := *node.BinaryOpValue
-	x := value.Value().(float64)
+	x, ok := value.Value().(float64)
+	if !ok {
+		return nil, fmt.Errorf("invalid type %T for FLOAT", value)
+	}
 	_, fieldname, found := strings.Cut(*node.BinaryOpField, ".")
 	if !found {
 		return passthroughFilter, nil
@@ -451,7 +496,7 @@ func compileExprGreaterThanEqualFloat(node *plan.Node) (statfilterfn, error) {
 	}, nil
 }
 
-func compileBinaryExpressionFilter(node *plan.Node) (statfilterfn, error) {
+func compileBinaryExpressionFilter(node *plan.Node) (StatfilterFn, error) {
 	switch *node.BinaryOp {
 	case "=":
 		return compileExprEqualsFilter(node)

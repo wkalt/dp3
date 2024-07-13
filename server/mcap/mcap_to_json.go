@@ -78,7 +78,7 @@ func writeMessage(
 	return nil
 }
 
-func MCAPToJSON(
+func ToJSON(
 	w io.Writer,
 	r io.Reader,
 ) error {

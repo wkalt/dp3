@@ -24,9 +24,9 @@ func TestTreeManager(ctx context.Context, tb testing.TB) (*TreeManager, func()) 
 	cache := util.NewLRU[nodestore.NodeID, nodestore.Node](1000)
 	ns := nodestore.NewNodestore(store, cache)
 	ss := schemastore.NewSchemaStore(store, "schemas", 1000)
-	vs := versionstore.NewVersionStore(ctx, db, 1000)
+	vs := versionstore.NewVersionStore(db, 1000)
 
-	rm, err := rootmap.NewSQLRootmap(ctx, db, rootmap.WithReservationSize(1e9))
+	rm, err := rootmap.NewSQLRootmap(ctx, db)
 	require.NoError(tb, err)
 
 	tmpdir, err := os.MkdirTemp("", "dp3-test")

@@ -58,7 +58,7 @@ func TestTreeIterator(t *testing.T) {
 				repr, err := tree.Print(ctx, tr)
 				require.NoError(t, err)
 				t.Log("Tree is", repr)
-				it := tree.NewTreeIterator(ctx, tr, descending, 0, math.MaxUint64, 0, nil)
+				it := tree.NewTreeIterator(tr, descending, 0, math.MaxUint64, 0, nil)
 				for {
 					_, _, message, err := it.Next(ctx)
 					if errors.Is(err, io.EOF) {

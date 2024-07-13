@@ -24,14 +24,14 @@ func Merge(
 	ctx context.Context,
 	w io.Writer,
 	version uint64,
-	dest TreeReader,
-	inputs ...TreeReader,
+	dest Reader,
+	inputs ...Reader,
 ) (nodestore.NodeID, []util.Pair[nodestore.NodeID, *nodestore.InnerNode], error) {
-	var destPair *util.Pair[TreeReader, nodestore.NodeID]
+	var destPair *util.Pair[Reader, nodestore.NodeID]
 	if dest != nil {
 		destPair = util.Pointer(util.NewPair(dest, dest.Root()))
 	}
-	inputPairs := make([]util.Pair[TreeReader, nodestore.NodeID], 0, len(inputs))
+	inputPairs := make([]util.Pair[Reader, nodestore.NodeID], 0, len(inputs))
 	for _, input := range inputs {
 		inputPairs = append(inputPairs, util.NewPair(input, input.Root()))
 	}
@@ -49,7 +49,7 @@ func Merge(
 
 func getHeader(
 	ctx context.Context,
-	input util.Pair[TreeReader, nodestore.NodeID],
+	input util.Pair[Reader, nodestore.NodeID],
 ) (*nodestore.LeafNode, error) {
 	tr := input.First
 	leafID := input.Second
@@ -65,7 +65,7 @@ func getHeader(
 
 func getIterator(
 	ctx context.Context,
-	input util.Pair[TreeReader, nodestore.NodeID],
+	input util.Pair[Reader, nodestore.NodeID],
 ) (mcap.MessageIterator, func() error, error) {
 	tr := input.First
 	leafID := input.Second
@@ -98,7 +98,7 @@ func onMessageCallback() (
 	schemaStats := make(map[string]*nodestore.Statistics)
 	parsers := make(map[uint16]*schema.Parser)
 	schemaHashes := make(map[uint16]string)
-	return schemaStats, func(s *fmcap.Schema, c *fmcap.Channel, m *fmcap.Message) error {
+	return schemaStats, func(s *fmcap.Schema, _ *fmcap.Channel, m *fmcap.Message) error {
 		parser, ok := parsers[s.ID]
 		if !ok {
 			parts := strings.SplitN(s.Name, "/", 2)
@@ -138,7 +138,7 @@ func onMessageCallback() (
 
 func buildFilter(
 	ctx context.Context,
-	tr TreeReader,
+	tr Reader,
 	leafID nodestore.NodeID,
 ) (*nodestore.LeafNode, []nodestore.MessageKey, error) {
 	nodes := []*nodestore.LeafNode{}
@@ -201,8 +201,8 @@ func mergeLeaves(
 	cw *util.CountingWriter,
 	version uint64,
 	destVersion *uint64,
-	dest *util.Pair[TreeReader, nodestore.NodeID],
-	inputs []util.Pair[TreeReader, nodestore.NodeID],
+	dest *util.Pair[Reader, nodestore.NodeID],
+	inputs []util.Pair[Reader, nodestore.NodeID],
 ) (
 	nodeID nodestore.NodeID,
 	stats map[string]*nodestore.Statistics,
@@ -296,7 +296,7 @@ func mergeLeaves(
 
 func toNode[T *nodestore.InnerNode | *nodestore.LeafNode](
 	ctx context.Context,
-	pair util.Pair[TreeReader, nodestore.NodeID],
+	pair util.Pair[Reader, nodestore.NodeID],
 ) (T, error) {
 	tr := pair.First
 	nodeID := pair.Second
@@ -313,7 +313,7 @@ func toNode[T *nodestore.InnerNode | *nodestore.LeafNode](
 
 func getInnerNodes(
 	ctx context.Context,
-	inputs []util.Pair[TreeReader, nodestore.NodeID],
+	inputs []util.Pair[Reader, nodestore.NodeID],
 ) ([]*nodestore.InnerNode, error) {
 	nodes := make([]*nodestore.InnerNode, 0, len(inputs))
 	for i, input := range inputs {
@@ -332,8 +332,8 @@ func mergeInnerNode( // nolint: funlen
 	ctx context.Context,
 	cw *util.CountingWriter,
 	version uint64,
-	dest *util.Pair[TreeReader, nodestore.NodeID],
-	inputs []util.Pair[TreeReader, nodestore.NodeID],
+	dest *util.Pair[Reader, nodestore.NodeID],
+	inputs []util.Pair[Reader, nodestore.NodeID],
 	outputs *[]util.Pair[nodestore.NodeID, *nodestore.InnerNode],
 ) (nodeID nodestore.NodeID, stats map[string]*nodestore.Statistics, err error) {
 	if len(inputs) == 0 {
@@ -391,7 +391,7 @@ func mergeInnerNode( // nolint: funlen
 		sort.Slice(inputs, order(tmp, conflict))
 		sort.Slice(innerNodes, order(tmp, conflict))
 
-		var destChild *util.Pair[TreeReader, nodestore.NodeID]
+		var destChild *util.Pair[Reader, nodestore.NodeID]
 		var destVersion *uint64
 		statistics := map[string]*nodestore.Statistics{}
 		if destNode != nil && destNode.Children[conflict] != nil {
@@ -492,7 +492,7 @@ func mergeOneLeafDirect(
 	version uint64,
 	ancestorID *nodestore.NodeID,
 	ancestorVersion *uint64,
-	pair util.Pair[TreeReader, nodestore.NodeID],
+	pair util.Pair[Reader, nodestore.NodeID],
 ) (nodestore.NodeID, error) {
 	tr := pair.First
 	nodeID := pair.Second
@@ -528,9 +528,9 @@ func mergeConflictedPairs(
 	cw *util.CountingWriter,
 	version uint64,
 	destVersion *uint64,
-	dest *util.Pair[TreeReader, nodestore.NodeID],
+	dest *util.Pair[Reader, nodestore.NodeID],
 	destChild *nodestore.Child,
-	conflictedPairs []util.Pair[TreeReader, nodestore.NodeID],
+	conflictedPairs []util.Pair[Reader, nodestore.NodeID],
 	outputs *[]util.Pair[nodestore.NodeID, *nodestore.InnerNode],
 ) (nodestore.NodeID, map[string]*nodestore.Statistics, error) {
 	switch {
@@ -563,11 +563,11 @@ func mergeConflictedPairs(
 
 func buildConflictedPairs(
 	conflict int,
-	inputs []util.Pair[TreeReader, nodestore.NodeID],
+	inputs []util.Pair[Reader, nodestore.NodeID],
 	nodes []*nodestore.InnerNode,
 	statistics map[string]*nodestore.Statistics,
-) (uint64, []*nodestore.InnerNode, []util.Pair[TreeReader, nodestore.NodeID]) {
-	conflictedPairs := []util.Pair[TreeReader, nodestore.NodeID]{}
+) (uint64, []*nodestore.InnerNode, []util.Pair[Reader, nodestore.NodeID]) {
+	conflictedPairs := []util.Pair[Reader, nodestore.NodeID]{}
 	conflictedNodes := []*nodestore.InnerNode{}
 	var maxVersion uint64
 	for i, pair := range inputs {

@@ -112,9 +112,13 @@ func (n Node) String() string {
 	case Offset:
 		return fmt.Sprintf("[offset %d %s]", *n.Offset, n.Children[0])
 	case AsofJoin:
+		immediate, ok := n.Args[1].(bool)
+		if !ok {
+			panic("expected boolean immediate argument")
+		}
 		args := []string{
 			fmt.Sprintf("%v", n.Args[0]),
-			util.When(n.Args[1].(bool), "immediate", "full"), // this is the reason for the separate case
+			util.When(immediate, "immediate", "full"), // this is the reason for the separate case
 		}
 		if len(n.Args) > 2 {
 			args = append(args, fmt.Sprint(n.Args[2]), fmt.Sprint(n.Args[3]))
@@ -281,8 +285,14 @@ func computeAlias(expr *Node) (string, error) {
 		var nodeAlias string
 		switch n.Type {
 		case Scan:
-			table := n.Args[0].(string)
-			alias := n.Args[1].(string)
+			var ok bool
+			var table, alias string
+			if table, ok = n.Args[0].(string); !ok {
+				return BadPlanError{fmt.Errorf("expected string, got %T", n.Args[0])}
+			}
+			if alias, ok = n.Args[1].(string); !ok {
+				return BadPlanError{fmt.Errorf("expected string, got %T", n.Args[1])}
+			}
 			nodeAlias = util.When(alias == "", table, alias)
 		case BinaryExpression:
 			parts := strings.Split(*n.BinaryOpField, ".")
@@ -404,8 +414,14 @@ func pushDownFilters(exprs map[string]*Node, database string, producer string, s
 		if n.Type != Scan {
 			return nil
 		}
-		table := n.Args[0].(string)
-		alias := n.Args[1].(string)
+		var ok bool
+		var table, alias string
+		if table, ok = n.Args[0].(string); !ok {
+			return BadPlanError{fmt.Errorf("expected string, got %T", n.Args[0])}
+		}
+		if alias, ok = n.Args[1].(string); !ok {
+			return BadPlanError{fmt.Errorf("expected string, got %T", n.Args[1])}
+		}
 		nodeAlias := util.When(alias == "", table, alias)
 		if expr, ok := exprs[nodeAlias]; ok {
 			n.Children = append(n.Children, expr)
@@ -449,7 +465,14 @@ func ensureAliasesResolve() func(n *Node) error {
 	return func(n *Node) error {
 		switch n.Type {
 		case Scan:
-			table, alias := n.Args[0].(string), n.Args[1].(string)
+			table, ok := n.Args[0].(string)
+			if !ok {
+				return BadPlanError{fmt.Errorf("expected string, got %T", n.Args[0])}
+			}
+			alias, ok := n.Args[1].(string)
+			if !ok {
+				return BadPlanError{fmt.Errorf("expected string, got %T", n.Args[1])}
+			}
 			if alias == "" {
 				alias = table
 			}

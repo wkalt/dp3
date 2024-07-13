@@ -1,14 +1,13 @@
 package routes
 
 import (
-	"context"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/wkalt/dp3/server/treemgr"
 )
 
-func MakeTestRoutes(ctx context.Context, t *testing.T, tmgr *treemgr.TreeManager) (string, func()) {
+func MakeTestRoutes(t *testing.T, tmgr *treemgr.TreeManager) (string, func()) {
 	t.Helper()
 	handler := MakeRoutes(tmgr, nil, "")
 	srv := httptest.NewServer(handler)
