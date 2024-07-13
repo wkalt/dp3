@@ -20,7 +20,7 @@ jobs:
         uses: golangci/golangci-lint-action@v4
         with:
           working-directory: server
-          version: v1.56
+          version: v1.59
           args: --timeout 3m --verbose
   test:
     runs-on: ubuntu-latest
