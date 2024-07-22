@@ -91,6 +91,10 @@ Common workloads on the data are,
   of topics in this kind of query can be wide - frequently in the dozens or
   hundreds, and infrequently in the thousands depending on the architecture of
   the producer.
+* Execute "as-of join"-style temporal queries across different topics to
+  identify scenes of interest. For example: "Show me the last 100 instances
+  when the car was turning left in the rain with more than 10 pedestrians in
+  the intersection".
 * Run heavy computational workloads on a "narrow" selection of topics. For
   instance, run distributed Spark jobs over hundreds of terabytes of images.
   This workload may care less or not at all about ordering, but cares a lot
