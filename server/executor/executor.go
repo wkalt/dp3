@@ -10,7 +10,6 @@ import (
 	"github.com/wkalt/dp3/server/mcap"
 	"github.com/wkalt/dp3/server/nodestore"
 	"github.com/wkalt/dp3/server/plan"
-	"github.com/wkalt/dp3/server/tree"
 	"github.com/wkalt/dp3/server/util"
 )
 
@@ -116,7 +115,7 @@ type ScanFactory func(
 	descending bool,
 	start, end uint64,
 	childFilter func(*nodestore.Child) (bool, error),
-) (*tree.Iterator, error)
+) (mcap.ContextMessageIterator, error)
 
 // CompilePlan compiles a "plan tree" -- a tree of plan nodes -- to a tree of
 // executor nodes.

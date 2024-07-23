@@ -714,8 +714,8 @@ func closeAll(ctx context.Context, closers ...*tree.Iterator) {
 		if closer == nil {
 			continue
 		}
-		if err := closer.Close(); err != nil {
-			errs = append(errs, closer.Close())
+		if err := closer.Close(ctx); err != nil {
+			errs = append(errs, closer.Close(ctx))
 		}
 	}
 	for _, err := range errs {
@@ -733,7 +733,7 @@ func (tm *TreeManager) NewTreeIterator(
 	descending bool,
 	start, end uint64,
 	childFilter func(*nodestore.Child) (bool, error),
-) (*tree.Iterator, error) {
+) (mcap.ContextMessageIterator, error) {
 	prefix, rootID, _, truncationVersion, err := tm.rootmap.GetLatest(ctx, database, producer, topic)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest root: %w", err)

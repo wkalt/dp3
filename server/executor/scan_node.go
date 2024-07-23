@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/wkalt/dp3/server/tree"
+	"github.com/wkalt/dp3/server/mcap"
 	"github.com/wkalt/dp3/server/util"
 )
 
@@ -18,7 +18,7 @@ the leaves of the execution tree.
 
 // ScanNode represents a scan node.
 type ScanNode struct {
-	it *tree.Iterator
+	it mcap.ContextMessageIterator
 
 	topic string
 }
@@ -42,14 +42,7 @@ func (n *ScanNode) Next(ctx context.Context) (*Tuple, error) {
 // Close the node.
 func (n *ScanNode) Close(ctx context.Context) error {
 	util.SetContextData(ctx, "topic", n.topic)
-
-	stats := n.it.Stats()
-	util.SetContextValue(ctx, "inner_nodes_filtered", float64(stats.InnerNodesFiltered))
-	util.SetContextValue(ctx, "inner_nodes_scanned", float64(stats.InnerNodesScanned))
-	util.SetContextValue(ctx, "leaf_nodes_filtered", float64(stats.LeafNodesFiltered))
-	util.SetContextValue(ctx, "leaf_nodes_scanned", float64(stats.LeafNodesScanned))
-
-	if err := n.it.Close(); err != nil {
+	if err := n.it.Close(ctx); err != nil {
 		return fmt.Errorf("failed to close scan node: %w", err)
 	}
 	return nil
@@ -63,7 +56,7 @@ func (n *ScanNode) String() string {
 // NewScanNode constructs a new scan node.
 func NewScanNode(
 	topic string,
-	it *tree.Iterator,
+	it mcap.ContextMessageIterator,
 ) *ScanNode {
 	return &ScanNode{it: it, topic: topic}
 }

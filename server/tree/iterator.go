@@ -7,6 +7,7 @@ import (
 	"io"
 	"math"
 	"slices"
+	"strconv"
 
 	fmcap "github.com/foxglove/mcap/go/mcap"
 	"github.com/wkalt/dp3/server/mcap"
@@ -68,13 +69,22 @@ type IterationStats struct {
 	LeafNodesFiltered  uint64
 }
 
-func (ti *Iterator) Stats() IterationStats {
-	return ti.stats
-}
-
 // Close closes the iterator if it has not already been exhausted.
-func (ti *Iterator) Close() error {
-	return ti.closeActiveReaders()
+func (ti *Iterator) Close(ctx context.Context) error {
+	if err := ti.closeActiveReaders(); err != nil {
+		return fmt.Errorf("failed to close leaf reader: %w", err)
+	}
+	ctx, _ = util.WithChildContext(ctx, "scan statistics")
+	innerNodesFiltered := strconv.FormatUint(ti.stats.InnerNodesFiltered, 10)
+	innerNodesScanned := strconv.FormatUint(ti.stats.InnerNodesScanned, 10)
+	leafNodesFiltered := strconv.FormatUint(ti.stats.LeafNodesFiltered, 10)
+	leafNodesScanned := strconv.FormatUint(ti.stats.LeafNodesScanned, 10)
+	util.SetContextData(ctx, "inner_nodes_filtered", innerNodesFiltered)
+	util.SetContextData(ctx, "inner_nodes_scanned", innerNodesScanned)
+	util.SetContextData(ctx, "leaf_nodes_filtered", leafNodesFiltered)
+	util.SetContextData(ctx, "leaf_nodes_scanned", leafNodesScanned)
+
+	return nil
 }
 
 // More returns true if there are more elements in the iteration.

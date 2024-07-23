@@ -1,6 +1,7 @@
 package mcap
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +19,12 @@ for iterating over mcap messages.
 // MessageIterator describes an iterator over mcap messages.
 type MessageIterator interface {
 	Next(buf []byte) (*mcap.Schema, *mcap.Channel, *mcap.Message, error)
+}
+
+type ContextMessageIterator interface {
+	More() bool
+	Next(ctx context.Context) (*mcap.Schema, *mcap.Channel, *mcap.Message, error)
+	Close(ctx context.Context) error
 }
 
 // SerializeIterator writes messages from a message iterator into a writer,

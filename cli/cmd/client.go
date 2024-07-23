@@ -553,7 +553,7 @@ func printExecContext(ec *util.Context) {
 
 		indent, ctx := pair.First, pair.Second
 
-		elapsedToFirstTuple := ctx.Values["elapsed_to_first_tuple"]
+		elapsedToFirstTuple, timingNode := ctx.Values["elapsed_to_first_tuple"]
 		delete(ctx.Values, "elapsed_to_first_tuple")
 		elapsedToLastTuple := ctx.Values["elapsed_to_last_tuple"]
 		delete(ctx.Values, "elapsed_to_last_tuple")
@@ -576,31 +576,19 @@ func printExecContext(ec *util.Context) {
 		}
 
 		caser := cases.Title(language.English)
-
-		timingInfo := fmt.Sprintf("(elapsed=%d...%d, rows=%d, total=%s, width=%s)",
-			int(elapsedToFirstTuple),
-			int(elapsedToLastTuple),
-			int(tuplesOut),
-			util.HumanBytes(uint64(bytesOut)),
-			util.HumanBytes(uint64(float64(bytesOut)/float64(tuplesOut))))
+		var timingInfo string
+		if timingNode {
+			timingInfo = fmt.Sprintf("(elapsed=%d...%d, rows=%d, total=%s, width=%s)",
+				int(elapsedToFirstTuple),
+				int(elapsedToLastTuple),
+				int(tuplesOut),
+				util.HumanBytes(uint64(bytesOut)),
+				util.HumanBytes(uint64(float64(bytesOut)/float64(tuplesOut))))
+		}
 
 		fmt.Fprintf(buf, "%s%s %s%s\n", strings.Repeat("  ", indent),
 			caser.String(ctx.Name), labels, timingInfo)
 
-		var statline string
-		if _, ok := ctx.Values["inner_nodes_filtered"]; ok {
-			statline = fmt.Sprintf(
-				"Statistics: inner_filtered=%d inner_scanned=%d leaf_filtered=%d leaf_scanned=%d",
-				int(ctx.Values["inner_nodes_filtered"]),
-				int(ctx.Values["inner_nodes_scanned"]),
-				int(ctx.Values["leaf_nodes_filtered"]),
-				int(ctx.Values["leaf_nodes_scanned"]),
-			)
-
-		}
-		if statline != "" {
-			fmt.Fprintf(buf, "%s%s\n", strings.Repeat("  ", indent+1), statline)
-		}
 		for _, child := range ctx.Children {
 			queue = append(queue, util.NewPair(indent+2, child))
 		}

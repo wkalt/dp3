@@ -67,7 +67,7 @@ func TestTreeIterator(t *testing.T) {
 					require.NoError(t, err)
 					actualTimes = append(actualTimes, message.LogTime)
 				}
-				require.NoError(t, it.Close())
+				require.NoError(t, it.Close(ctx))
 				require.Equal(t, c.expectedTimes, actualTimes)
 			})
 		}
