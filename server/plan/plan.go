@@ -344,7 +344,7 @@ func splitExpression(expr *Node) (map[string]*Node, error) {
 }
 
 // CompileQuery compiles an AST query to a plan node.
-func CompileQuery(database string, ast ql.Query) (*Node, error) {
+func CompileQuery(database string, ast ql.Query, getProducers func() ([]string, error)) (*Node, error) {
 	start := int64(0)
 	end := int64(math.MaxInt64)
 	var err error
@@ -358,40 +358,72 @@ func CompileQuery(database string, ast ql.Query) (*Node, error) {
 			return nil, fmt.Errorf("failed to parse end time: %w", err)
 		}
 	}
-	producer := ast.From
-	base := compileSelect(ast.Select)
-
-	subexprs := map[string]*Node{}
-	if ast.Where != nil {
-		expr := compileExpression(*ast.Where)
-		subexprs, err = splitExpression(expr)
+	var producers []string
+	if ast.From.All {
+		producers, err = getProducers()
 		if err != nil {
 			return nil, err
 		}
+	} else {
+		for _, producer := range ast.From.Producers {
+			producers = append(producers, producer.Name)
+		}
 	}
-
-	if len(ast.PagingClause) > 0 {
-		base = wrapWithPaging(base, ast.PagingClause)
+	children := make([]*Node, len(producers))
+	for i := range producers {
+		children[i] = compileSelect(ast.Select)
 	}
-
+	for i, producer := range producers {
+		subexprs := map[string]*Node{}
+		if ast.Where != nil {
+			expr := compileExpression(*ast.Where)
+			subexprs, err = splitExpression(expr)
+			if err != nil {
+				return nil, err
+			}
+		}
+		child := children[i]
+		if err := Traverse(
+			child,
+			composePushdowns(
+				pullUpMergeJoins,
+				pushDownDescending(ast.Descending),
+				pushDownFilters(subexprs, database, producer, uint64(start), uint64(end)),
+				ensureAliasesResolve(),
+			),
+			composePushdowns(
+				pullUpUnaryExprs,
+			),
+		); err != nil {
+			return nil, err
+		}
+		if len(subexprs) > 0 {
+			subalias := maps.Keys(subexprs)[0]
+			return nil, BadPlanError{fmt.Errorf("unresolved table alias: %s", subalias)}
+		}
+	}
+	var base *Node
+	if len(children) == 1 {
+		base = children[0]
+	} else {
+		base = &Node{
+			Type:     MergeJoin,
+			Children: children,
+		}
+	}
 	if err := Traverse(
 		base,
 		composePushdowns(
 			pullUpMergeJoins,
-			pushDownDescending(ast.Descending),
-			pushDownFilters(subexprs, database, producer, uint64(start), uint64(end)),
-			ensureAliasesResolve(),
 			pushDownExplain(ast.Explain),
 		),
-		composePushdowns(
-			pullUpUnaryExprs,
-		),
+		nil,
 	); err != nil {
 		return nil, err
 	}
-	if len(subexprs) > 0 {
-		subalias := maps.Keys(subexprs)[0]
-		return nil, BadPlanError{fmt.Errorf("unresolved table alias: %s", subalias)}
+
+	if len(ast.PagingClause) > 0 {
+		base = wrapWithPaging(base, ast.PagingClause)
 	}
 	return base, nil
 }

@@ -132,7 +132,11 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc { //nolint:funl
 			return
 		}
 
-		qp, err := plan.CompileQuery(database, *ast.Query)
+		getProducers := func() ([]string, error) {
+			return tmgr.Producers(ctx, database)
+		}
+
+		qp, err := plan.CompileQuery(database, *ast.Query, getProducers)
 		if err != nil {
 			if errors.Is(err, plan.BadPlanError{}) {
 				httputil.BadRequest(ctx, w, "%w", err)

@@ -56,7 +56,7 @@ func TestInvalidPlans(t *testing.T) {
 			parser := ql.NewParser()
 			ast, err := parser.ParseString("", c.query)
 			require.NoError(t, err)
-			_, err = plan.CompileQuery("db", *ast.Query)
+			_, err = plan.CompileQuery("db", *ast.Query, nil)
 			require.Error(t, err)
 			require.Contains(t, err.Error(), c.output)
 		})
@@ -73,6 +73,21 @@ func TestCompileQuery(t *testing.T) {
 			"single scan",
 			"from device a;",
 			"[scan (a db device all-time)]",
+		},
+		{
+			"scan two devices",
+			"from device1, device2 a,b;",
+			"[merge [scan (a db device1 all-time)] [scan (b db device1 all-time)] [scan (a db device2 all-time)] [scan (b db device2 all-time)]]",
+		},
+		{
+			"wildcard",
+			"from * a,b;",
+			"[merge [scan (a db device1 all-time)] [scan (b db device1 all-time)] [scan (a db device2 all-time)] [scan (b db device2 all-time)]]",
+		},
+		{
+			"wildcard with qualifier",
+			"from * a where a.foo = 10;",
+			"[merge [scan (a db device1 all-time) [binexp [= a.foo 10]]] [scan (a db device2 all-time) [binexp [= a.foo 10]]]]",
 		},
 		{
 			"descending scan",
@@ -204,11 +219,14 @@ func TestCompileQuery(t *testing.T) {
 		},
 	}
 	parser := ql.NewParser()
+	getProducers := func() ([]string, error) {
+		return []string{"device1", "device2"}, nil
+	}
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
 			ast, err := parser.ParseString("", c.query)
 			require.NoError(t, err)
-			plan, err := plan.CompileQuery("db", *ast.Query)
+			plan, err := plan.CompileQuery("db", *ast.Query, getProducers)
 			require.NoError(t, err)
 			require.Equal(t, testutils.StripSpace(c.output), plan.String())
 		})
@@ -237,7 +255,7 @@ func TestQueryCompilationErrors(t *testing.T) {
 			parser := ql.NewParser()
 			ast, err := parser.ParseString("", c.query)
 			require.NoError(t, err)
-			_, err = plan.CompileQuery("db", *ast.Query)
+			_, err = plan.CompileQuery("db", *ast.Query, nil)
 			require.ErrorIs(t, err, plan.BadPlanError{})
 			require.Contains(t, err.Error(), c.output)
 		})

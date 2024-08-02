@@ -29,6 +29,7 @@ var (
 				{Name: "BinaryOperator", Pattern: `=|!=|<=|>=|<|>|~\*|~`},
 				{Name: "Float", Pattern: `[-+]?\d*\.\d+([eE][-+]?\d+)?`},
 				{Name: "Integer", Pattern: `[0-9]+([eE][-+]?\d+)?`},
+				{Name: "Star", Pattern: `\*`},
 			}),
 		),
 		participle.Unquote("QuotedString"),
@@ -48,10 +49,19 @@ type Truncate struct {
 	Time     Timestamp `| @@)`
 }
 
+type Producer struct {
+	Name string `@Word`
+}
+
+type From struct {
+	All       bool       `@Star`
+	Producers []Producer `| @@ ("," @@)*`
+}
+
 // Query represents a query in the dp3 query language.
 type Query struct {
 	Explain      bool         `@"explain"?`
-	From         string       `"from" @Word`
+	From         From         `"from" @@`
 	Between      *Between     `@@?`
 	Select       Select       `@@`
 	Where        *Expression  `("where" @@)*`

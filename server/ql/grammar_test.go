@@ -559,6 +559,38 @@ func TestTruncate(t *testing.T) {
 	}
 }
 
+func TestFrom(t *testing.T) {
+	parser := participle.MustBuild[ql.From](ql.Options...)
+	cases := []struct {
+		assertion string
+		input     string
+		expected  ql.From
+	}{
+		{
+			"all",
+			"*",
+			newFrom(true),
+		},
+		{
+			"producer",
+			"foo",
+			newFrom(false, "foo"),
+		},
+		{
+			"two producers",
+			"foo, bar",
+			newFrom(false, "foo", "bar"),
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.assertion, func(t *testing.T) {
+			ast, err := parser.ParseString("", c.input)
+			require.NoError(t, err)
+			require.Equal(t, c.expected, *ast)
+		})
+	}
+}
+
 func TestQuery(t *testing.T) {
 	parser := participle.MustBuild[ql.Query](ql.Options...)
 	cases := []struct {
@@ -804,7 +836,7 @@ func newQuery(
 ) ql.Query {
 	return ql.Query{
 		Explain:      explain,
-		From:         producer,
+		From:         newFrom(false, producer),
 		Between:      between,
 		Select:       sel,
 		Where:        where,
@@ -930,5 +962,19 @@ func newTerm(v *string, subexpr *ql.Expression) ql.Term {
 	return ql.Term{
 		Value:         v,
 		Subexpression: subexpr,
+	}
+}
+
+func newFrom(all bool, producers ...string) ql.From {
+	if len(producers) == 0 {
+		return ql.From{All: all, Producers: nil}
+	}
+	targets := make([]ql.Producer, len(producers))
+	for i, p := range producers {
+		targets[i] = ql.Producer{Name: p}
+	}
+	return ql.From{
+		All:       all,
+		Producers: targets,
 	}
 }
