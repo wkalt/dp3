@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -49,6 +50,45 @@ func (req QueryRequest) validate() error {
 	return nil
 }
 
+func writeJSONExplain(w io.Writer, r io.Reader) error {
+	buf := &bytes.Buffer{}
+	if _, err := io.Copy(buf, r); err != nil {
+		return fmt.Errorf("error copying explain output: %w", err)
+	}
+	reader, err := mcap.NewReader(bytes.NewReader(buf.Bytes()))
+	if err != nil {
+		return fmt.Errorf("error creating reader: %w", err)
+	}
+	info, err := reader.Info()
+	if err != nil {
+		return fmt.Errorf("error reading info: %w", err)
+	}
+	for _, idx := range info.MetadataIndexes {
+		if idx.Name == "query" {
+			metadata, err := reader.GetMetadata(idx.Offset)
+			if err != nil {
+				return fmt.Errorf("error reading metadata: %w", err)
+			}
+			context := &util.Context{}
+			if err := json.Unmarshal([]byte(metadata.Metadata["context"]), context); err != nil {
+				return fmt.Errorf("error unmarshalling context: %w", err)
+			}
+			explain := context.Print()
+			output, err := json.Marshal(map[string]interface{}{
+				"explain": explain,
+			})
+			if err != nil {
+				return fmt.Errorf("error marshalling explain: %w", err)
+			}
+			if _, err := w.Write(output); err != nil {
+				return fmt.Errorf("error writing explain: %w", err)
+			}
+			return nil
+		}
+	}
+	return fmt.Errorf("query metadata not found")
+}
+
 func streamQueryResults(
 	ctx context.Context,
 	w http.ResponseWriter,
@@ -68,6 +108,14 @@ func streamQueryResults(
 	if json {
 		piperead, pipewrite := io.Pipe()
 		go func() {
+			if explain {
+				if err := writeJSONExplain(w, piperead); err != nil {
+					done <- err
+					return
+				}
+				done <- nil
+			}
+
 			if err := mcap.ToJSON(w, piperead); err != nil {
 				done <- err
 				return

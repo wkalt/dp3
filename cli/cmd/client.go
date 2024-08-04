@@ -157,7 +157,7 @@ func executeQuery(database string, query string, explain bool) error {
 			if err := json.Unmarshal([]byte(metadata.Metadata["context"]), context); err != nil {
 				return fmt.Errorf("error unmarshalling context: %w", err)
 			}
-			printExecContext(context)
+			fmt.Print(context.Print())
 			return nil
 		}
 	}
