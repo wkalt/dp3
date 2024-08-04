@@ -86,7 +86,7 @@ func writeJSONExplain(w io.Writer, r io.Reader) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("query metadata not found")
+	return errors.New("query metadata not found")
 }
 
 func streamQueryResults(

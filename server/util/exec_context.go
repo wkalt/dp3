@@ -109,9 +109,9 @@ func (c *Context) ToMetadata() (*mcap.Metadata, error) {
 	}, nil
 }
 
-func (ec *Context) Print() string {
+func (c *Context) Print() string { // nolint: funlen
 	buf := &bytes.Buffer{}
-	queue := []Pair[int, *Context]{NewPair(0, ec.Children[0])}
+	queue := []Pair[int, *Context]{NewPair(0, c.Children[0])}
 	for len(queue) > 0 {
 		pair := queue[len(queue)-1]
 		queue = queue[:len(queue)-1]
@@ -174,13 +174,13 @@ func (ec *Context) Print() string {
 	fmt.Fprintln(output, headerline)
 	fmt.Fprintln(output, strings.Repeat("-", maxWidth))
 	fmt.Fprintln(output, buf.String())
-	for _, k := range Okeys(ec.Data) {
-		fmt.Fprintln(output, k+":"+ec.Data[k])
+	for _, k := range Okeys(c.Data) {
+		fmt.Fprintln(output, k+":"+c.Data[k])
 	}
-	for _, k := range Okeys(ec.Values) {
-		fmt.Fprintf(output, "%s: %d\n", k, int(ec.Values[k]))
+	for _, k := range Okeys(c.Values) {
+		fmt.Fprintf(output, "%s: %d\n", k, int(c.Values[k]))
 	}
-	if len(ec.Data) > 0 || len(ec.Values) > 0 {
+	if len(c.Data) > 0 || len(c.Values) > 0 {
 		fmt.Fprintln(output)
 	}
 	return output.String()

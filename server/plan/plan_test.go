@@ -77,12 +77,16 @@ func TestCompileQuery(t *testing.T) {
 		{
 			"scan two devices",
 			"from device1, device2 a,b;",
-			"[merge [scan (a db device1 all-time)] [scan (b db device1 all-time)] [scan (a db device2 all-time)] [scan (b db device2 all-time)]]",
+			`[merge
+			[scan (a db device1 all-time)] [scan (b db device1 all-time)]
+			[scan (a db device2 all-time)] [scan (b db device2 all-time)]]`,
 		},
 		{
 			"wildcard",
 			"from * a,b;",
-			"[merge [scan (a db device1 all-time)] [scan (b db device1 all-time)] [scan (a db device2 all-time)] [scan (b db device2 all-time)]]",
+			`[merge
+			[scan (a db device1 all-time)] [scan (b db device1 all-time)]
+			[scan (a db device2 all-time)] [scan (b db device2 all-time)]]`,
 		},
 		{
 			"wildcard with qualifier",

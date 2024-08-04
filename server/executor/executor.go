@@ -234,9 +234,9 @@ func maybeWrapWithStats(node *plan.Node, n Node, label string) Node {
 }
 
 func compileScan(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, error) {
-	table, ok := node.Args[0].(string)
+	topic, ok := node.Args[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("expected string table, got %T", node.Args[0])
+		return nil, fmt.Errorf("expected string topic, got %T", node.Args[0])
 	}
 	alias, ok := node.Args[1].(string)
 	if !ok {
@@ -274,14 +274,14 @@ func compileScan(ctx context.Context, node *plan.Node, sf ScanFactory) (Node, er
 		}
 	}
 
-	it, err := sf(ctx, database, producer, table, node.Descending, start, end, childFilter)
+	it, err := sf(ctx, database, producer, topic, node.Descending, start, end, childFilter)
 	if err != nil {
 		return nil, err
 	}
 
-	scan := maybeWrapWithStats(node, NewScanNode(table, it), "scan")
+	scan := maybeWrapWithStats(node, NewScanNode(producer, topic, it), "scan")
 	if len(node.Children) > 0 {
-		expr := newExpression(util.When(alias != "", alias, table), node.Children[0])
+		expr := newExpression(util.When(alias != "", alias, topic), node.Children[0])
 		return maybeWrapWithStats(node, NewFilterNode(expr.filter, scan), "filter"), nil
 	}
 	return scan, nil

@@ -344,7 +344,11 @@ func splitExpression(expr *Node) (map[string]*Node, error) {
 }
 
 // CompileQuery compiles an AST query to a plan node.
-func CompileQuery(database string, ast ql.Query, getProducers func() ([]string, error)) (*Node, error) {
+func CompileQuery( // nolint: funlen
+	database string,
+	ast ql.Query,
+	getProducers func() ([]string, error),
+) (*Node, error) {
 	start := int64(0)
 	end := int64(math.MaxInt64)
 	var err error

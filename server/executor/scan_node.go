@@ -20,7 +20,8 @@ the leaves of the execution tree.
 type ScanNode struct {
 	it mcap.ContextMessageIterator
 
-	topic string
+	topic    string
+	producer string
 }
 
 // Next returns the next tuple from the node.
@@ -42,6 +43,7 @@ func (n *ScanNode) Next(ctx context.Context) (*Tuple, error) {
 // Close the node.
 func (n *ScanNode) Close(ctx context.Context) error {
 	util.SetContextData(ctx, "topic", n.topic)
+	util.SetContextData(ctx, "producer", n.producer)
 	if err := n.it.Close(ctx); err != nil {
 		return fmt.Errorf("failed to close scan node: %w", err)
 	}
@@ -50,13 +52,14 @@ func (n *ScanNode) Close(ctx context.Context) error {
 
 // String returns a string representation of the node.
 func (n *ScanNode) String() string {
-	return fmt.Sprintf("[scan %s]", n.topic)
+	return fmt.Sprintf("[scan %s %s]", n.producer, n.topic)
 }
 
 // NewScanNode constructs a new scan node.
 func NewScanNode(
+	producer string,
 	topic string,
 	it mcap.ContextMessageIterator,
 ) *ScanNode {
-	return &ScanNode{it: it, topic: topic}
+	return &ScanNode{it: it, topic: topic, producer: producer}
 }

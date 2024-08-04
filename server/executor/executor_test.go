@@ -251,47 +251,47 @@ func TestCompilePlan(t *testing.T) {
 		{
 			"simple scan",
 			"from device topic-0;",
-			"[scan topic-0]",
+			"[scan device topic-0]",
 		},
 		{
 			"simple scan with where clause",
 			"from device topic-0 where topic-0.foo = 10;",
-			"[filter [scan topic-0]]",
+			"[filter [scan device topic-0]]",
 		},
 		{
 			"simple scan with time boundaries",
 			"from device between 10 and 100 topic-0;",
-			"[scan topic-0]",
+			"[scan device topic-0]",
 		},
 		{
 			"simple scan with limit",
 			"from device topic-0 limit 10;",
-			"[limit 10 [scan topic-0]]",
+			"[limit 10 [scan device topic-0]]",
 		},
 		{
 			"simple scan with offset",
 			"from device topic-0 offset 10;",
-			"[offset 10 [scan topic-0]]",
+			"[offset 10 [scan device topic-0]]",
 		},
 		{
 			"merge join",
 			"from device topic-0, topic-1;",
-			"[merge [scan topic-0] [scan topic-1]]",
+			"[merge [scan device topic-0] [scan device topic-1]]",
 		},
 		{
 			"merge join with qualification on one side",
 			"from device topic-0, topic-1 where topic-0.foo = 10;",
-			"[merge [filter [scan topic-0]] [scan topic-1]]",
+			"[merge [filter [scan device topic-0]] [scan device topic-1]]",
 		},
 		{
 			"asof join",
 			"from device topic-0 precedes topic-1 by less than 10 seconds;",
-			"[asof 10000000000 full [scan topic-0] [scan topic-1]]",
+			"[asof 10000000000 full [scan device topic-0] [scan device topic-1]]",
 		},
 		{
 			"asof join with immediate",
 			"from device topic-0 precedes immediate topic-1 by less than 10 seconds;",
-			"[asof 10000000000 immediate [scan topic-0] [scan topic-1]]",
+			"[asof 10000000000 immediate [scan device topic-0] [scan device topic-1]]",
 		},
 	}
 	parser := ql.NewParser()
