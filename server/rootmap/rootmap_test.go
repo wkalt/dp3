@@ -14,7 +14,6 @@ import (
 
 func TestRootmapPutGet(t *testing.T) {
 	ctx := context.Background()
-
 	cases := []struct {
 		assertion string
 		f         func(*testing.T, rootmap.Rootmap)
@@ -42,7 +41,6 @@ func TestRootmapPutGet(t *testing.T) {
 			},
 		},
 	}
-
 	for _, c := range cases {
 		t.Run(c.assertion, func(t *testing.T) {
 			db, err := sql.Open("sqlite3", "file::memory:?cache=shared")
@@ -235,7 +233,7 @@ func TestRootmapGetLatestByTopic(t *testing.T) {
 				err = rm.Put(ctx, "db", "my-device", "topic2", 50, "test", node2)
 				require.NoError(t, err)
 
-				listings, err := rm.GetLatestByTopic(ctx, "db", "my-device", map[string]uint64{"topic1": 0, "topic2": 0})
+				listings, err := rm.GetLatestByTopic(ctx, "db", []string{"my-device"}, map[string]uint64{"topic1": 0, "topic2": 0})
 				require.NoError(t, err)
 
 				require.ElementsMatch(t, []rootmap.RootListing{
@@ -265,7 +263,7 @@ func TestRootmapGetLatestByTopic(t *testing.T) {
 				err = rm.Truncate(ctx, "db", "my-device", "topic1", t1.UnixNano())
 				require.NoError(t, err)
 
-				listings, err := rm.GetLatestByTopic(ctx, "db", "my-device", map[string]uint64{"topic1": 0, "topic2": 0})
+				listings, err := rm.GetLatestByTopic(ctx, "db", []string{"my-device"}, map[string]uint64{"topic1": 0, "topic2": 0})
 				require.NoError(t, err)
 
 				require.ElementsMatch(t, []rootmap.RootListing{

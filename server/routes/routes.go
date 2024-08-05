@@ -51,12 +51,13 @@ func MakeRoutes(
 	r.HandleFunc("/databases", newDatabasesHandler(tmgr)).Methods("GET")
 
 	r.HandleFunc("/databases/{database}/query", newQueryHandler(tmgr)).Methods("POST")
-	r.HandleFunc("/databases/{database}/summarize-children",
-		summarizeChildrenHandler(tmgr)).Methods("GET")
 	r.HandleFunc("/databases/{database}/topics", newTopicsHandler(tmgr)).Methods("GET")
 	r.HandleFunc("/databases/{database}/tables", newTablesHandler(tmgr)).Methods("GET")
 	r.HandleFunc("/databases/{database}/producers", newProducersHandler(tmgr)).Methods("GET")
 	r.HandleFunc("/databases/{database}/schemas/{hash}", newSchemasHandler(tmgr)).Methods("GET")
+
+	r.HandleFunc("/databases/{database}/statistics", newStatisticsHandler(tmgr)).Methods("GET")
+	r.HandleFunc("/databases/{database}/statistics/available", newAvailableStatisticsHandler(tmgr)).Methods("GET")
 
 	// These use authentication if provided.
 	authmw := mw.WithSharedKeyAuth(sharedKey)

@@ -320,13 +320,6 @@ func (tm *TreeManager) storeSchema(ctx context.Context, database string, schema 
 	return nil
 }
 
-// StatisticalSummary is a summary of statistics for a given time range.
-type StatisticalSummary struct {
-	Start      uint64                `json:"start"`
-	End        uint64                `json:"end"`
-	Statistics *nodestore.Statistics `json:"statistics"`
-}
-
 // GetStatistics returns a summary of statistics for the given time range.
 func (tm *TreeManager) GetStatistics(
 	ctx context.Context,
@@ -362,50 +355,301 @@ type ChildSummary struct {
 	SchemaHashes      []string  `json:"schemaHashes"`
 }
 
-func (tm *TreeManager) SummarizeChildren(
+type AvailableStatisticsRequest struct {
+	Topic     string `json:"topic"`
+	Producer  string `json:"producer"`
+	StartSecs int    `json:"startSecs"`
+	EndSecs   int    `json:"endSecs"`
+}
+
+type AvailableStatistic struct {
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+type AvailableStatisticsResponse struct {
+	Field      string               `json:"field"`
+	Type       string               `json:"type"`
+	Statistics []AvailableStatistic `json:"statistics"`
+}
+
+type StatisticsResponse struct {
+	Producers    []string         `json:"producers"`
+	SchemaHashes []string         `json:"schemaHashes"`
+	Breaks       []int            `json:"breaks"`
+	Binwidth     int              `json:"binwidth"`
+	Statistics   map[string][]any `json:"statistics"`
+}
+
+func (tm *TreeManager) Statistics( // nolint: funlen
 	ctx context.Context,
 	database string,
-	producer string,
-	topics []string,
-	start time.Time,
-	end time.Time,
-	bucketWidthSecs int,
-) ([]ChildSummary, error) {
-	topicVersions := make(map[string]uint64)
-	for _, topic := range topics {
-		topicVersions[topic] = 0
+	topic string,
+	producer *string,
+	field string,
+	stats []string,
+	start, end int,
+	granularity int,
+	groupByProducer bool,
+) ([]StatisticsResponse, error) {
+	topics := map[string]uint64{topic: 0}
+	var err error
+	producers := []string{}
+	if producer != nil {
+		producers = append(producers, *producer)
+	} else {
+		producers, err = tm.rootmap.Producers(ctx, database, []string{topic})
+		if err != nil {
+			return nil, fmt.Errorf("failed to get producers: %w", err)
+		}
 	}
-	roots, err := tm.rootmap.GetLatestByTopic(ctx, database, producer, topicVersions)
+	// For each producer, if the producer has relevant fields, we will look at
+	// the latest root and get a binned timeseries. Each producer is expected to
+	// have the same binsizes within the topic. After all producers have been
+	// checked, bins are merged and statistics are calculated.
+	type bin struct {
+		startSecs, endSecs int
+	}
+	var binWidth int
+	fields := util.When(len(field) == 0, []string{}, []string{field})
+	var groups [][]string
+	if groupByProducer {
+		for _, producer := range producers {
+			groups = append(groups, []string{producer})
+		}
+	} else {
+		groups = [][]string{producers}
+	}
+	responses := []StatisticsResponse{}
+	for _, group := range groups {
+		hashes := make(map[string]bool)
+		bins := map[bin]*nodestore.ChildStats{}
+		for _, producer := range group {
+			roots, err := tm.rootmap.GetLatestByTopic(ctx, database, []string{producer}, topics)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get latest roots: %w", err)
+			}
+			if len(roots) != 1 {
+				return nil, fmt.Errorf("expected one root, got %d", len(roots))
+			}
+			root := roots[0]
+			if err := tree.IterateChildren(
+				ctx,
+				tree.NewBYOTreeReader(root.Prefix, root.NodeID, tm.ns.Get, tm.ns.GetLeafNode),
+				uint64(start),
+				uint64(end),
+				granularity,
+				func(child *nodestore.Child, start uint64, end uint64) error {
+					binWidth = int(end/1e9 - start/1e9)
+					childstats, err := child.GetStats(fields)
+					if err != nil {
+						return fmt.Errorf("failed to get stats: %w", err)
+					}
+					b := bin{int(start / 1e9), int(end / 1e9)}
+					if existing, ok := bins[b]; ok {
+						if err := existing.Merge(childstats); err != nil {
+							return fmt.Errorf("failed to merge stats: %w", err)
+						}
+						return nil
+					}
+					bins[b] = childstats
+					for _, hash := range childstats.MessageSummary.SchemaHashes {
+						hashes[hash] = true
+					}
+					return nil
+				},
+			); err != nil {
+				return nil, fmt.Errorf("failed to iterate children: %w", err)
+			}
+		}
+
+		keys := make([]bin, 0, len(bins))
+		for k := range bins {
+			keys = append(keys, k)
+		}
+
+		sort.Slice(keys, func(i, j int) bool {
+			return keys[i].startSecs < keys[j].startSecs
+		})
+
+		breaks := make([]int, 0, len(keys))
+		for _, k := range keys {
+			breaks = append(breaks, k.startSecs)
+		}
+		response := StatisticsResponse{
+			Producers:    group,
+			SchemaHashes: util.Okeys(hashes),
+			Breaks:       breaks,
+			Statistics:   map[string][]any{},
+			Binwidth:     binWidth,
+		}
+
+		// each bin is valued with an aggregated summary pair
+		for _, k := range keys {
+			childStats := bins[k]
+			numeric := childStats.FieldStats[field].Numeric
+			text := childStats.FieldStats[field].Text
+			if err := addNumericStats(&response, stats, numeric); err != nil {
+				return nil, fmt.Errorf("failed to add numeric stats: %w", err)
+			}
+			addTextStats(&response, stats, text)
+			addMessageStats(&response, stats, childStats.MessageSummary)
+		}
+		responses = append(responses, response)
+	}
+	return responses, nil
+}
+
+func addMessageStats(response *StatisticsResponse, stats []string, messageSummary nodestore.MessageSummary) {
+	for _, stat := range stats {
+		switch stat {
+		case "messageCount":
+			response.Statistics[stat] = append(response.Statistics[stat], messageSummary.Count)
+		case "messageBytesUncompressed":
+			response.Statistics[stat] = append(response.Statistics[stat], messageSummary.BytesUncompressed)
+		case "messageMinObservedTime":
+			datestr := time.Unix(0, int64(messageSummary.MinObservedTime)).UTC().Format(time.RFC3339Nano)
+			response.Statistics[stat] = append(response.Statistics[stat], datestr)
+		case "messageMaxObservedTime":
+			datestr := time.Unix(0, int64(messageSummary.MaxObservedTime)).UTC().Format(time.RFC3339Nano)
+			response.Statistics[stat] = append(response.Statistics[stat], datestr)
+		}
+	}
+}
+
+func addTextStats(response *StatisticsResponse, stats []string, textstat *nodestore.TextSummary) {
+	if textstat == nil {
+		return
+	}
+	for _, stat := range stats {
+		switch stat {
+		case "min":
+			response.Statistics[stat] = append(response.Statistics[stat], textstat.Min)
+		case "max":
+			response.Statistics[stat] = append(response.Statistics[stat], textstat.Max)
+		}
+	}
+}
+
+func addNumericStats(response *StatisticsResponse, stats []string, numstat *nodestore.NumericalSummary) error {
+	if numstat == nil {
+		return nil
+	}
+	quantiles, err := numstat.Quantiles([]float64{0.25, 0.5, 0.75, 0.9, 0.95, 0.99})
 	if err != nil {
-		return nil, fmt.Errorf("failed to get latest roots: %w", err)
+		return fmt.Errorf("failed to get quantiles: %w", err)
 	}
-	summaries := []ChildSummary{}
-	for _, root := range roots {
+	for _, stat := range stats {
+		switch stat {
+		case "min":
+			response.Statistics[stat] = append(response.Statistics[stat], numstat.Min)
+		case "max":
+			response.Statistics[stat] = append(response.Statistics[stat], numstat.Max)
+		case "mean":
+			response.Statistics[stat] = append(response.Statistics[stat], numstat.Mean)
+		case "count":
+			response.Statistics[stat] = append(response.Statistics[stat], numstat.Count)
+		case "P25":
+			response.Statistics[stat] = append(response.Statistics[stat], quantiles[0])
+		case "P50":
+			response.Statistics[stat] = append(response.Statistics[stat], quantiles[1])
+		case "P75":
+			response.Statistics[stat] = append(response.Statistics[stat], quantiles[2])
+		case "P90":
+			response.Statistics[stat] = append(response.Statistics[stat], quantiles[3])
+		case "P95":
+			response.Statistics[stat] = append(response.Statistics[stat], quantiles[4])
+		case "P99":
+			response.Statistics[stat] = append(response.Statistics[stat], quantiles[5])
+		}
+	}
+	return nil
+}
+
+func (tm *TreeManager) ListStatistics( // nolint: funlen
+	ctx context.Context,
+	database string,
+	topic string,
+	producer *string,
+	start int,
+	end int,
+	bucketWidthSecs int,
+) ([]AvailableStatisticsResponse, error) {
+	topics := map[string]uint64{topic: 0}
+	var err error
+	producers := []string{}
+	if producer != nil {
+		producers = append(producers, *producer)
+	} else {
+		producers, err = tm.rootmap.Producers(ctx, database, []string{topic})
+		if err != nil {
+			return nil, fmt.Errorf("failed to get producers: %w", err)
+		}
+	}
+	output := map[string]AvailableStatisticsResponse{}
+	for _, producer := range producers {
+		roots, err := tm.rootmap.GetLatestByTopic(ctx, database, []string{producer}, topics)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get latest roots: %w", err)
+		}
+		if len(roots) != 1 {
+			return nil, fmt.Errorf("expected one root, got %d", len(roots))
+		}
+		root := roots[0]
 		if err := tree.IterateChildren(
 			ctx,
 			tree.NewBYOTreeReader(root.Prefix, root.NodeID, tm.ns.Get, tm.ns.GetLeafNode),
-			uint64(start.UnixNano()),
-			uint64(end.UnixNano()),
+			uint64(start),
+			uint64(end),
 			bucketWidthSecs,
-			func(summary tree.ChildNodeSummary) error {
-				summaries = append(summaries, ChildSummary{
-					Producer:          root.Producer,
-					Topic:             root.Topic,
-					Start:             summary.Start,
-					End:               summary.End,
-					MessageCount:      summary.MessageCount,
-					BytesUncompressed: summary.BytesUncompressed,
-					MinObservedTime:   summary.MinObservedTime,
-					MaxObservedTime:   summary.MaxObservedTime,
-					SchemaHashes:      summary.SchemaHashes,
-				})
+			func(child *nodestore.Child, _ uint64, _ uint64) error {
+				for _, statistics := range child.Statistics {
+					for i, field := range statistics.Fields {
+						if _, ok := output[field.String()]; !ok {
+							stats := []AvailableStatistic{}
+							if _, ok := statistics.NumStats[i]; ok {
+								stats = append(stats, []AvailableStatistic{
+									{Name: "min", Type: "float64"},
+									{Name: "max", Type: "float64"},
+									{Name: "mean", Type: "float64"},
+									{Name: "count", Type: "int"},
+									{Name: "P25", Type: "float64"},
+									{Name: "P50", Type: "float64"},
+									{Name: "P75", Type: "float64"},
+									{Name: "P90", Type: "float64"},
+									{Name: "P95", Type: "float64"},
+									{Name: "P99", Type: "float64"},
+								}...)
+								// apppend the numeric stats
+							}
+							if _, ok := statistics.TextStats[i]; ok {
+								stats = append(stats, []AvailableStatistic{
+									{Name: "count", Type: "int"},
+									{Name: "min", Type: "string"},
+									{Name: "max", Type: "string"},
+								}...)
+							}
+
+							output[field.String()] = AvailableStatisticsResponse{
+								Field:      field.Name,
+								Type:       field.Value.String(),
+								Statistics: stats,
+							}
+						}
+					}
+				}
 				return nil
 			},
 		); err != nil {
 			return nil, fmt.Errorf("failed to iterate children: %w", err)
 		}
 	}
-	return summaries, nil
+
+	response := make([]AvailableStatisticsResponse, len(output))
+	for i, k := range util.Okeys(output) {
+		response[i] = output[k]
+	}
+	return response, nil
 }
 
 type Table struct {
@@ -429,12 +673,17 @@ func (tm *TreeManager) GetTables(
 		if err != nil {
 			return nil, fmt.Errorf("failed to get historical roots: %w", err)
 		}
-	} else {
+	}
+	if !historical {
 		topics := make(map[string]uint64)
 		if topic != "" {
 			topics[topic] = 0
 		}
-		roots, err = tm.rootmap.GetLatestByTopic(ctx, database, producer, topics)
+		var producers []string
+		if producer != "" {
+			producers = []string{producer}
+		}
+		roots, err = tm.rootmap.GetLatestByTopic(ctx, database, producers, topics)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get latest roots: %w", err)
 		}
@@ -478,7 +727,11 @@ func (tm *TreeManager) GetLatestRoots(
 	producer string,
 	topics map[string]uint64,
 ) ([]rootmap.RootListing, error) {
-	listing, err := tm.rootmap.GetLatestByTopic(ctx, database, producer, topics)
+	var producers []string
+	if producer != "" {
+		producers = []string{producer}
+	}
+	listing, err := tm.rootmap.GetLatestByTopic(ctx, database, producers, topics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest roots: %w", err)
 	}

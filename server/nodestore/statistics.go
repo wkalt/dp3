@@ -141,6 +141,19 @@ func NewNumericalSummary() (*NumericalSummary, error) {
 	}, nil
 }
 
+func (n *NumericalSummary) Quantiles(qs []float64) ([]float64, error) {
+	if n.DDSketch.DDSketch == nil {
+		if err := n.DDSketch.parse(); err != nil {
+			return nil, fmt.Errorf("failed to parse ddsketch: %w", err)
+		}
+	}
+	quantiles, err := n.DDSketch.GetValuesAtQuantiles(qs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get quantiles: %w", err)
+	}
+	return quantiles, nil
+}
+
 func (n *NumericalSummary) Merge(other *NumericalSummary) error {
 	n.Min = min(n.Min, other.Min)
 	n.Max = max(n.Max, other.Max)
@@ -224,14 +237,16 @@ type TextSummary struct {
 	TrigramSignature trigram.Signature `json:"trgmSignature"`
 }
 
-func (s *TextSummary) Merge(other *TextSummary) {
+func (s *TextSummary) Merge(other *TextSummary, mergeTrigrams bool) {
 	if !s.nonempty {
 		*s = *other
 		return
 	}
 	s.Min = min(s.Min, other.Min)
 	s.Max = max(s.Max, other.Max)
-	s.TrigramSignature.Add(other.TrigramSignature)
+	if mergeTrigrams {
+		s.TrigramSignature.Add(other.TrigramSignature)
+	}
 }
 
 func (s *TextSummary) ranges(field string, start, end uint64, schemaHash string) []StatRange {

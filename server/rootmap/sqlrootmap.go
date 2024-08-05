@@ -130,7 +130,7 @@ func (rm *sqlRootmap) withTransaction(
 
 func (rm *sqlRootmap) getLatestByTopicQuery(
 	database string,
-	producer string,
+	producers []string,
 	topics map[string]uint64,
 ) (query string, params []interface{}) {
 	sb := strings.Builder{}
@@ -149,9 +149,16 @@ func (rm *sqlRootmap) getLatestByTopicQuery(
 	where tables.database = ?
 	`)
 	params = []any{database}
-	if producer != "" {
-		sb.WriteString(" and tables.producer = ? ")
-		params = append(params, producer)
+	if len(producers) > 0 {
+		sb.WriteString(" and tables.producer in (")
+		for i, producer := range producers {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString("?")
+			params = append(params, producer)
+		}
+		sb.WriteString(")")
 	}
 	if len(topics) > 0 {
 		sb.WriteString(" and tables.topic in (")
@@ -285,10 +292,10 @@ func (rm *sqlRootmap) GetHistorical(
 func (rm *sqlRootmap) GetLatestByTopic(
 	ctx context.Context,
 	database string,
-	producer string,
+	producers []string,
 	topics map[string]uint64,
 ) ([]RootListing, error) {
-	query, params := rm.getLatestByTopicQuery(database, producer, topics)
+	query, params := rm.getLatestByTopicQuery(database, producers, topics)
 	rows, err := rm.db.QueryContext(ctx, query, params...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read from rootmap: %w", err)

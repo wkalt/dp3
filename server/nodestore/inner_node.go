@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
+	"slices"
 
 	"github.com/wkalt/dp3/server/util"
 )
@@ -47,6 +47,70 @@ type Child struct {
 
 var ErrNoStatsFound = errors.New("no statistics found")
 
+type FieldStats struct {
+	Numeric *NumericalSummary `json:"numeric"`
+	Text    *TextSummary      `json:"text"`
+}
+
+type ChildStats struct {
+	FieldStats     map[string]FieldStats `json:"fieldStats"`
+	MessageSummary MessageSummary        `json:"messageSummary"`
+}
+
+func (cs *ChildStats) Merge(other *ChildStats) error {
+	for field, stats := range other.FieldStats {
+		if _, ok := cs.FieldStats[field]; !ok {
+			cs.FieldStats[field] = stats
+		} else {
+			if err := cs.FieldStats[field].Numeric.Merge(stats.Numeric); err != nil {
+				return err
+			}
+			cs.FieldStats[field].Text.Merge(stats.Text, false)
+		}
+	}
+	cs.MessageSummary.Count += other.MessageSummary.Count
+	cs.MessageSummary.BytesUncompressed += other.MessageSummary.BytesUncompressed
+
+	for _, hash := range other.MessageSummary.SchemaHashes {
+		if !slices.Contains(cs.MessageSummary.SchemaHashes, hash) {
+			cs.MessageSummary.SchemaHashes = append(cs.MessageSummary.SchemaHashes, hash)
+		}
+	}
+	cs.MessageSummary.MinObservedTime = min(cs.MessageSummary.MinObservedTime, other.MessageSummary.MinObservedTime)
+	cs.MessageSummary.MaxObservedTime = max(cs.MessageSummary.MaxObservedTime, other.MessageSummary.MaxObservedTime)
+	return nil
+}
+
+func (c *Child) GetStats(fields []string) (*ChildStats, error) {
+	fieldset := map[string]struct{}{}
+	for _, stats := range c.Statistics {
+		for _, field := range stats.Fields {
+			if slices.Contains(fields, field.Name) {
+				fieldset[field.Name] = struct{}{}
+			}
+		}
+	}
+	fieldStats := make(map[string]FieldStats)
+	for _, field := range util.Okeys(fieldset) {
+		numstat, err := c.GetNumStat(field)
+		if err != nil && !errors.Is(err, ErrNoStatsFound) {
+			return nil, err
+		}
+		textstat, err := c.GetTextStat(field)
+		if err != nil && !errors.Is(err, ErrNoStatsFound) {
+			return nil, err
+		}
+		fieldStats[field] = FieldStats{
+			Numeric: numstat,
+			Text:    textstat,
+		}
+	}
+	return &ChildStats{
+		FieldStats:     fieldStats,
+		MessageSummary: c.MessageSummary(),
+	}, nil
+}
+
 func (c *Child) GetNumStat(field string) (*NumericalSummary, error) {
 	s, err := NewNumericalSummary()
 	if err != nil {
@@ -72,26 +136,26 @@ func (c *Child) GetNumStat(field string) (*NumericalSummary, error) {
 }
 
 type MessageSummary struct {
-	Count             int64     `json:"count"`
-	BytesUncompressed int64     `json:"bytesUncompressed"`
-	SchemaHashes      []string  `json:"schemaHashes"`
-	MinObservedTime   time.Time `json:"minObservedTime"`
-	MaxObservedTime   time.Time `json:"maxObservedTime"`
+	Count             int64    `json:"count"`
+	BytesUncompressed int64    `json:"bytesUncompressed"`
+	SchemaHashes      []string `json:"schemaHashes"`
+	MinObservedTime   uint64   `json:"minObservedTime"`
+	MaxObservedTime   uint64   `json:"maxObservedTime"`
 }
 
 func (c *Child) MessageSummary() MessageSummary {
 	s := MessageSummary{}
-	minObserved := make([]int64, 0, len(c.Statistics))
-	maxObserved := make([]int64, 0, len(c.Statistics))
+	minObserved := make([]uint64, 0, len(c.Statistics))
+	maxObserved := make([]uint64, 0, len(c.Statistics))
 	for hash, stats := range c.Statistics {
 		s.Count += stats.MessageCount
 		s.BytesUncompressed += stats.BytesUncompressed
 		s.SchemaHashes = append(s.SchemaHashes, hash)
-		minObserved = append(minObserved, stats.MinObservedTime)
-		maxObserved = append(maxObserved, stats.MaxObservedTime)
+		minObserved = append(minObserved, uint64(stats.MinObservedTime))
+		maxObserved = append(maxObserved, uint64(stats.MaxObservedTime))
 	}
-	s.MinObservedTime = time.Unix(0, util.Reduce(minObserved[1:], minObserved[0], util.Min))
-	s.MaxObservedTime = time.Unix(0, util.Reduce(maxObserved[1:], maxObserved[0], util.Max))
+	s.MinObservedTime = util.Reduce(minObserved[1:], minObserved[0], util.Min)
+	s.MaxObservedTime = util.Reduce(maxObserved[1:], maxObserved[0], util.Max)
 	return s
 }
 
@@ -102,14 +166,14 @@ func (c *Child) GetTextStat(field string) (*TextSummary, error) {
 		for i, f := range stats.Fields {
 			if f.Name == field {
 				if textStats, ok := stats.TextStats[i]; ok {
-					s.Merge(textStats)
+					s.Merge(textStats, false)
 					found = true
 				}
 			}
 		}
 	}
 	if !found {
-		return nil, fmt.Errorf("field %s not found", field)
+		return nil, ErrNoStatsFound
 	}
 	return s, nil
 }

@@ -57,7 +57,7 @@ type Rootmap interface {
 	GetLatestByTopic(
 		ctx context.Context,
 		database string,
-		producer string,
+		producers []string,
 		topics map[string]uint64,
 	) ([]RootListing, error)
 	Get(
@@ -73,7 +73,6 @@ type Rootmap interface {
 		producer string,
 		topic string,
 	) ([]RootListing, error)
-
 	Topics(ctx context.Context, database string) ([]string, error)
 	Producers(ctx context.Context, database string, topics []string) ([]string, error)
 	Databases(ctx context.Context) ([]string, error)
