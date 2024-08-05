@@ -827,7 +827,7 @@ func TestProducers(t *testing.T) {
 				require.NoError(t, tmgr.Receive(ctx, "db", producer, buf))
 				require.NoError(t, tmgr.ForceFlush(ctx))
 			}
-			producers, err := tmgr.Producers(ctx, "db")
+			producers, err := tmgr.Producers(ctx, "db", nil)
 			require.NoError(t, err)
 			require.Equal(t, c.expected, producers)
 		})

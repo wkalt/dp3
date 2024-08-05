@@ -180,8 +180,8 @@ func newQueryHandler(tmgr *treemgr.TreeManager) http.HandlerFunc { //nolint:funl
 			return
 		}
 
-		getProducers := func() ([]string, error) {
-			return tmgr.Producers(ctx, database)
+		getProducers := func(topics []string) ([]string, error) {
+			return tmgr.Producers(ctx, database, topics)
 		}
 
 		qp, err := plan.CompileQuery(database, *ast.Query, getProducers)

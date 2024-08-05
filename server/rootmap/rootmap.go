@@ -75,7 +75,7 @@ type Rootmap interface {
 	) ([]RootListing, error)
 
 	Topics(ctx context.Context, database string) ([]string, error)
-	Producers(ctx context.Context, database string) ([]string, error)
+	Producers(ctx context.Context, database string, topics []string) ([]string, error)
 	Databases(ctx context.Context) ([]string, error)
 }
 

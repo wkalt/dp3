@@ -21,7 +21,7 @@ func newProducersHandler(
 			"producers request",
 			"database", database,
 		)
-		tables, err := tmgr.Producers(ctx, database)
+		tables, err := tmgr.Producers(ctx, database, nil)
 		if err != nil {
 			httputil.InternalServerError(ctx, w, "failed to get producers: %s", err)
 			return

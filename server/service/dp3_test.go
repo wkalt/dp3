@@ -4,7 +4,7 @@ package service_test
 // func TestDP3Service(t *testing.T) {
 // 	ctx := context.Background()
 //
-// 	store, err := storage.NewDirectoryStore("../data")
+// 	store, err := storage.NewDirectoryStore("../../data")
 // 	require.NoError(t, err)
 //
 // 	// Uncomment and fill in to use with S3
@@ -28,8 +28,8 @@ package service_test
 // 		service.WithPort(8089),
 // 		service.WithCacheSizeMegabytes(4096),
 // 		service.WithStorageProvider(store),
-// 		service.WithDatabasePath("../dp3.db"),
-// 		service.WithWALDir("../waldir"),
+// 		service.WithDatabasePath("../../dp3.db"),
+// 		service.WithWALDir("../../waldir"),
 // 	}
 // 	svc := service.NewDP3Service()
 // 	require.NoError(t, svc.Start(ctx, opts...))

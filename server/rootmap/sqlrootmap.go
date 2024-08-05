@@ -418,11 +418,23 @@ func (rm *sqlRootmap) Databases(ctx context.Context) ([]string, error) {
 }
 
 func (rm *sqlRootmap) Producers(
-	ctx context.Context, database string,
+	ctx context.Context, database string, topics []string,
 ) ([]string, error) {
-	rows, err := rm.db.QueryContext(
-		ctx, `select distinct producer from tables
-		where database = ?`, database)
+	sb := strings.Builder{}
+	sb.WriteString("select distinct producer from tables where database = ?")
+	params := []any{database}
+	if len(topics) > 0 {
+		sb.WriteString(" and topic in (")
+		for i, topic := range topics {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString("?")
+			params = append(params, topic)
+		}
+		sb.WriteString(")")
+	}
+	rows, err := rm.db.QueryContext(ctx, sb.String(), params...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read from tables: %w", err)
 	}

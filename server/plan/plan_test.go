@@ -1,6 +1,7 @@
 package plan_test
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -87,6 +88,11 @@ func TestCompileQuery(t *testing.T) {
 			`[merge
 			[scan (a db device1 all-time)] [scan (b db device1 all-time)]
 			[scan (a db device2 all-time)] [scan (b db device2 all-time)]]`,
+		},
+		{
+			"wildcard implicitly drops devices if they have no matching tables",
+			"from * /no-dev1;",
+			`[scan (/no-dev1 db device2 all-time)]`,
 		},
 		{
 			"wildcard with qualifier",
@@ -223,7 +229,10 @@ func TestCompileQuery(t *testing.T) {
 		},
 	}
 	parser := ql.NewParser()
-	getProducers := func() ([]string, error) {
+	getProducers := func(topics []string) ([]string, error) {
+		if slices.Contains(topics, "/no-dev1") {
+			return []string{"device2"}, nil
+		}
 		return []string{"device1", "device2"}, nil
 	}
 	for _, c := range cases {

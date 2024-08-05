@@ -347,7 +347,7 @@ func splitExpression(expr *Node) (map[string]*Node, error) {
 func CompileQuery( // nolint: funlen
 	database string,
 	ast ql.Query,
-	getProducers func() ([]string, error),
+	getProducers func([]string) ([]string, error),
 ) (*Node, error) {
 	start := int64(0)
 	end := int64(math.MaxInt64)
@@ -363,16 +363,42 @@ func CompileQuery( // nolint: funlen
 		}
 	}
 	var producers []string
+
+	// If this query was for "all" producers, we need to compile the select and
+	// then traverse it to figure out what producers we should actually limit
+	// the query to, based on what topics are requested. We will implicitly
+	// exclude any producers that don't have a table with the topic(s)
+	// requested.
 	if ast.From.All {
-		producers, err = getProducers()
-		if err != nil {
+		compiledSelect := compileSelect(ast.Select)
+		topics := []string{}
+		if err := Traverse(compiledSelect, nil,
+			func(n *Node) error {
+				if n.Type != Scan {
+					return nil
+				}
+				topic, ok := n.Args[0].(string)
+				if !ok {
+					return BadPlanError{fmt.Errorf("expected string, got %T", n.Args[0])}
+				}
+				topics = append(topics, topic)
+				return nil
+			},
+		); err != nil {
+			return nil, err
+		}
+		if producers, err = getProducers(topics); err != nil {
 			return nil, err
 		}
 	} else {
+		// If specific producers were specified, then we will use all of them
+		// and do no exclusion. An error will result from the executor if a
+		// nonexistent table is requested.
 		for _, producer := range ast.From.Producers {
 			producers = append(producers, producer.Name)
 		}
 	}
+
 	children := make([]*Node, len(producers))
 	for i := range producers {
 		children[i] = compileSelect(ast.Select)

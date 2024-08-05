@@ -129,9 +129,9 @@ func NewTreeManager(
 }
 
 func (tm *TreeManager) Producers(
-	ctx context.Context, database string,
+	ctx context.Context, database string, topics []string,
 ) ([]string, error) {
-	producers, err := tm.rootmap.Producers(ctx, database)
+	producers, err := tm.rootmap.Producers(ctx, database, topics)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get producers: %w", err)
 	}
